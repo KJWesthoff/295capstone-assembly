@@ -105,6 +105,12 @@
   font-size: 0.9rem;
 }
 
+.button-group {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
 .scan-button {
   padding: 1rem 2rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -138,6 +144,31 @@
   cursor: not-allowed;
 }
 
+.new-scan-button {
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  min-height: 56px;
+}
+
+.new-scan-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(108, 117, 125, 0.3);
+}
+
+.new-scan-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .spinner {
   width: 20px;
   height: 20px;
@@ -165,6 +196,15 @@
   }
   
   .scan-button {
+    font-size: 1rem;
+  }
+  
+  .button-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .new-scan-button {
     font-size: 1rem;
   }
 }

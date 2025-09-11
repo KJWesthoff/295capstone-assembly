@@ -6,11 +6,21 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import subprocess
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="VentiAPI Scanner Web API", version="1.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # React frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # In-memory storage (use Redis in production)
 scans: Dict[str, dict] = {}
@@ -44,8 +54,26 @@ class ScanStatus(BaseModel):
 
 
 @app.post("/api/scan/start")
-async def start_scan(request: ScanRequest, spec_file: Optional[UploadFile] = File(None)):
+async def start_scan(
+    server_url: str = Form(...),
+    spec_url: Optional[str] = Form(None),
+    rps: float = Form(1.0),
+    max_requests: int = Form(400),
+    dangerous: bool = Form(False),
+    fuzz_auth: bool = Form(False),
+    spec_file: Optional[UploadFile] = File(None)
+):
     scan_id = str(uuid.uuid4())
+    
+    # Create request object for consistency
+    request = ScanRequest(
+        server_url=server_url,
+        spec_url=spec_url,
+        rps=rps,
+        max_requests=max_requests,
+        dangerous=dangerous,
+        fuzz_auth=fuzz_auth
+    )
     
     # Handle spec file upload or URL
     if spec_file:
@@ -54,8 +82,8 @@ async def start_scan(request: ScanRequest, spec_file: Optional[UploadFile] = Fil
             content = await spec_file.read()
             f.write(content)
         spec_location = f"/shared/specs/{scan_id}_{spec_file.filename}"
-    elif request.spec_url:
-        spec_location = request.spec_url
+    elif spec_url:
+        spec_location = spec_url
     else:
         raise HTTPException(status_code=400, detail="Either spec_file or spec_url must be provided")
     
@@ -87,11 +115,10 @@ async def run_scanner(scan_id: str, spec_location: str, request: ScanRequest):
         # Prepare docker run command
         docker_cmd = [
             "docker", "run", "--rm",
-            "--network", "host",
-            "-v", f"{SHARED_RESULTS.absolute()}:/shared/results",
-            "-v", f"{SHARED_SPECS.absolute()}:/shared/specs",
+            "--network", "scannerapp_scanner-network",
+            "-v", "scannerapp_shared-results:/shared/results",
+            "-v", "scannerapp_shared-specs:/shared/specs",
             "ventiapi-scanner",
-            "venti",
             "--spec", spec_location,
             "--server", request.server_url,
             "--out", f"/shared/results/{scan_id}",

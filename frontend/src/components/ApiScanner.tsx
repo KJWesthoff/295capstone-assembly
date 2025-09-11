@@ -18,11 +18,8 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
       scannerApi.startScan(request, file),
     onSuccess: (data) => {
       onScanStarted(data.scan_id);
-      // Reset form
-      setUrl('');
-      setApiSpec('');
-      setSpecFile(null);
-      setUseFile(false);
+      // Keep form values populated for convenience
+      // User can manually clear or start a new scan if needed
     },
     onError: (error) => {
       console.error('Failed to start scan:', error);
@@ -36,6 +33,13 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
       setSpecFile(file);
       setUseFile(true);
     }
+  };
+
+  const handleNewScan = () => {
+    setUrl('');
+    setApiSpec('');
+    setSpecFile(null);
+    setUseFile(false);
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -141,20 +145,31 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
             </div>
           )}
 
-          <button
-            type="submit"
-            className={`scan-button ${startScanMutation.isPending ? 'loading' : ''}`}
-            disabled={!url || (!useFile && !apiSpec) || (useFile && !specFile) || startScanMutation.isPending}
-          >
-            {startScanMutation.isPending ? (
-              <>
-                <div className="spinner"></div>
-                Starting Scan...
-              </>
-            ) : (
-              'Start Security Scan'
-            )}
-          </button>
+          <div className="button-group">
+            <button
+              type="submit"
+              className={`scan-button ${startScanMutation.isPending ? 'loading' : ''}`}
+              disabled={!url || (!useFile && !apiSpec) || (useFile && !specFile) || startScanMutation.isPending}
+            >
+              {startScanMutation.isPending ? (
+                <>
+                  <div className="spinner"></div>
+                  Starting Scan...
+                </>
+              ) : (
+                'Start Security Scan'
+              )}
+            </button>
+            
+            <button
+              type="button"
+              className="new-scan-button"
+              onClick={handleNewScan}
+              disabled={startScanMutation.isPending}
+            >
+              New Scan
+            </button>
+          </div>
         </form>
       </div>
     </div>
