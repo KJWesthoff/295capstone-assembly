@@ -1,10 +1,21 @@
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import './App.css';
 import ApiScanner from './components/ApiScanner';
 import Report from './components/Report';
 
 const queryClient = new QueryClient();
+
+// TypeScript declaration for global window property
+declare global {
+  interface Window {
+    __TANSTACK_QUERY_CLIENT__: import("@tanstack/query-core").QueryClient;
+  }
+}
+
+// Make QueryClient available globally for devtools
+window.__TANSTACK_QUERY_CLIENT__ = queryClient;
 
 function App() {
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
@@ -50,6 +61,7 @@ function App() {
           {currentScanId && <Report scanId={currentScanId} />}
         </main>
       </div>
+      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 }

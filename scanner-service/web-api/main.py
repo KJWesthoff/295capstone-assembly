@@ -83,7 +83,15 @@ async def start_scan(
             f.write(content)
         spec_location = f"/shared/specs/{scan_id}_{spec_file.filename}"
     elif spec_url:
-        spec_location = spec_url
+        # Check if it's a URL or pasted content
+        if spec_url.startswith(('http://', 'https://')):
+            spec_location = spec_url
+        else:
+            # Treat as pasted spec content - save to file
+            spec_path = SHARED_SPECS / f"{scan_id}_pasted_spec.yaml"
+            with open(spec_path, "w", encoding="utf-8") as f:
+                f.write(spec_url)
+            spec_location = f"/shared/specs/{scan_id}_pasted_spec.yaml"
     else:
         raise HTTPException(status_code=400, detail="Either spec_file or spec_url must be provided")
     
