@@ -1,4 +1,4 @@
-# BadWebApp - API Security Scanner
+# NAME-TBD - API Security Scanner
 
 A complete full-stack application for scanning APIs for security vulnerabilities using the VentiAPI Scanner.
 
