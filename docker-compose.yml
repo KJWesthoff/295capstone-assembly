@@ -65,3 +65,5 @@ volumes:
 networks:
   scanner-network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: scanner-br0

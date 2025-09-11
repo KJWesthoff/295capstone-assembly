@@ -121,18 +121,36 @@ async def run_scanner(scan_id: str, spec_location: str, request: ScanRequest):
         scans[scan_id]["status"] = "running"
         
         # Prepare docker run command
-        docker_cmd = [
-            "docker", "run", "--rm",
-            "--network", "scannerapp_scanner-network",
-            "-v", "scannerapp_shared-results:/shared/results",
-            "-v", "scannerapp_shared-specs:/shared/specs",
-            "ventiapi-scanner",
-            "--spec", spec_location,
-            "--server", request.server_url,
-            "--out", f"/shared/results/{scan_id}",
-            "--rps", str(request.rps),
-            "--max-requests", str(request.max_requests)
-        ]
+        # Use host network if URL is external, otherwise use scanner network
+        if request.server_url.startswith(('http://localhost:', 'http://127.0.0.1:', 'http://host.docker.internal:')):
+            # Internal/local URLs - use scanner network
+            docker_cmd = [
+                "docker", "run", "--rm",
+                "--network", "scannerapp_scanner-network",
+                "--add-host", "host.docker.internal:host-gateway",
+                "-v", "scannerapp_shared-results:/shared/results",
+                "-v", "scannerapp_shared-specs:/shared/specs",
+                "ventiapi-scanner",
+                "--spec", spec_location,
+                "--server", request.server_url,
+                "--out", f"/shared/results/{scan_id}",
+                "--rps", str(request.rps),
+                "--max-requests", str(request.max_requests)
+            ]
+        else:
+            # External URLs - use host network for full internet access
+            docker_cmd = [
+                "docker", "run", "--rm",
+                "--network", "host",
+                "-v", "scannerapp_shared-results:/shared/results",
+                "-v", "scannerapp_shared-specs:/shared/specs",
+                "ventiapi-scanner",
+                "--spec", spec_location,
+                "--server", request.server_url,
+                "--out", f"/shared/results/{scan_id}",
+                "--rps", str(request.rps),
+                "--max-requests", str(request.max_requests)
+            ]
         
         if request.dangerous:
             docker_cmd.append("--dangerous")
