@@ -1,0 +1,274 @@
+.report {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  gap: 1rem;
+}
+
+.report-header h2 {
+  margin: 0;
+  color: #333;
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.report-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.meta-item {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.meta-item strong {
+  color: #333;
+}
+
+.download-btn {
+  padding: 0.5rem 1rem;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 0.5rem;
+}
+
+.download-btn:hover {
+  background: #218838;
+}
+
+.report-summary {
+  margin-bottom: 2rem;
+}
+
+.report-summary h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.summary-item {
+  text-align: center;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 2px solid;
+}
+
+.summary-item.total {
+  background: #f8f9fa;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.summary-item.critical {
+  background: #fff5f5;
+  border-color: #fed7d7;
+  color: #c53030;
+}
+
+.summary-item.high {
+  background: #fffaf0;
+  border-color: #fbd38d;
+  color: #dd6b20;
+}
+
+.summary-item.medium {
+  background: #fefcbf;
+  border-color: #faf089;
+  color: #b45309;
+}
+
+.summary-item.low {
+  background: #f0fff4;
+  border-color: #9ae6b4;
+  color: #25855a;
+}
+
+.summary-number {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.summary-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vulnerabilities h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.no-vulnerabilities {
+  text-align: center;
+  padding: 2rem;
+  color: #25855a;
+}
+
+.success-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.vulnerabilities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.vulnerability-item {
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-left: 4px solid;
+}
+
+.vulnerability-item.severity-critical {
+  background: #fff5f5;
+  border-left-color: #e53e3e;
+}
+
+.vulnerability-item.severity-high {
+  background: #fffaf0;
+  border-left-color: #dd6b20;
+}
+
+.vulnerability-item.severity-medium {
+  background: #fefcbf;
+  border-left-color: #d69e2e;
+}
+
+.vulnerability-item.severity-low {
+  background: #f0fff4;
+  border-left-color: #38a169;
+}
+
+.vulnerability-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.severity-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.severity-badge.severity-critical {
+  background: #e53e3e;
+  color: white;
+}
+
+.severity-badge.severity-high {
+  background: #dd6b20;
+  color: white;
+}
+
+.severity-badge.severity-medium {
+  background: #d69e2e;
+  color: white;
+}
+
+.severity-badge.severity-low {
+  background: #38a169;
+  color: white;
+}
+
+.vulnerability-header h4 {
+  margin: 0;
+  color: #333;
+  font-size: 1.1rem;
+  font-weight: 600;
+  flex-grow: 1;
+}
+
+.endpoint {
+  background: #f1f3f4;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.vulnerability-description {
+  margin: 0;
+  color: #555;
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .report {
+    padding: 1.5rem;
+  }
+  
+  .report-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .report-meta {
+    align-items: flex-start;
+  }
+  
+  .summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  }
+  
+  .summary-number {
+    font-size: 1.5rem;
+  }
+  
+  .vulnerability-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .vulnerability-header h4 {
+    order: 1;
+  }
+  
+  .severity-badge {
+    order: 0;
+    align-self: flex-start;
+  }
+  
+  .endpoint {
+    order: 2;
+    align-self: flex-start;
+  }
+}

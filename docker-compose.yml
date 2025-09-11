@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Frontend React App
+  frontend:
+    build: ./frontend
+    container_name: ventiapi-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    networks:
+      - scanner-network
+    depends_on:
+      - web-api
+
+  # Web API Backend
+  web-api:
+    build: ./scanner-service/web-api
+    container_name: ventiapi-web-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - shared-results:/shared/results
+      - shared-specs:/shared/specs
+      - /var/run/docker.sock:/var/run/docker.sock  # Access to Docker daemon
+    networks:
+      - scanner-network
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+
+  # Redis for job queue and caching (optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: ventiapi-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - scanner-network
+    volumes:
+      - redis-data:/data
+
+  # Scanner service (builds the image for web-api to use)
+  scanner:
+    build: ./external-scanner/ventiapi-scanner
+    container_name: ventiapi-scanner-builder
+    volumes:
+      - shared-results:/shared/results
+      - shared-specs:/shared/specs
+    networks:
+      - scanner-network
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["echo", "Scanner image built"]
+    profiles: ["build-only"]  # Only runs when explicitly requested
+
+volumes:
+  shared-results:
+  shared-specs:
+  redis-data:
+
+networks:
+  scanner-network:
+    driver: bridge
