@@ -37,7 +37,7 @@ class ScanRequest(BaseModel):
     spec_url: Optional[str] = None
     server_url: str
     rps: float = 1.0
-    max_requests: int = 400
+    max_requests: int = 2000
     dangerous: bool = False
     fuzz_auth: bool = False
 
@@ -58,7 +58,7 @@ async def start_scan(
     server_url: str = Form(...),
     spec_url: Optional[str] = Form(None),
     rps: float = Form(1.0),
-    max_requests: int = Form(400),
+    max_requests: int = Form(2000),
     dangerous: bool = Form(False),
     fuzz_auth: bool = Form(False),
     spec_file: Optional[UploadFile] = File(None)
