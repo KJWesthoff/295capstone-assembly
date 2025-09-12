@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { scannerApi, Finding } from '../api/scannerApi';
+import ParallelScanProgress from './ParallelScanProgress';
 import './Report.css';
 
 interface ReportProps {
@@ -14,7 +15,11 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
     refetchInterval: (query) => {
       // Stop polling when scan is completed or failed
       const data = query.state.data;
-      return data && (data.status === 'completed' || data.status === 'failed') ? false : 2000;
+      const shouldStop = data && (data.status === 'completed' || data.status === 'failed');
+      if (data?.status !== 'completed' && data?.status !== 'failed') {
+        console.log(`[Scan ${scanId.slice(0,8)}] ${data?.current_phase} - ${data?.progress}%`);
+      }
+      return shouldStop ? false : 2000;
     },
     enabled: !!scanId
   });
@@ -50,19 +55,22 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
   if (scanStatus.status === 'pending' || scanStatus.status === 'running') {
     return (
       <div className="report scanning">
-        <h3>Scan in Progress</h3>
-        <div className="progress-info">
-          <div className="progress-bar">
-            <div 
-              className="progress-fill" 
-              style={{ width: `${scanStatus.progress}%` }}
-            ></div>
+        <h3>🔍 Security Scan in Progress</h3>
+        <ParallelScanProgress scanStatus={scanStatus} />
+        
+        {scanStatus.findings_count > 0 && (
+          <div className="findings-preview">
+            <h4>⚠️ Findings detected so far: {scanStatus.findings_count}</h4>
+            <p>Detailed results will be available when the scan completes.</p>
           </div>
-          <p>Progress: {scanStatus.progress}%</p>
-          {scanStatus.current_probe && (
-            <p>Current probe: {scanStatus.current_probe}</p>
+        )}
+        
+        <div className="scan-info">
+          <p><strong>Scan ID:</strong> {scanId}</p>
+          <p><strong>Started:</strong> {new Date(scanStatus.created_at).toLocaleString()}</p>
+          {scanStatus.parallel_mode && (
+            <p><strong>Mode:</strong> Parallel scanning with {scanStatus.total_chunks} containers</p>
           )}
-          <p>Findings so far: {scanStatus.findings_count}</p>
         </div>
       </div>
     );

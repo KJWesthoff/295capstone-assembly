@@ -9,6 +9,16 @@ export interface ScanRequest {
   fuzz_auth?: boolean;
 }
 
+export interface ChunkStatus {
+  chunk_id: string;
+  status: 'preparing' | 'starting' | 'running' | 'completed' | 'failed';
+  endpoints_count: number;
+  endpoints: string[];
+  current_endpoint?: string;
+  progress: number;
+  error?: string;
+}
+
 export interface ScanStatus {
   scan_id: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -18,6 +28,12 @@ export interface ScanStatus {
   created_at: string;
   completed_at?: string;
   error?: string;
+  // Enhanced parallel scanning info
+  total_chunks?: number;
+  completed_chunks?: number;
+  parallel_mode?: boolean;
+  chunk_status?: ChunkStatus[];
+  current_phase?: string;
 }
 
 export interface Finding {

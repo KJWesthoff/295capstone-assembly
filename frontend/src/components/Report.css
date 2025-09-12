@@ -272,3 +272,57 @@
     align-self: flex-start;
   }
 }
+
+/* Enhanced scanning progress styles */
+.findings-preview {
+  background: #fff3cd;
+  border: 2px solid #ffeaa7;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.findings-preview h4 {
+  color: #856404;
+  margin: 0 0 8px 0;
+  font-size: 1.1em;
+}
+
+.findings-preview p {
+  color: #664d03;
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.scan-info {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 20px;
+  border: 1px solid #e9ecef;
+}
+
+.scan-info p {
+  margin: 8px 0;
+  font-size: 0.9em;
+  color: #495057;
+}
+
+.scanning h3 {
+  color: #1976d2;
+  text-align: center;
+  margin-bottom: 24px;
+  font-size: 1.4em;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .scan-info p {
+    font-size: 0.85em;
+  }
+  
+  .findings-preview {
+    padding: 12px;
+  }
+}
