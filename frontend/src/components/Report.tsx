@@ -92,13 +92,13 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
 
   const summary = {
     total: findingsData?.total || 0,
-    critical: getSeverityCount('critical'),
-    high: getSeverityCount('high'),
-    medium: getSeverityCount('medium'),
-    low: getSeverityCount('low')
+    critical: getSeverityCount('Critical'),
+    high: getSeverityCount('High'),
+    medium: getSeverityCount('Medium'),
+    low: getSeverityCount('Low')
   };
   const getSeverityClass = (severity: string) => {
-    return `severity-${severity}`;
+    return `severity-${severity.toLowerCase()}`;
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -185,10 +185,15 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
                   <span className={`severity-badge ${getSeverityClass(vuln.severity)}`}>
                     {vuln.severity.toUpperCase()}
                   </span>
-                  <h4>{vuln.type}</h4>
-                  <span className="endpoint">{vuln.endpoint}</span>
+                  <h4>{vuln.title}</h4>
+                  <span className="endpoint">{vuln.method} {vuln.endpoint}</span>
                 </div>
                 <p className="vulnerability-description">{vuln.description}</p>
+                {vuln.rule && (
+                  <div className="vulnerability-rule">
+                    <strong>Rule:</strong> {vuln.rule} | <strong>Score:</strong> {vuln.score}
+                  </div>
+                )}
               </div>
             ))}
           </div>

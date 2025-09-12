@@ -37,11 +37,14 @@ export interface ScanStatus {
 }
 
 export interface Finding {
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  type: string;
-  description: string;
+  rule: string;
+  title: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  score: number;
   endpoint: string;
-  details?: any;
+  method: string;
+  description: string;
+  evidence?: any;
 }
 
 export interface FindingsResponse {
