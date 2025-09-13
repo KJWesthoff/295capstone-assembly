@@ -29,6 +29,26 @@ from security import (
     SecurityConfig
 )
 
+def get_allowed_origins():
+    """Get allowed CORS origins based on environment"""
+    # Default development origins
+    origins = [
+        "http://localhost:3000",
+        "http://localhost:3001"
+    ]
+    
+    # Add production origins from environment variables
+    frontend_url = os.getenv("FRONTEND_URL")
+    if frontend_url:
+        origins.append(frontend_url)
+    
+    # Add additional origins from comma-separated env var
+    additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS")
+    if additional_origins:
+        origins.extend([origin.strip() for origin in additional_origins.split(",")])
+    
+    return origins
+
 # Create FastAPI app with security configuration
 app = FastAPI(
     title="VentiAPI Scanner Web API (Secure)",
@@ -50,7 +70,7 @@ async def add_security_headers(request: Request, call_next):
 # Enhanced CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "https://yourdomain.com"],  # Specific origins only
+    allow_origins=get_allowed_origins(),  # Dynamic based on environment
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],  # Limited methods
     allow_headers=["Authorization", "Content-Type"],  # Limited headers
