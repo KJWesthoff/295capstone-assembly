@@ -64,7 +64,7 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
       server_url: url,
       ...(useFile ? {} : { spec_url: apiSpec }),
       rps: 1.0,
-      max_requests: 2000,
+      max_requests: 100,
       dangerous: false,
       fuzz_auth: false
     };

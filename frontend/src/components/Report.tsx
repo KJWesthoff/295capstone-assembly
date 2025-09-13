@@ -17,7 +17,9 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
       const data = query.state.data;
       const shouldStop = data && (data.status === 'completed' || data.status === 'failed');
       if (data?.status !== 'completed' && data?.status !== 'failed') {
-        console.log(`[Scan ${scanId.slice(0,8)}] ${data?.current_phase} - ${data?.progress}%`);
+        const phase = data?.current_phase || 'initializing';
+        const progress = data?.progress ?? 0;
+        console.log(`[Scan ${scanId.slice(0,8)}] ${phase} - ${progress}%`);
       }
       return shouldStop ? false : 2000;
     },

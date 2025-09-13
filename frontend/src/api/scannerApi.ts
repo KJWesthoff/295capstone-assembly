@@ -1,5 +1,20 @@
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+// Helper function to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  const token = localStorage.getItem('jwt_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+};
+
+// Helper function to get auth headers for FormData
+const getAuthHeadersForFormData = (): HeadersInit => {
+  const token = localStorage.getItem('jwt_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
 export interface ScanRequest {
   spec_url?: string;
   server_url: string;
@@ -57,13 +72,15 @@ export const scannerApi = {
   async startScan(request: ScanRequest, specFile?: File): Promise<{ scan_id: string; status: string }> {
     const formData = new FormData();
     
-    if (specFile) {
+    // Only append spec_file if it's actually provided and not empty
+    if (specFile && specFile.size > 0) {
       formData.append('spec_file', specFile);
     }
     
     // Add other request parameters
     formData.append('server_url', request.server_url);
-    if (request.spec_url) formData.append('spec_url', request.spec_url);
+    // If spec_url is provided, use it as target_url, otherwise use server_url
+    formData.append('target_url', request.spec_url || request.server_url);
     if (request.rps) formData.append('rps', request.rps.toString());
     if (request.max_requests) formData.append('max_requests', request.max_requests.toString());
     if (request.dangerous) formData.append('dangerous', 'true');
@@ -71,6 +88,7 @@ export const scannerApi = {
 
     const response = await fetch(`${API_BASE_URL}/api/scan/start`, {
       method: 'POST',
+      headers: getAuthHeadersForFormData(),
       body: formData,
     });
 
@@ -82,7 +100,9 @@ export const scannerApi = {
   },
 
   async getScanStatus(scanId: string): Promise<ScanStatus> {
-    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/status`);
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/status`, {
+      headers: getAuthHeaders(),
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to get scan status: ${response.statusText}`);
@@ -92,7 +112,9 @@ export const scannerApi = {
   },
 
   async getFindings(scanId: string, offset: number = 0, limit: number = 50): Promise<FindingsResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/findings?offset=${offset}&limit=${limit}`);
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/findings?offset=${offset}&limit=${limit}`, {
+      headers: getAuthHeaders(),
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to get findings: ${response.statusText}`);
@@ -102,7 +124,9 @@ export const scannerApi = {
   },
 
   async getReport(scanId: string): Promise<string> {
-    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/report`);
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/report`, {
+      headers: getAuthHeaders(),
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to get report: ${response.statusText}`);
@@ -112,7 +136,9 @@ export const scannerApi = {
   },
 
   async getAllScans(): Promise<Array<{scan_id: string; status: string; created_at: string; server_url: string}>> {
-    const response = await fetch(`${API_BASE_URL}/api/scans`);
+    const response = await fetch(`${API_BASE_URL}/api/scans`, {
+      headers: getAuthHeaders(),
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to get scans: ${response.statusText}`);
@@ -124,6 +150,7 @@ export const scannerApi = {
   async deleteScan(scanId: string): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
     
     if (!response.ok) {
