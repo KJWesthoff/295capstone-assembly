@@ -89,7 +89,8 @@ ScannerApp/
 │       └── templates/            # Report templates
 ├── scanner-service/                # Custom backend services
 │   └── web-api/                   # FastAPI backend
-│       ├── main.py               # API endpoints + parallel orchestration
+│       ├── main.py               # API endpoints + parallel orchestration + security
+│       ├── security.py           # Authentication, authorization & validation
 │       ├── Dockerfile            # Web API container
 │       └── requirements.txt
 └── README.md                      # This file
