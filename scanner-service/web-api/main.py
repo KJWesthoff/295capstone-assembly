@@ -50,7 +50,7 @@ async def add_security_headers(request: Request, call_next):
 # Enhanced CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://yourdomain.com"],  # Specific origins only
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "https://yourdomain.com"],  # Specific origins only
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],  # Limited methods
     allow_headers=["Authorization", "Content-Type"],  # Limited headers

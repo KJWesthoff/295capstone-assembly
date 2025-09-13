@@ -147,51 +147,6 @@
   color: #333;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .login-card {
-    background: #1a1a1a;
-    color: #e1e1e1;
-  }
-  
-  .login-header h2 {
-    color: #e1e1e1;
-  }
-  
-  .login-header p {
-    color: #a1a1a1;
-  }
-  
-  .form-group label {
-    color: #e1e1e1;
-  }
-  
-  .form-group input {
-    background: #2a2a2a;
-    border-color: #404040;
-    color: #e1e1e1;
-  }
-  
-  .form-group input:focus {
-    border-color: #667eea;
-  }
-  
-  .demo-credentials {
-    background-color: #2a2a2a;
-  }
-  
-  .demo-credentials h4 {
-    color: #e1e1e1;
-  }
-  
-  .demo-credentials p {
-    color: #a1a1a1;
-  }
-  
-  .demo-credentials strong {
-    color: #e1e1e1;
-  }
-}
 
 /* Mobile responsiveness */
 @media (max-width: 480px) {
