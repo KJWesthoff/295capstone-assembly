@@ -2,7 +2,7 @@
 
 A complete full-stack application for scanning APIs for security vulnerabilities using parallel processing and real-time progress tracking.
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
@@ -21,26 +21,26 @@ A complete full-stack application for scanning APIs for security vulnerabilities
                        └─────────────────┘
 ```
 
-## ✨ Key Features
+## Key Features
 
-### 🚀 **Performance Optimized**
+### **Performance Optimized**
 - **Parallel Scanning**: Automatically splits large API specs into chunks and runs multiple containers concurrently
 - **Smart Probe Grouping**: Groups compatible security probes to avoid conflicts while maximizing parallelism
 - **Real-time Progress**: Live updates with TanStack Query showing individual container progress
 
-### 🔍 **Comprehensive Security Testing** 
+### **Comprehensive Security Testing** 
 - **OWASP API Top 10** complete coverage (API1-API10)
 - **Static & Active Probes**: Both specification analysis and runtime testing
 - **Severity Classification**: Critical, High, Medium, Low with detailed scoring
 - **Professional Reports**: HTML reports with embedded CSS and findings breakdown
 
-### 💻 **Modern Full-Stack**
+### **Modern Full-Stack**
 - **React 19 + TypeScript**: Modern frontend with type safety
 - **FastAPI Backend**: High-performance async Python API
 - **Docker Orchestration**: Complete containerized deployment
 - **Redis Caching**: Optimized performance and job queuing
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -64,7 +64,7 @@ docker compose up --build
 - **API Documentation:** http://localhost:8000/docs
 - **Redis:** localhost:6379
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ScannerApp/
@@ -96,7 +96,7 @@ ScannerApp/
 └── README.md                      # This file
 ```
 
-## 🔧 Advanced Features
+## Advanced Features
 
 ### Real-Time Progress Tracking
 - **TanStack Query Integration**: Automatic polling every 2 seconds during scans
@@ -118,7 +118,7 @@ ScannerApp/
 - **Severity Breakdown**: Visual summary with color-coded severity levels
 - **Downloadable Reports**: Direct browser download via API
 
-## 🔍 API Endpoints
+## API Endpoints
 
 ### Core Scan Management
 ```bash
@@ -161,7 +161,7 @@ curl "http://localhost:8000/api/scan/{scan_id}/report" -o security_report.html
 ```
 
 
-## 🛠️ Development & Testing
+## Development & Testing
 
 ### Local Development
 ```bash
@@ -193,7 +193,7 @@ git submodule update --init --recursive
 | `REACT_APP_API_URL` | Backend API URL | `http://localhost:8000` |
 | `PYTHONUNBUFFERED` | Python output buffering | `1` |
 
-## 📊 Performance & Scaling
+## Performance & Scaling
 
 ### Current Capabilities
 - **Parallel Processing**: 3x faster scanning with automatic endpoint chunking
@@ -207,7 +207,7 @@ git submodule update --init --recursive
 - **Database Integration**: Replace in-memory storage with RDS/DynamoDB
 - **CDN Integration**: CloudFront for static assets
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
@@ -223,11 +223,11 @@ git submodule update --init --recursive
 - Test with real vulnerable APIs (VAmPI included)
 - Update documentation for new features
 
-## 📄 License
+## License
 
 MIT License - see LICENSE file for details.
 
-## 🎯 Supported Vulnerability Types
+## Supported Vulnerability Types
 
 ### OWASP API Security Top 10
 - **API1**: Broken Object Level Authorization (BOLA)
@@ -249,4 +249,4 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Built with ❤️ for API Security**
+**Built with for API Security**
