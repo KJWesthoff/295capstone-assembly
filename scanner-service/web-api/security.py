@@ -50,8 +50,10 @@ class UserDB:
     """Simple user database - replace with proper DB in production"""
     def __init__(self):
         self.users: Dict[str, Dict] = {}
-        # Create default admin user
-        self.create_user("admin", "admin123", is_admin=True)
+        # Create default admin user from environment variables
+        admin_username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+        admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+        self.create_user(admin_username, admin_password, is_admin=True)
     
     def create_user(self, username: str, password: str, is_admin: bool = False) -> bool:
         if username in self.users:

@@ -105,8 +105,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         <div className="login-footer">
           <div className="demo-credentials">
             <h4>Demo Credentials:</h4>
-            <p><strong>Username:</strong> admin</p>
-            <p><strong>Password:</strong> admin123</p>
+            <p>Nope!</p>
           </div>
         </div>
       </div>
