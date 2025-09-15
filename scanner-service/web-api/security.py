@@ -322,7 +322,7 @@ class SecurityHeaders:
 
 # Rate limit configurations
 class RateLimits:
-    LOGIN = "5/minute"
+    LOGIN = "20/minute"  # Increased for testing
     SCAN_START = "10/hour"
     SCAN_STATUS = "60/minute"
     FILE_UPLOAD = "20/hour"

@@ -1,0 +1,30 @@
+{
+  "family": "ventiapi-scanner",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::712155057496:role/ventiapi-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::712155057496:role/ventiapi-task-role",
+  "containerDefinitions": [
+    {
+      "name": "ventiapi-scanner",
+      "image": "712155057496.dkr.ecr.us-west-1.amazonaws.com/ventiapi-scanner/scanner:latest",
+      "essential": true,
+      "environment": [
+        {
+          "name": "PYTHONUNBUFFERED",
+          "value": "1"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ventiapi-scanner",
+          "awslogs-region": "us-west-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

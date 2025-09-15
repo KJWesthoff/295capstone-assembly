@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py security.py .
+COPY main.py security.py aws_scanner.py .
 
 # Create shared directories
 RUN mkdir -p /shared/results /shared/specs

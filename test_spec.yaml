@@ -1,0 +1,33 @@
+openapi: 3.0.0
+info:
+  title: Test API
+  version: 1.0.0
+servers:
+  - url: https://httpbin.org
+paths:
+  /get:
+    get:
+      summary: Test GET endpoint
+      responses:
+        '200':
+          description: Success
+  /post:
+    post:
+      summary: Test POST endpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                test:
+                  type: string
+      responses:
+        '200':
+          description: Success
+  /status/200:
+    get:
+      summary: Return 200 status
+      responses:
+        '200':
+          description: Success

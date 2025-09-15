@@ -13,6 +13,39 @@
                 "iam:TagRole"
             ],
             "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecs:RunTask",
+                "ecs:DescribeTasks",
+                "ecs:StopTask",
+                "ecs:ListTasks",
+                "ecs:ListClusters",
+                "ecs:DescribeTaskDefinition",
+                "ecs:ListTagsForResource",
+                "ecs:TagResource"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups"
+            ],
+            "Resource": "*"
         }
     ]
 }

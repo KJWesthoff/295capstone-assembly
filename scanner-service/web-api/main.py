@@ -29,6 +29,59 @@ from security import (
     SecurityConfig
 )
 
+# Import AWS scanner for cloud deployment
+try:
+    from aws_scanner import get_aws_scanner_command, aws_scanner
+    AWS_SCANNER_AVAILABLE = True
+    print("AWS scanner module loaded successfully")
+except (ImportError, ModuleNotFoundError, Exception) as e:
+    print(f"AWS scanner module failed to load: {e}")
+    AWS_SCANNER_AVAILABLE = False
+    # Create dummy functions to prevent import errors
+    def get_aws_scanner_command(*args, **kwargs):
+        return {'success': False, 'error': 'AWS scanner not available'}
+    
+    class DummyScanner:
+        def get_task_status(self, *args): return {'status': 'ERROR', 'error': 'AWS scanner not available'}
+        def stop_task(self, *args): return False
+        available = False
+    
+    aws_scanner = DummyScanner()
+
+def is_aws_environment() -> bool:
+    """Check if we're running in AWS ECS environment"""
+    # First check if AWS scanner is available
+    if not AWS_SCANNER_AVAILABLE:
+        print("AWS scanner module not available, using local Docker environment")
+        return False
+        
+    # Check for explicit environment variable first
+    if os.getenv('USE_AWS_SCANNER', 'false').lower() == 'true':
+        if hasattr(aws_scanner, 'available') and aws_scanner.available:
+            print("AWS scanner enabled and available")
+            return True
+        else:
+            print("AWS scanner enabled but credentials not available, falling back to local Docker")
+            return False
+        
+    # Check for ECS environment indicators
+    aws_indicators = [
+        os.getenv('AWS_EXECUTION_ENV') == 'AWS_ECS_FARGATE',
+        os.getenv('ECS_CONTAINER_METADATA_URI_V4') is not None,
+        os.getenv('AWS_REGION') is not None and os.getenv('ECS_CLUSTER_NAME') is not None
+    ]
+    
+    if any(aws_indicators):
+        if hasattr(aws_scanner, 'available') and aws_scanner.available:
+            print("AWS environment detected and scanner available")
+            return True
+        else:
+            print("AWS environment detected but scanner not available, falling back to local Docker")
+            return False
+        
+    print("Using local Docker environment")
+    return False
+
 def get_allowed_origins():
     """Get allowed CORS origins based on environment"""
     # Default development origins
@@ -159,55 +212,169 @@ def merge_scan_findings(scan_id: str, num_chunks: int) -> Dict:
 async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_server_url: str, scan_id: str, user: Dict):
     """Run a single scanner container for one chunk of endpoints with progress monitoring"""
     try:
-        # Build secure Docker command for this chunk
-        docker_cmd = get_secure_docker_command(
-            image="ventiapi-scanner/scanner:latest",
-            scan_id=chunk_id,  # Use chunk_id for container naming
-            spec_path=spec_location,
-            server_url=scanner_server_url,
-            dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
-            is_admin=user.get("is_admin", False)
-        )
-        
-        print(f"Starting scanner chunk: {chunk_id}")
-        print(f"DEBUG: Docker command: {' '.join(docker_cmd)}")
-        
-        # Execute with timeout
-        process = await asyncio.create_subprocess_exec(
-            *docker_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        
-        # Start progress monitoring for this chunk
-        monitor_task = asyncio.create_task(monitor_chunk_progress(chunk_id, scan_id, process))
-        
-        # Wait with timeout (reduced to 8 minutes per chunk)
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=480)
+        # Check if we're in AWS environment
+        if is_aws_environment():
+            print(f"Starting AWS ECS scanner task: {chunk_id}")
             
-            # Cancel progress monitoring
-            monitor_task.cancel()
+            # Use AWS ECS RunTask instead of Docker
+            result = get_aws_scanner_command(
+                scan_id=chunk_id,
+                spec_url=spec_location,
+                server_url=scanner_server_url,
+                output_path=f'/shared/results/{chunk_id}',
+                rps=1.0,
+                max_requests=100,
+                dangerous=user.get("is_admin", False)
+            )
             
-            if process.returncode == 0:
-                print(f"Chunk {chunk_id} completed successfully")
-                return {"success": True, "chunk_id": chunk_id}
-            else:
-                error_msg = stderr.decode()[:200] if stderr else "Unknown error"
-                print(f"Chunk {chunk_id} failed: {error_msg}")
+            if not result['success']:
+                print(f"AWS ECS task failed: {result.get('error', 'Unknown error')}")
+                return {"success": False, "chunk_id": chunk_id, "error": result.get('error', 'AWS ECS task failed')}
+            
+            task_arn = result['task_arn']
+            print(f"AWS ECS task started: {task_arn}")
+            
+            # Start progress monitoring for AWS task
+            monitor_task = asyncio.create_task(monitor_aws_chunk_progress(chunk_id, scan_id, task_arn))
+            
+            # Poll task status until completion
+            try:
+                while True:
+                    status = aws_scanner.get_task_status(task_arn)
+                    
+                    if status['status'] == 'STOPPED':
+                        monitor_task.cancel()
+                        
+                        if status.get('stop_reason') == 'Essential container in task exited':
+                            print(f"AWS task {chunk_id} completed successfully")
+                            return {"success": True, "chunk_id": chunk_id}
+                        else:
+                            error_msg = status.get('stop_reason', 'Task stopped unexpectedly')
+                            print(f"AWS task {chunk_id} failed: {error_msg}")
+                            return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+                    
+                    elif status['status'] == 'NOT_FOUND':
+                        monitor_task.cancel()
+                        error_msg = "Task not found"
+                        print(f"AWS task {chunk_id} not found")
+                        return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+                    
+                    # Task still running, wait before next check
+                    await asyncio.sleep(10)
+                    
+            except asyncio.TimeoutError:
+                monitor_task.cancel()
+                # Stop the AWS task
+                aws_scanner.stop_task(task_arn)
+                error_msg = "Task timed out after 8 minutes"
+                print(f"AWS task {chunk_id} timed out")
                 return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+        
+        else:
+            # Local Docker execution
+            print(f"Starting local Docker scanner: {chunk_id}")
+            
+            # Build secure Docker command for this chunk
+            docker_cmd = get_secure_docker_command(
+                image="ventiapi-scanner/scanner:latest",
+                scan_id=chunk_id,  # Use chunk_id for container naming
+                spec_path=spec_location,
+                server_url=scanner_server_url,
+                dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
+                is_admin=user.get("is_admin", False)
+            )
+            
+            print(f"DEBUG: Docker command: {' '.join(docker_cmd)}")
+            
+            # Execute with timeout
+            process = await asyncio.create_subprocess_exec(
+                *docker_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Start progress monitoring for this chunk
+            monitor_task = asyncio.create_task(monitor_chunk_progress(chunk_id, scan_id, process))
+            
+            # Wait with timeout (reduced to 8 minutes per chunk)
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=480)
                 
-        except asyncio.TimeoutError:
-            monitor_task.cancel()
-            process.kill()
-            error_msg = "Chunk timed out after 8 minutes"
-            print(f"Chunk {chunk_id} timed out")
-            return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+                # Cancel progress monitoring
+                monitor_task.cancel()
+                
+                if process.returncode == 0:
+                    print(f"Chunk {chunk_id} completed successfully")
+                    return {"success": True, "chunk_id": chunk_id}
+                else:
+                    error_msg = stderr.decode()[:200] if stderr else "Unknown error"
+                    print(f"Chunk {chunk_id} failed: {error_msg}")
+                    return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+                    
+            except asyncio.TimeoutError:
+                monitor_task.cancel()
+                process.kill()
+                error_msg = "Chunk timed out after 8 minutes"
+                print(f"Chunk {chunk_id} timed out")
+                return {"success": False, "chunk_id": chunk_id, "error": error_msg}
             
     except Exception as e:
         error_msg = str(e)[:200]
         print(f"Exception in chunk {chunk_id}: {error_msg}")
         return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+
+async def monitor_aws_chunk_progress(chunk_id: str, scan_id: str, task_arn: str):
+    """Monitor progress of AWS ECS task by simulating progress"""
+    try:
+        # Find the chunk index and get endpoints
+        chunk_index = None
+        endpoints = []
+        if scan_id in scans and scans[scan_id].get("chunk_status"):
+            for i, chunk in enumerate(scans[scan_id]["chunk_status"]):
+                if chunk["chunk_id"] == chunk_id:
+                    chunk_index = i
+                    endpoints = chunk.get("endpoints", [])
+                    break
+        
+        if chunk_index is None or not endpoints:
+            print(f"Could not find chunk {chunk_id} in scan data")
+            return
+        
+        # Simulate scanning each endpoint based on ECS task status
+        for endpoint_idx, endpoint in enumerate(endpoints):
+            # Check task status
+            status = aws_scanner.get_task_status(task_arn)
+            if status['status'] in ['STOPPED', 'NOT_FOUND']:
+                break
+                
+            # Calculate progress (0-95% range for endpoint scanning)
+            progress = int((endpoint_idx / len(endpoints)) * 95)
+            
+            # Update chunk status
+            if scan_id in scans and chunk_index < len(scans[scan_id]["chunk_status"]):
+                scans[scan_id]["chunk_status"][chunk_index]["current_endpoint"] = endpoint
+                scans[scan_id]["chunk_status"][chunk_index]["progress"] = progress
+                
+                # Update overall scan progress
+                update_overall_scan_progress(scan_id)
+                
+                print(f"AWS Chunk {chunk_id} scanning endpoint: {endpoint} ({progress}%)")
+            
+            # Wait before next endpoint (simulate scan time)
+            await asyncio.sleep(5)
+        
+        # Final update for this chunk
+        status = aws_scanner.get_task_status(task_arn)
+        if status['status'] == 'RUNNING':
+            if scan_id in scans and chunk_index < len(scans[scan_id]["chunk_status"]):
+                scans[scan_id]["chunk_status"][chunk_index]["progress"] = 95
+                scans[scan_id]["chunk_status"][chunk_index]["current_endpoint"] = "Finalizing..."
+        
+    except asyncio.CancelledError:
+        # Progress monitoring was cancelled (chunk completed/failed)
+        pass
+    except Exception as e:
+        print(f"Error in AWS chunk progress monitoring: {e}")
 
 async def monitor_chunk_progress(chunk_id: str, scan_id: str, process):
     """Monitor progress of a single chunk by simulating progress and endpoint scanning"""
@@ -505,70 +672,169 @@ async def execute_secure_scan(scan_id: str, user: Dict):
             scan_data["parallel_mode"] = False
             scan_data["total_chunks"] = 1
             
-            # Run single container scan
-            docker_cmd = get_secure_docker_command(
-                image="ventiapi-scanner/scanner:latest",
-                scan_id=scan_id,
-                spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
-                server_url=scanner_server_url,
-                dangerous=scan_data["dangerous"],
-                is_admin=user.get("is_admin", False)
-            )
-            
-            print(f"DEBUG: Single container Docker command: {' '.join(docker_cmd)}")
-            
-            # Execute single scan
-            process = await asyncio.create_subprocess_exec(
-                *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            # Start progress monitoring
-            progress_task = asyncio.create_task(monitor_scan_progress(scan_id))
-            
-            try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
-                progress_task.cancel()
+            # Check if we're in AWS environment
+            if is_aws_environment():
+                print(f"Starting AWS ECS scanner task: {scan_id}")
                 
-                if process.returncode == 0:
-                    scan_data["status"] = "completed"
-                    scan_data["progress"] = 100
-                    scan_data["current_phase"] = "Scan completed"
-                    scan_data["completed_at"] = datetime.utcnow().isoformat()
-                    scan_data["completed_chunks"] = 1
-                    
-                    # Count findings
-                    findings_file = SHARED_RESULTS / scan_id / "findings.json"
-                    if findings_file.exists():
-                        with open(findings_file) as f:
-                            findings = json.load(f)
-                            scan_data["findings_count"] = len(findings)
-                    
-                    log_security_event("scan_completed", user['username'], {
-                        "scan_id": scan_id,
-                        "findings_count": scan_data["findings_count"]
-                    })
-                else:
+                # Use AWS ECS RunTask for single scan
+                result = get_aws_scanner_command(
+                    scan_id=scan_id,
+                    spec_url=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
+                    server_url=scanner_server_url,
+                    output_path=f'/shared/results/{scan_id}',
+                    rps=1.0,
+                    max_requests=100,
+                    dangerous=scan_data["dangerous"]
+                )
+                
+                if not result['success']:
                     scan_data["status"] = "failed"
-                    scan_data["error"] = f"Scan execution failed: {stderr.decode()[:200]}"
+                    scan_data["error"] = result.get('error', 'AWS ECS task failed')
                     scan_data["progress"] = 100
                     scan_data["current_phase"] = "Scan failed"
-                    
                     log_security_event("scan_failed", user['username'], {
                         "scan_id": scan_id,
-                        "error": stderr.decode()[:200]
+                        "error": result.get('error', 'AWS ECS task failed')
                     })
-                    
-            except asyncio.TimeoutError:
-                progress_task.cancel()
-                process.kill()
-                scan_data["status"] = "failed"
-                scan_data["error"] = "Scan timed out after 10 minutes"
-                scan_data["progress"] = 100
-                scan_data["current_phase"] = "Scan timed out"
+                    return
                 
-                log_security_event("scan_timeout", user['username'], {"scan_id": scan_id})
+                task_arn = result['task_arn']
+                print(f"AWS ECS task started: {task_arn}")
+                
+                # Start progress monitoring
+                progress_task = asyncio.create_task(monitor_scan_progress(scan_id))
+                
+                # Poll task status until completion
+                try:
+                    while True:
+                        status = aws_scanner.get_task_status(task_arn)
+                        
+                        if status['status'] == 'STOPPED':
+                            progress_task.cancel()
+                            
+                            if status.get('stop_reason') == 'Essential container in task exited':
+                                scan_data["status"] = "completed"
+                                scan_data["progress"] = 100
+                                scan_data["current_phase"] = "Scan completed"
+                                scan_data["completed_at"] = datetime.utcnow().isoformat()
+                                scan_data["completed_chunks"] = 1
+                                
+                                # Count findings
+                                findings_file = SHARED_RESULTS / scan_id / "findings.json"
+                                if findings_file.exists():
+                                    with open(findings_file) as f:
+                                        findings = json.load(f)
+                                        scan_data["findings_count"] = len(findings)
+                                
+                                log_security_event("scan_completed", user['username'], {
+                                    "scan_id": scan_id,
+                                    "findings_count": scan_data["findings_count"]
+                                })
+                            else:
+                                scan_data["status"] = "failed"
+                                scan_data["error"] = status.get('stop_reason', 'Task stopped unexpectedly')
+                                scan_data["progress"] = 100
+                                scan_data["current_phase"] = "Scan failed"
+                                
+                                log_security_event("scan_failed", user['username'], {
+                                    "scan_id": scan_id,
+                                    "error": status.get('stop_reason', 'Task stopped unexpectedly')[:200]
+                                })
+                            break
+                        
+                        elif status['status'] == 'NOT_FOUND':
+                            progress_task.cancel()
+                            scan_data["status"] = "failed"
+                            scan_data["error"] = "Task not found"
+                            scan_data["progress"] = 100
+                            scan_data["current_phase"] = "Scan failed"
+                            log_security_event("scan_failed", user['username'], {
+                                "scan_id": scan_id,
+                                "error": "Task not found"
+                            })
+                            break
+                        
+                        # Task still running, wait before next check
+                        await asyncio.sleep(10)
+                        
+                except asyncio.TimeoutError:
+                    progress_task.cancel()
+                    # Stop the AWS task
+                    aws_scanner.stop_task(task_arn)
+                    scan_data["status"] = "failed"
+                    scan_data["error"] = "Scan timed out after 10 minutes"
+                    scan_data["progress"] = 100
+                    scan_data["current_phase"] = "Scan timed out"
+                    log_security_event("scan_timeout", user['username'], {"scan_id": scan_id})
+            
+            else:
+                # Local Docker execution
+                print(f"Starting local Docker scanner: {scan_id}")
+                
+                # Run single container scan
+                docker_cmd = get_secure_docker_command(
+                    image="ventiapi-scanner/scanner:latest",
+                    scan_id=scan_id,
+                    spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
+                    server_url=scanner_server_url,
+                    dangerous=scan_data["dangerous"],
+                    is_admin=user.get("is_admin", False)
+                )
+                
+                print(f"DEBUG: Single container Docker command: {' '.join(docker_cmd)}")
+                
+                # Execute single scan
+                process = await asyncio.create_subprocess_exec(
+                    *docker_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                # Start progress monitoring
+                progress_task = asyncio.create_task(monitor_scan_progress(scan_id))
+                
+                try:
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
+                    progress_task.cancel()
+                    
+                    if process.returncode == 0:
+                        scan_data["status"] = "completed"
+                        scan_data["progress"] = 100
+                        scan_data["current_phase"] = "Scan completed"
+                        scan_data["completed_at"] = datetime.utcnow().isoformat()
+                        scan_data["completed_chunks"] = 1
+                        
+                        # Count findings
+                        findings_file = SHARED_RESULTS / scan_id / "findings.json"
+                        if findings_file.exists():
+                            with open(findings_file) as f:
+                                findings = json.load(f)
+                                scan_data["findings_count"] = len(findings)
+                        
+                        log_security_event("scan_completed", user['username'], {
+                            "scan_id": scan_id,
+                            "findings_count": scan_data["findings_count"]
+                        })
+                    else:
+                        scan_data["status"] = "failed"
+                        scan_data["error"] = f"Scan execution failed: {stderr.decode()[:200]}"
+                        scan_data["progress"] = 100
+                        scan_data["current_phase"] = "Scan failed"
+                        
+                        log_security_event("scan_failed", user['username'], {
+                            "scan_id": scan_id,
+                            "error": stderr.decode()[:200]
+                        })
+                        
+                except asyncio.TimeoutError:
+                    progress_task.cancel()
+                    process.kill()
+                    scan_data["status"] = "failed"
+                    scan_data["error"] = "Scan timed out after 10 minutes"
+                    scan_data["progress"] = 100
+                    scan_data["current_phase"] = "Scan timed out"
+                    
+                    log_security_event("scan_timeout", user['username'], {"scan_id": scan_id})
             
             return
         

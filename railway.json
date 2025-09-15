@@ -1,0 +1,12 @@
+{
+  "build": {
+    "builder": "dockerfile",
+    "dockerfilePath": "scanner-service/web-api/Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "python main.py",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "always"
+  }
+}
