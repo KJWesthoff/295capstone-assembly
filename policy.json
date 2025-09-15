@@ -1,0 +1,18 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateRole",
+                "iam:AttachRolePolicy",
+                "iam:PutRolePolicy",
+                "iam:PassRole",
+                "iam:GetRole",
+                "iam:ListRoles",
+                "iam:TagRole"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

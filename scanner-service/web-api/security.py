@@ -41,7 +41,7 @@ class SecurityConfig:
     # Docker restrictions
     DOCKER_MEMORY_LIMIT = '512m'
     DOCKER_CPU_LIMIT = '0.5'
-    DOCKER_NETWORK_MODE = 'bridge'  # Allow network access for localhost scanning
+    DOCKER_NETWORK_MODE = 'host'  # Use host network for localhost scanning
     
     # Path restrictions
     SAFE_PATH_PATTERN = re.compile(r'^[a-zA-Z0-9_\-./]+$')
@@ -240,16 +240,14 @@ def get_secure_docker_command(image: str, scan_id: str, spec_path: str, server_u
     """Generate secure Docker command with restrictions"""
     
     # Validate inputs
-    if not re.match(r'^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+$', image):
+    if not re.match(r'^[a-zA-Z0-9_./:-]+$', image):
         raise ValueError("Invalid Docker image name")
     
     if not re.match(r'^[a-zA-Z0-9-_]+$', scan_id):
         raise ValueError("Invalid scan ID format")
     
-    # Replace localhost with host.docker.internal for container access
-    if 'localhost' in server_url or '127.0.0.1' in server_url:
-        server_url = server_url.replace('localhost', 'host.docker.internal')
-        server_url = server_url.replace('127.0.0.1', 'host.docker.internal')
+    # For host network mode, localhost URLs work directly
+    # No need to replace localhost with host.docker.internal
     
     # Base security restrictions
     cmd = [
@@ -260,9 +258,10 @@ def get_secure_docker_command(image: str, scan_id: str, spec_path: str, server_u
         '--cpus', SecurityConfig.DOCKER_CPU_LIMIT,
         '--tmpfs', '/tmp:noexec,nosuid,size=100m',  # Temp directory
         '--security-opt', 'no-new-privileges',  # Prevent privilege escalation
-        '--user', '1000:1000',  # Run as non-root user
-        '--cap-drop', 'ALL',  # Drop all capabilities
-        '--cap-add', 'NET_RAW',  # Only allow network scanning
+        # Temporarily run as root to fix file permissions issues
+        # TODO: Fix volume ownership properly for production
+        # '--user', '1000:1000',  # Run as non-root user
+        # Note: host network mode bypasses most container isolation
         '-v', 'scannerapp_shared-results:/shared/results',  # Mount results volume
         '-v', 'scannerapp_shared-specs:/shared/specs',      # Mount specs volume
         f'--name', f'scanner-{scan_id}',

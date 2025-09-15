@@ -53,9 +53,9 @@ def get_allowed_origins():
 app = FastAPI(
     title="VentiAPI Scanner Web API (Secure)",
     version="2.0.0",
-    docs_url="/docs",  # Keep docs but require auth in production
+    docs_url="/api/docs",  # Docs accessible via ALB routing
     redoc_url=None,    # Disable redoc
-    openapi_url="/openapi.json"
+    openapi_url="/api/openapi.json"
 )
 
 # Add rate limiting
@@ -161,7 +161,7 @@ async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_se
     try:
         # Build secure Docker command for this chunk
         docker_cmd = get_secure_docker_command(
-            image="ventiapi-scanner:latest",
+            image="ventiapi-scanner/scanner:latest",
             scan_id=chunk_id,  # Use chunk_id for container naming
             spec_path=spec_location,
             server_url=scanner_server_url,
@@ -487,6 +487,13 @@ async def execute_secure_scan(scan_id: str, user: Dict):
         scan_data["current_phase"] = "Initializing scan"
         scan_data["progress"] = 5
         
+        # Pre-create output directory to avoid permission issues
+        result_dir = SHARED_RESULTS / scan_id
+        result_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+        # Set proper ownership for scanner user (1000:1000)
+        import subprocess
+        subprocess.run(['chown', '-R', '1000:1000', str(result_dir)], check=False)
+        
         # Get scanner server URL and spec location
         scanner_server_url = scan_data["server_url"]
         spec_location = scan_data["spec_location"]
@@ -500,9 +507,9 @@ async def execute_secure_scan(scan_id: str, user: Dict):
             
             # Run single container scan
             docker_cmd = get_secure_docker_command(
-                image="ventiapi-scanner:latest",
+                image="ventiapi-scanner/scanner:latest",
                 scan_id=scan_id,
-                spec_path=scanner_server_url,  # Use server URL as target
+                spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
                 server_url=scanner_server_url,
                 dangerous=scan_data["dangerous"],
                 is_admin=user.get("is_admin", False)
@@ -645,6 +652,12 @@ async def execute_secure_scan(scan_id: str, user: Dict):
             chunk_tasks = []
             for i, chunk_spec in enumerate(spec_chunks):
                 chunk_id = f"{scan_id}_chunk_{i}"
+                
+                # Pre-create chunk output directory
+                chunk_result_dir = SHARED_RESULTS / chunk_id
+                chunk_result_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+                # Set proper ownership for scanner user (1000:1000)
+                subprocess.run(['chown', '-R', '1000:1000', str(chunk_result_dir)], check=False)
                 
                 # Update chunk status
                 scans[scan_id]["chunk_status"][i]["status"] = "starting"
