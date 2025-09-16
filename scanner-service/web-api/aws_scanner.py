@@ -66,6 +66,16 @@ class AWSECSScanner:
                     '--out', output_path,
                     '--rps', str(rps),
                     '--max-requests', str(max_requests)
+                ],
+                'environment': [
+                    {
+                        'name': 'S3_BUCKET',
+                        'value': os.getenv('S3_BUCKET', 'ventiapi-scanner-storage-712155057496')
+                    },
+                    {
+                        'name': 'AWS_REGION',
+                        'value': os.getenv('AWS_REGION', 'us-west-1')
+                    }
                 ]
             }
             

@@ -65,6 +65,10 @@
         {
           "name": "DEFAULT_ADMIN_PASSWORD",
           "value": "MaryMcHale"
+        },
+        {
+          "name": "S3_BUCKET",
+          "value": "ventiapi-scanner-storage-712155057496"
         }
       ],
       "logConfiguration": {

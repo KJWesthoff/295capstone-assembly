@@ -48,6 +48,48 @@ except (ImportError, ModuleNotFoundError, Exception) as e:
     
     aws_scanner = DummyScanner()
 
+# S3 client for file sharing in AWS ECS
+try:
+    import boto3
+    print(f"Initializing S3 client for region: {os.getenv('AWS_REGION', 'us-west-1')}")
+    s3_client = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'us-west-1'))
+    S3_BUCKET = os.getenv('S3_BUCKET', 'ventiapi-scanner-storage-712155057496')
+    print(f"S3 client initialized successfully, bucket: {S3_BUCKET}")
+    S3_AVAILABLE = True
+except Exception as e:
+    print(f"S3 client not available: {e}")
+    import traceback
+    traceback.print_exc()
+    s3_client = None
+    S3_AVAILABLE = False
+
+def upload_to_s3(local_path: str, s3_key: str) -> bool:
+    """Upload file to S3"""
+    if not S3_AVAILABLE:
+        print(f"S3 not available (S3_AVAILABLE={S3_AVAILABLE})")
+        return False
+    try:
+        print(f"Uploading {local_path} to s3://{S3_BUCKET}/{s3_key}")
+        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+        print(f"Upload successful: s3://{S3_BUCKET}/{s3_key}")
+        return True
+    except Exception as e:
+        print(f"S3 upload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def download_from_s3(s3_key: str, local_path: str) -> bool:
+    """Download file from S3"""
+    if not S3_AVAILABLE:
+        return False
+    try:
+        s3_client.download_file(S3_BUCKET, s3_key, local_path)
+        return True
+    except Exception as e:
+        print(f"S3 download failed: {e}")
+        return False
+
 def is_aws_environment() -> bool:
     """Check if we're running in AWS ECS environment"""
     # First check if AWS scanner is available
@@ -142,6 +184,105 @@ SHARED_SPECS = Path("/shared/specs")
 SHARED_RESULTS.mkdir(parents=True, exist_ok=True, mode=0o700)
 SHARED_SPECS.mkdir(parents=True, exist_ok=True, mode=0o700)
 
+# OpenAPI spec sanitization and processing functions
+def sanitize_openapi_spec(spec_content: str) -> str:
+    """Sanitize OpenAPI spec to improve vulnerability detection compatibility"""
+    try:
+        spec = yaml.safe_load(spec_content)
+        
+        print(f"Sanitizing OpenAPI spec with {len(spec.get('paths', {}))} endpoints")
+        
+        # Remove complex security schemes that may interfere with vulnerability testing
+        if 'components' in spec and 'securitySchemes' in spec['components']:
+            # Keep basic auth schemes but remove complex ones
+            security_schemes = spec['components']['securitySchemes']
+            cleaned_schemes = {}
+            
+            for scheme_name, scheme_def in security_schemes.items():
+                if isinstance(scheme_def, dict):
+                    scheme_type = scheme_def.get('type', '').lower()
+                    # Keep simple schemes, remove complex ones
+                    if scheme_type in ['http', 'apikey']:
+                        cleaned_schemes[scheme_name] = {
+                            'type': scheme_type,
+                            'scheme': scheme_def.get('scheme', 'bearer') if scheme_type == 'http' else None
+                        }
+                        # Remove custom extensions that might confuse the scanner
+                        if 'scheme' in cleaned_schemes[scheme_name] and cleaned_schemes[scheme_name]['scheme'] is None:
+                            del cleaned_schemes[scheme_name]['scheme']
+            
+            spec['components']['securitySchemes'] = cleaned_schemes
+            print(f"Cleaned security schemes: {list(cleaned_schemes.keys())}")
+        
+        # Simplify path-level security requirements
+        if 'paths' in spec:
+            for path, path_item in spec['paths'].items():
+                if isinstance(path_item, dict):
+                    for method, operation in path_item.items():
+                        if isinstance(operation, dict) and 'security' in operation:
+                            # Remove complex security requirements for better vulnerability testing
+                            # The scanner will test both authenticated and unauthenticated access
+                            print(f"Removing security requirement from {method.upper()} {path}")
+                            del operation['security']
+        
+        # Remove global security requirements that might prevent vulnerability testing
+        if 'security' in spec:
+            print("Removing global security requirements")
+            del spec['security']
+        
+        # Simplify server URLs to use the target URL
+        if 'servers' in spec and len(spec['servers']) > 0:
+            # Keep only the first server or use a generic placeholder
+            first_server = spec['servers'][0]
+            if isinstance(first_server, dict):
+                # Remove server variables that might cause URL resolution issues
+                if 'variables' in first_server:
+                    del first_server['variables']
+                spec['servers'] = [first_server]
+                print(f"Simplified servers to: {first_server.get('url', 'unknown')}")
+        
+        # Remove complex parameter schemas that might interfere with fuzzing
+        if 'paths' in spec:
+            for path, path_item in spec['paths'].items():
+                if isinstance(path_item, dict):
+                    for method, operation in path_item.items():
+                        if isinstance(operation, dict):
+                            # Simplify parameters
+                            if 'parameters' in operation:
+                                simplified_params = []
+                                for param in operation['parameters']:
+                                    if isinstance(param, dict):
+                                        # Keep essential parameter info, remove complex schemas
+                                        simple_param = {
+                                            'name': param.get('name'),
+                                            'in': param.get('in'),
+                                            'required': param.get('required', False)
+                                        }
+                                        # Add basic schema if present
+                                        if 'schema' in param and isinstance(param['schema'], dict):
+                                            param_type = param['schema'].get('type', 'string')
+                                            simple_param['schema'] = {'type': param_type}
+                                        simplified_params.append(simple_param)
+                                operation['parameters'] = simplified_params
+                            
+                            # Simplify request body schemas
+                            if 'requestBody' in operation:
+                                req_body = operation['requestBody']
+                                if isinstance(req_body, dict) and 'content' in req_body:
+                                    # Keep content types but simplify schemas
+                                    for content_type, content_def in req_body['content'].items():
+                                        if isinstance(content_def, dict) and 'schema' in content_def:
+                                            # Replace complex schemas with simple object type
+                                            content_def['schema'] = {'type': 'object'}
+        
+        sanitized_content = yaml.dump(spec, default_flow_style=False)
+        print(f"Spec sanitization complete. Original: {len(spec_content)} chars, Sanitized: {len(sanitized_content)} chars")
+        return sanitized_content
+        
+    except Exception as e:
+        print(f"Spec sanitization failed: {e}, using original spec")
+        return spec_content
+
 # Parallel scanning functions
 def split_openapi_spec_by_endpoints(spec_content: str, chunk_size: int = 4) -> List[str]:
     """Split OpenAPI spec into chunks of endpoints for parallel processing"""
@@ -216,12 +357,13 @@ async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_se
         if is_aws_environment():
             print(f"Starting AWS ECS scanner task: {chunk_id}")
             
-            # Use AWS ECS RunTask instead of Docker
+            # Use AWS ECS RunTask instead of Docker with S3 output
+            s3_output_path = f"s3://{S3_BUCKET}/results/{chunk_id}"
             result = get_aws_scanner_command(
                 scan_id=chunk_id,
                 spec_url=spec_location,
                 server_url=scanner_server_url,
-                output_path=f'/shared/results/{chunk_id}',
+                output_path=s3_output_path,
                 rps=1.0,
                 max_requests=100,
                 dangerous=user.get("is_admin", False)
@@ -247,6 +389,17 @@ async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_se
                         
                         if status.get('stop_reason') == 'Essential container in task exited':
                             print(f"AWS task {chunk_id} completed successfully")
+                            
+                            # Download results from S3
+                            s3_results_key = f"results/{chunk_id}/findings.json"
+                            local_results_path = SHARED_RESULTS / f"{chunk_id}" / "findings.json"
+                            local_results_path.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            if download_from_s3(s3_results_key, str(local_results_path)):
+                                print(f"Downloaded results from S3: {s3_results_key}")
+                            else:
+                                print(f"Failed to download results from S3: {s3_results_key}")
+                            
                             return {"success": True, "chunk_id": chunk_id}
                         else:
                             error_msg = status.get('stop_reason', 'Task stopped unexpectedly')
@@ -599,17 +752,37 @@ async def start_scan(
         
         # Save securely
         safe_filename = f"{scan_id}_{spec_file.filename}"
-        spec_path = SHARED_SPECS / safe_filename
         
-        with open(spec_path, "wb") as f:
-            f.write(file_content)
-        
-        # Set permissions for scanner user (1000:1000)
-        spec_path.chmod(0o644)  # Allow group/other read access
-        # Change ownership to match scanner container user
-        import subprocess
-        subprocess.run(['chown', '1000:1000', str(spec_path)], check=False)
-        spec_location = f"/shared/specs/{safe_filename}"
+        if is_aws_environment() and S3_AVAILABLE:
+            # In AWS environment, save to S3
+            temp_path = f"/tmp/{safe_filename}"
+            with open(temp_path, "wb") as f:
+                f.write(file_content)
+            
+            s3_key = f"specs/{safe_filename}"
+            print(f"Attempting S3 upload to bucket: {S3_BUCKET}, key: {s3_key}")
+            if upload_to_s3(temp_path, s3_key):
+                spec_location = f"s3://{S3_BUCKET}/{s3_key}"
+                print(f"Uploaded spec to S3: {spec_location}")
+            else:
+                # In AWS mode, S3 upload MUST succeed - raise error instead of fallback
+                os.remove(temp_path)
+                raise HTTPException(status_code=500, detail="Failed to upload spec file to S3 in AWS environment")
+            
+            # Clean up temp file
+            os.remove(temp_path)
+        else:
+            # Local environment, save to shared volume
+            spec_path = SHARED_SPECS / safe_filename
+            with open(spec_path, "wb") as f:
+                f.write(file_content)
+            
+            # Set permissions for scanner user (1000:1000)
+            spec_path.chmod(0o644)  # Allow group/other read access
+            # Change ownership to match scanner container user
+            import subprocess
+            subprocess.run(['chown', '1000:1000', str(spec_path)], check=False)
+            spec_location = f"/shared/specs/{safe_filename}"
     
     # Create scan record
     scans[scan_id] = {
@@ -666,13 +839,20 @@ async def execute_secure_scan(scan_id: str, user: Dict):
         spec_location = scan_data["spec_location"]
         
         if not spec_location:
-            # No spec file provided, run single container scan
+            # In AWS environment, spec file is required
+            if is_aws_environment():
+                scan_data["status"] = "failed"
+                scan_data["current_phase"] = "Error: Spec file required in AWS environment"
+                scan_data["progress"] = 0
+                return {"error": "Spec file is required for AWS scans"}
+            
+            # No spec file provided, run single container scan (local only)
             scan_data["current_phase"] = "Starting single container scan"
             scan_data["progress"] = 10
             scan_data["parallel_mode"] = False
             scan_data["total_chunks"] = 1
             
-            # Check if we're in AWS environment
+            # Check if we're in AWS environment (this should never be reached now)
             if is_aws_environment():
                 print(f"Starting AWS ECS scanner task: {scan_id}")
                 
@@ -842,12 +1022,61 @@ async def execute_secure_scan(scan_id: str, user: Dict):
         scan_data["current_phase"] = "Analyzing OpenAPI specification"
         scan_data["progress"] = 10
         
-        # Read the spec file
-        with open(spec_location.replace("/shared/specs/", str(SHARED_SPECS) + "/")) as f:
-            spec_content = f.read()
+        # Read the spec file (handle both S3 and local paths)
+        if spec_location.startswith('s3://'):
+            # Download from S3 to read content
+            temp_spec_path = f"/tmp/spec_{scan_id}.yaml"
+            s3_key = spec_location.replace(f"s3://{S3_BUCKET}/", "")
+            if download_from_s3(s3_key, temp_spec_path):
+                with open(temp_spec_path) as f:
+                    spec_content = f.read()
+                os.remove(temp_spec_path)  # Clean up
+            else:
+                # Fallback - disable parallel processing if can't read spec
+                spec_content = None
+        else:
+            # Local file
+            with open(spec_location.replace("/shared/specs/", str(SHARED_SPECS) + "/")) as f:
+                spec_content = f.read()
         
-        # Split spec into chunks (4 endpoints per chunk for optimal parallelism)
-        spec_chunks = split_openapi_spec_by_endpoints(spec_content, chunk_size=4)
+        # Sanitize and split spec into chunks (4 endpoints per chunk for optimal parallelism)
+        if spec_content:
+            # Sanitize the spec to improve vulnerability detection
+            sanitized_spec_content = sanitize_openapi_spec(spec_content)
+            spec_chunks = split_openapi_spec_by_endpoints(sanitized_spec_content, chunk_size=4)
+            
+            # Save sanitized specs back to storage for scanner containers
+            if spec_location.startswith('s3://'):
+                # Upload sanitized spec to S3 with a new key
+                sanitized_s3_key = s3_key.replace('.yaml', '_sanitized.yaml').replace('.yml', '_sanitized.yml').replace('.json', '_sanitized.json')
+                temp_sanitized_path = f"/tmp/sanitized_spec_{scan_id}.yaml"
+                with open(temp_sanitized_path, 'w') as f:
+                    f.write(sanitized_spec_content)
+                if upload_to_s3(temp_sanitized_path, sanitized_s3_key):
+                    # Update spec location to point to sanitized version
+                    spec_location = f"s3://{S3_BUCKET}/{sanitized_s3_key}"
+                    scan_data["spec_location"] = spec_location
+                    print(f"Uploaded sanitized spec to: {spec_location}")
+                os.remove(temp_sanitized_path)
+            else:
+                # Local file - save sanitized version
+                original_filename = os.path.basename(spec_location)
+                sanitized_filename = original_filename.replace('.yaml', '_sanitized.yaml').replace('.yml', '_sanitized.yml').replace('.json', '_sanitized.json')
+                if sanitized_filename == original_filename:  # No extension found, add suffix
+                    sanitized_filename = f"{original_filename}_sanitized.yaml"
+                sanitized_spec_path = SHARED_SPECS / sanitized_filename
+                with open(sanitized_spec_path, 'w') as f:
+                    f.write(sanitized_spec_content)
+                sanitized_spec_path.chmod(0o644)
+                import subprocess
+                subprocess.run(['chown', '1000:1000', str(sanitized_spec_path)], check=False)
+                # Update spec location to point to sanitized version
+                spec_location = f"/shared/specs/{sanitized_filename}"
+                scan_data["spec_location"] = spec_location
+                print(f"Saved sanitized spec to: {spec_location}")
+        else:
+            # Fallback to single chunk mode if can't read spec
+            spec_chunks = [scan_id]  # Single chunk with scan_id as identifier
         
         # Update scan with chunk information
         scans[scan_id]["total_chunks"] = len(spec_chunks)
@@ -928,16 +1157,34 @@ async def execute_secure_scan(scan_id: str, user: Dict):
                 # Update chunk status
                 scans[scan_id]["chunk_status"][i]["status"] = "starting"
                 
-                # Save chunk spec
-                chunk_path = SHARED_SPECS / f"{chunk_id}_spec.yaml"
-                with open(chunk_path, 'w') as f:
-                    f.write(chunk_spec)
+                # Save chunk spec and handle AWS S3 upload
+                if is_aws_environment() and S3_AVAILABLE:
+                    # In AWS mode, save chunk spec to S3
+                    chunk_s3_key = f"specs/{chunk_id}_spec.yaml"
+                    temp_chunk_path = f"/tmp/{chunk_id}_spec.yaml"
+                    with open(temp_chunk_path, 'w') as f:
+                        f.write(chunk_spec)
+                    
+                    if upload_to_s3(temp_chunk_path, chunk_s3_key):
+                        chunk_spec_location = f"s3://{S3_BUCKET}/{chunk_s3_key}"
+                        print(f"Uploaded chunk spec to S3: {chunk_spec_location}")
+                    else:
+                        print(f"Failed to upload chunk spec to S3, scan may fail")
+                        chunk_spec_location = f"/shared/specs/{chunk_id}_spec.yaml"  # Fallback
+                    
+                    os.remove(temp_chunk_path)  # Clean up temp file
+                else:
+                    # Local mode, save to shared volume
+                    chunk_path = SHARED_SPECS / f"{chunk_id}_spec.yaml"
+                    with open(chunk_path, 'w') as f:
+                        f.write(chunk_spec)
+                    
+                    # Set proper permissions
+                    chunk_path.chmod(0o644)
+                    subprocess.run(['chown', '1000:1000', str(chunk_path)], check=False)
+                    chunk_spec_location = f"/shared/specs/{chunk_id}_spec.yaml"
                 
-                # Set proper permissions
-                chunk_path.chmod(0o644)
-                subprocess.run(['chown', '1000:1000', str(chunk_path)], check=False)
-                
-                task = run_single_scanner_chunk(chunk_id, f"/shared/specs/{chunk_id}_spec.yaml", scanner_server_url, scan_id, user)
+                task = run_single_scanner_chunk(chunk_id, chunk_spec_location, scanner_server_url, scan_id, user)
                 chunk_tasks.append(task)
             
             # Update all chunks to running status
@@ -1083,14 +1330,38 @@ async def get_findings(
     if scan_data["user"] != user["username"] and not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Read findings file
-    findings_file = SHARED_RESULTS / scan_id / "findings.json"
-    if not findings_file.exists():
-        return {"findings": [], "total": 0}
+    # Read findings file - check S3 first in AWS mode, then local
+    all_findings = []
+    
+    # Try S3 first if in AWS environment
+    if is_aws_environment() and S3_AVAILABLE:
+        try:
+            s3_key = f"results/{scan_id}/findings.json"
+            print(f"Attempting to read findings from S3: {s3_key}")
+            
+            response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key)
+            content = response['Body'].read().decode('utf-8')
+            all_findings = json.loads(content)
+            print(f"Successfully read {len(all_findings)} findings from S3")
+            
+        except Exception as s3_error:
+            print(f"Could not read from S3: {s3_error}")
+            # Fall through to local file check
+    
+    # If no findings from S3, try local file
+    if not all_findings:
+        findings_file = SHARED_RESULTS / scan_id / "findings.json"
+        if not findings_file.exists():
+            return {"findings": [], "total": 0}
+        
+        try:
+            with open(findings_file) as f:
+                all_findings = json.load(f)
+        except Exception as e:
+            print(f"Could not read local findings file: {e}")
+            return {"findings": [], "total": 0}
     
     try:
-        with open(findings_file) as f:
-            all_findings = json.load(f)
         
         # Apply pagination
         total = len(all_findings)

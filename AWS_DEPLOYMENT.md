@@ -2,6 +2,28 @@
 
 This guide provides step-by-step instructions for deploying the VentiAPI Scanner to AWS using containerized services.
 
+## Key Features in AWS Deployment
+
+### ✅ OpenAPI Spec Sanitization
+The AWS deployment includes automatic OpenAPI specification sanitization to ensure complex API specs work correctly with the vulnerability scanner:
+
+- **Automatic Processing**: Complex security schemes, authentication requirements, and parameter schemas are automatically simplified
+- **Improved Detection**: Sanitization enables the scanner to properly test endpoints that might otherwise be skipped
+- **Consistent Results**: Ensures AWS scanning behavior matches local development environment
+- **S3 Integration**: Sanitized specs are automatically uploaded to S3 for scanner container access
+
+### ✅ ECS Fargate Architecture
+- **Serverless Containers**: No EC2 instances to manage
+- **Auto-scaling**: Scales based on demand
+- **Isolated Networking**: Private subnets with ALB for external access
+- **Shared Storage**: EFS for scan results and S3 for specifications
+
+### ✅ Production-Ready Configuration
+- **JWT Secret Management**: Secure JWT secrets stored in AWS Secrets Manager preventing token invalidation
+- **Rate Limiting**: Optimized rate limits for production workloads (20 requests/minute for auth endpoints)
+- **Chunk Processing**: Large OpenAPI specs are automatically split into manageable chunks for parallel scanning
+- **Error Handling**: Comprehensive error handling and logging for debugging scan issues
+
 ## Architecture Overview
 
 ```
@@ -154,8 +176,8 @@ aws secretsmanager create-secret \
     --description "Production secrets for VentiAPI Scanner" \
     --secret-string '{
         "JWT_SECRET": "'$(openssl rand -base64 32)'",
-        "DEFAULT_ADMIN_USERNAME": "admin",
-        "DEFAULT_ADMIN_PASSWORD": "'$(openssl rand -base64 16)'",
+        "DEFAULT_ADMIN_USERNAME": "MICS295",
+        "DEFAULT_ADMIN_PASSWORD": "MaryMcHale",
         "REDIS_URL": "redis://ventiapi-redis.cache.amazonaws.com:6379",
         "SCANNER_MAX_PARALLEL_CONTAINERS": "10",
         "SCANNER_CONTAINER_MEMORY_LIMIT": "1g",
@@ -170,6 +192,12 @@ aws secretsmanager get-secret-value \
     --query SecretString --output text | \
     jq -r '"Admin Username: " + .DEFAULT_ADMIN_USERNAME + "\nAdmin Password: " + .DEFAULT_ADMIN_PASSWORD'
 ```
+
+### 4.2 Important Secret Configuration Notes
+- **JWT_SECRET**: Critical for maintaining user sessions across container restarts
+- **Admin Credentials**: Use consistent credentials (MICS295/MaryMcHale) for testing
+- **Redis URL**: Will be updated after Redis cluster creation with actual endpoint
+- **CORS Origins**: Ensure frontend URL matches your ALB DNS name
 
 ## Step 5: Create VPC and Networking
 
@@ -254,9 +282,44 @@ aws ec2 modify-subnet-attribute --subnet-id $PUBLIC_SUBNET_1 --map-public-ip-on-
 aws ec2 modify-subnet-attribute --subnet-id $PUBLIC_SUBNET_2 --map-public-ip-on-launch
 ```
 
-## Step 6: Create ElastiCache Redis Cluster
+## Step 6: Create S3 Bucket for Specs
 
-### 6.1 Create Redis Subnet Group
+### 6.1 Create S3 Bucket
+```bash
+# Create bucket for storing OpenAPI specs and scan chunks
+aws s3 mb s3://${PROJECT_NAME}-specs-bucket --region ${AWS_REGION}
+
+# Enable versioning
+aws s3api put-bucket-versioning \
+    --bucket ${PROJECT_NAME}-specs-bucket \
+    --versioning-configuration Status=Enabled
+
+# Set lifecycle policy to clean up old specs
+cat > lifecycle-policy.json << EOF
+{
+    "Rules": [
+        {
+            "ID": "DeleteOldSpecs",
+            "Status": "Enabled",
+            "Filter": {
+                "Prefix": "specs/"
+            },
+            "Expiration": {
+                "Days": 30
+            }
+        }
+    ]
+}
+EOF
+
+aws s3api put-bucket-lifecycle-configuration \
+    --bucket ${PROJECT_NAME}-specs-bucket \
+    --lifecycle-configuration file://lifecycle-policy.json
+```
+
+## Step 7: Create ElastiCache Redis Cluster
+
+### 7.1 Create Redis Subnet Group
 ```bash
 aws elasticache create-cache-subnet-group \
     --cache-subnet-group-name "${PROJECT_NAME}-redis-subnet-group" \
@@ -264,7 +327,7 @@ aws elasticache create-cache-subnet-group \
     --subnet-ids $PRIVATE_SUBNET_1 $PRIVATE_SUBNET_2
 ```
 
-### 6.2 Create Security Group for Redis
+### 7.2 Create Security Group for Redis
 ```bash
 REDIS_SG_ID=$(aws ec2 create-security-group \
     --group-name "${PROJECT_NAME}-redis-sg" \
@@ -280,7 +343,7 @@ aws ec2 authorize-security-group-ingress \
     --source-group $REDIS_SG_ID
 ```
 
-### 6.3 Create Redis Cluster
+### 7.3 Create Redis Cluster
 ```bash
 aws elasticache create-cache-cluster \
     --cache-cluster-id "${PROJECT_NAME}-redis" \
@@ -295,9 +358,9 @@ aws elasticache create-cache-cluster \
 aws elasticache wait cache-cluster-available --cache-cluster-id "${PROJECT_NAME}-redis"
 ```
 
-## Step 7: Create EFS for Shared Storage
+## Step 8: Create EFS for Shared Storage
 
-### 7.1 Create EFS File System
+### 8.1 Create EFS File System
 ```bash
 # Create EFS
 EFS_ID=$(aws efs create-file-system \
@@ -310,7 +373,7 @@ EFS_ID=$(aws efs create-file-system \
 echo "Created EFS: $EFS_ID"
 ```
 
-### 7.2 Create EFS Mount Targets
+### 8.2 Create EFS Mount Targets
 ```bash
 # Create security group for EFS
 EFS_SG_ID=$(aws ec2 create-security-group \
@@ -338,9 +401,9 @@ aws efs create-mount-target \
     --security-groups $EFS_SG_ID
 ```
 
-## Step 8: Create ECS Cluster
+## Step 9: Create ECS Cluster
 
-### 8.1 Create ECS Cluster
+### 9.1 Create ECS Cluster
 ```bash
 aws ecs create-cluster \
     --cluster-name $CLUSTER_NAME \
@@ -349,7 +412,7 @@ aws ecs create-cluster \
     --tags key=Name,value=$CLUSTER_NAME
 ```
 
-### 8.2 Create ECS Execution Role
+### 9.2 Create ECS Execution Role
 ```bash
 # Create execution role
 aws iam create-role \
@@ -377,7 +440,7 @@ aws iam attach-role-policy \
     --policy-arn arn:aws:iam::aws:policy/SecretsManagerReadWrite
 ```
 
-### 8.3 Create ECS Task Role
+### 9.3 Create ECS Task Role
 ```bash
 # Create task role for backend (needs Docker access)
 aws iam create-role \
@@ -409,7 +472,11 @@ aws iam put-role-policy \
                     "ecs:RunTask",
                     "ecs:StopTask",
                     "ecs:DescribeTasks",
-                    "iam:PassRole"
+                    "iam:PassRole",
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                    "s3:ListBucket"
                 ],
                 "Resource": "*"
             }
@@ -417,9 +484,9 @@ aws iam put-role-policy \
     }'
 ```
 
-## Step 9: Create Load Balancer
+## Step 10: Create Load Balancer
 
-### 9.1 Create Security Groups
+### 10.1 Create Security Groups
 ```bash
 # ALB Security Group
 ALB_SG_ID=$(aws ec2 create-security-group \
@@ -475,7 +542,7 @@ aws ec2 authorize-security-group-ingress \
     --source-group $ECS_SG_ID
 ```
 
-### 9.2 Create Application Load Balancer
+### 10.2 Create Application Load Balancer
 ```bash
 ALB_ARN=$(aws elbv2 create-load-balancer \
     --name "${PROJECT_NAME}-alb" \
@@ -492,7 +559,7 @@ ALB_DNS=$(aws elbv2 describe-load-balancers \
 echo "ALB DNS: $ALB_DNS"
 ```
 
-### 9.3 Create Target Groups
+### 10.3 Create Target Groups
 ```bash
 # Frontend target group
 FRONTEND_TG_ARN=$(aws elbv2 create-target-group \
@@ -523,7 +590,7 @@ BACKEND_TG_ARN=$(aws elbv2 create-target-group \
     --query 'TargetGroups[0].TargetGroupArn' --output text)
 ```
 
-### 9.4 Create Load Balancer Listeners
+### 10.4 Create Load Balancer Listeners
 ```bash
 # HTTP Listener (redirect to HTTPS in production)
 aws elbv2 create-listener \
@@ -545,9 +612,69 @@ aws elbv2 create-rule \
     --actions Type=forward,TargetGroupArn=$BACKEND_TG_ARN
 ```
 
-## Step 10: Create ECS Services
+## Step 11: Create Scanner Task Definition
 
-### 10.1 Create Task Definitions
+### 11.1 Create Scanner Task Definition
+```bash
+cat > scanner-task-def.json << EOF
+{
+    "family": "${PROJECT_NAME}-scanner",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "1024",
+    "memory": "2048",
+    "executionRoleArn": "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/${PROJECT_NAME}-ecs-execution-role",
+    "taskRoleArn": "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/${PROJECT_NAME}-ecs-task-role",
+    "volumes": [
+        {
+            "name": "shared-storage",
+            "efsVolumeConfiguration": {
+                "fileSystemId": "${EFS_ID}",
+                "rootDirectory": "/"
+            }
+        }
+    ],
+    "containerDefinitions": [
+        {
+            "name": "scanner",
+            "image": "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com/${PROJECT_NAME}/scanner:latest",
+            "essential": true,
+            "mountPoints": [
+                {
+                    "sourceVolume": "shared-storage",
+                    "containerPath": "/shared"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "S3_BUCKET",
+                    "value": "${PROJECT_NAME}-specs-bucket"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "${AWS_REGION}"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/${PROJECT_NAME}-scanner",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "awslogs-create-group": "true"
+                }
+            }
+        }
+    ]
+}
+EOF
+
+aws ecs register-task-definition --cli-input-json file://scanner-task-def.json
+```
+
+## Step 12: Create ECS Services
+
+### 12.1 Create Task Definitions
 
 #### Frontend Task Definition
 ```bash
@@ -642,6 +769,26 @@ cat > backend-task-def.json << EOF
                 {
                     "name": "AWS_REGION",
                     "value": "${AWS_REGION}"
+                },
+                {
+                    "name": "S3_BUCKET",
+                    "value": "${PROJECT_NAME}-specs-bucket"
+                },
+                {
+                    "name": "ECS_CLUSTER_NAME",
+                    "value": "${CLUSTER_NAME}"
+                },
+                {
+                    "name": "SCANNER_TASK_DEFINITION",
+                    "value": "${PROJECT_NAME}-scanner"
+                },
+                {
+                    "name": "SCANNER_SUBNETS",
+                    "value": "${PRIVATE_SUBNET_1},${PRIVATE_SUBNET_2}"
+                },
+                {
+                    "name": "SCANNER_SECURITY_GROUP",
+                    "value": "${ECS_SG_ID}"
                 }
             ],
             "logConfiguration": {
@@ -661,7 +808,7 @@ EOF
 aws ecs register-task-definition --cli-input-json file://backend-task-def.json
 ```
 
-### 10.2 Create ECS Services
+### 12.2 Create ECS Services
 ```bash
 # Frontend service
 aws ecs create-service \
@@ -684,9 +831,9 @@ aws ecs create-service \
     --load-balancers "targetGroupArn=$BACKEND_TG_ARN,containerName=backend,containerPort=8000"
 ```
 
-## Step 11: Configure DNS and SSL (Optional)
+## Step 13: Configure DNS and SSL (Optional)
 
-### 11.1 Request SSL Certificate (if using custom domain)
+### 13.1 Request SSL Certificate (if using custom domain)
 ```bash
 # Only if you have a custom domain
 if [ ! -z "$DOMAIN_NAME" ]; then
@@ -701,15 +848,15 @@ if [ ! -z "$DOMAIN_NAME" ]; then
 fi
 ```
 
-### 11.2 Create Route53 Records (if using custom domain)
+### 13.2 Create Route53 Records (if using custom domain)
 ```bash
 # Create hosted zone and update nameservers with your domain registrar
 # This is domain registrar specific - follow AWS Route53 documentation
 ```
 
-## Step 12: Deployment Script Integration
+## Step 14: Deployment Script Integration
 
-### 12.1 Update Production Deployment Script
+### 14.1 Update Production Deployment Script
 The existing production deployment script (`scripts/deploy-production.sh`) can be adapted for ECS:
 
 ```bash
@@ -740,9 +887,9 @@ aws ecs update-service \
 echo "✅ Deployment completed successfully!"
 ```
 
-## Step 13: Monitoring and Logging
+## Step 15: Monitoring and Logging
 
-### 13.1 CloudWatch Dashboards
+### 15.1 CloudWatch Dashboards
 ```bash
 # Create CloudWatch dashboard for monitoring
 aws cloudwatch put-dashboard \
@@ -750,7 +897,7 @@ aws cloudwatch put-dashboard \
     --dashboard-body file://cloudwatch-dashboard.json
 ```
 
-### 13.2 Set Up Alarms
+### 15.2 Set Up Alarms
 ```bash
 # High CPU alarm
 aws cloudwatch put-metric-alarm \
@@ -766,9 +913,9 @@ aws cloudwatch put-metric-alarm \
     --evaluation-periods 2
 ```
 
-## Step 14: Testing Deployment
+## Step 16: Testing Deployment
 
-### 14.1 Health Checks
+### 16.1 Health Checks
 ```bash
 # Test ALB health
 curl -f http://$ALB_DNS/health
@@ -777,7 +924,7 @@ curl -f http://$ALB_DNS/health
 curl -f http://$ALB_DNS/api/auth/me
 ```
 
-### 14.2 Load Testing
+### 16.2 Load Testing
 ```bash
 # Install Apache Bench for load testing
 sudo apt-get install apache2-utils
@@ -786,9 +933,9 @@ sudo apt-get install apache2-utils
 ab -n 1000 -c 10 http://$ALB_DNS/
 ```
 
-## Step 15: Maintenance and Updates
+## Step 17: Maintenance and Updates
 
-### 15.1 Rolling Updates
+### 17.1 Rolling Updates
 ```bash
 # Update task definitions and force new deployment
 aws ecs update-service \
@@ -798,7 +945,7 @@ aws ecs update-service \
     --force-new-deployment
 ```
 
-### 15.2 Scaling
+### 17.2 Scaling
 ```bash
 # Scale services
 aws ecs update-service \
@@ -807,7 +954,7 @@ aws ecs update-service \
     --desired-count 5
 ```
 
-### 15.3 Backup and Recovery
+### 17.3 Backup and Recovery
 ```bash
 # Backup EFS data
 aws efs create-backup-vault \
@@ -849,30 +996,46 @@ aws ec2 delete-vpc --vpc-id $VPC_ID
 
 ### Common Issues
 
-1. **ECS Tasks Failing to Start**
-   - Check CloudWatch logs: `/ecs/${PROJECT_NAME}-backend`
-   - Verify IAM roles have correct permissions
+1. **Scanner Returns 0 Findings**
+   - **JWT Token Issues**: Verify JWT_SECRET is set in Secrets Manager and consistent across restarts
+   - **Complex OpenAPI Specs**: The sanitization feature should handle this automatically, but check logs for spec processing errors
+   - **Authentication Problems**: Ensure scanner can authenticate with backend using admin credentials
+   - **Chunk Processing**: Check S3 bucket for uploaded spec chunks and EFS for results
+
+2. **ECS Tasks Failing to Start**
+   - Check CloudWatch logs: `/ecs/${PROJECT_NAME}-backend`, `/ecs/${PROJECT_NAME}-scanner`
+   - Verify IAM roles have correct permissions (including S3 access)
    - Ensure security groups allow required traffic
 
-2. **Load Balancer Health Checks Failing**
+3. **Load Balancer Health Checks Failing**
    - Verify target group health check settings
    - Check application is listening on correct port
    - Ensure security groups allow ALB → ECS traffic
 
-3. **Can't Access Secrets Manager**
+4. **Can't Access Secrets Manager**
    - Verify execution role has `SecretsManagerReadWrite` policy
    - Check secret name matches environment variable
    - Ensure region is correct
 
-4. **EFS Mount Issues**
+5. **S3 Spec Upload Issues**
+   - Verify ECS task role has S3 permissions (GetObject, PutObject, DeleteObject, ListBucket)
+   - Check S3 bucket exists and is in the correct region
+   - Review backend logs for S3 upload errors
+
+6. **EFS Mount Issues**
    - Verify EFS security group allows NFS (port 2049)
    - Check EFS mount targets exist in correct subnets
    - Ensure ECS task role has EFS permissions
 
-5. **Redis Connection Issues**
+7. **Redis Connection Issues**
    - Verify Redis security group allows connections from ECS
    - Check Redis cluster is in same VPC
    - Ensure Redis URL is correct in secrets
+
+8. **Rate Limiting Issues**
+   - Default rate limits are set to 20/minute for auth endpoints
+   - Increase if needed for high-volume testing
+   - Monitor CloudWatch logs for 429 (Too Many Requests) errors
 
 ### Useful Commands
 
@@ -891,6 +1054,15 @@ aws logs describe-log-streams --log-group-name "/ecs/${PROJECT_NAME}-backend"
 
 # Check load balancer target health
 aws elbv2 describe-target-health --target-group-arn $BACKEND_TG_ARN
+
+# Monitor S3 bucket contents
+aws s3 ls s3://${PROJECT_NAME}-specs-bucket/specs/ --recursive
+
+# Check scanner task execution
+aws ecs list-tasks --cluster $CLUSTER_NAME --family "${PROJECT_NAME}-scanner"
+
+# Review specific scan logs
+aws logs get-log-events --log-group-name "/ecs/${PROJECT_NAME}-scanner" --log-stream-name "ecs/scanner/<task-id>"
 ```
 
 ## Security Considerations
@@ -932,4 +1104,43 @@ aws elbv2 describe-target-health --target-group-arn $BACKEND_TG_ARN
    - Use CloudFront CDN for static assets
    - Monitor data transfer costs
 
-This deployment guide provides a production-ready AWS infrastructure for the VentiAPI Scanner with proper security, monitoring, and scalability considerations.
+## OpenAPI Spec Sanitization Feature
+
+### How It Works
+The scanner automatically sanitizes complex OpenAPI specifications to improve vulnerability detection:
+
+1. **Security Scheme Removal**: Removes complex authentication schemes that can interfere with testing
+2. **Global Security Cleanup**: Removes global security requirements to enable unauthenticated testing
+3. **Path-Level Processing**: Cleans security requirements from individual endpoints
+4. **S3 Integration**: Sanitized specs are uploaded to S3 for scanner container access
+
+### Configuration
+No manual configuration required - sanitization happens automatically when:
+- Scanning URLs with auto-discovered OpenAPI specs
+- Uploading OpenAPI spec files through the frontend
+- Processing large specs that require chunking
+
+### Monitoring Sanitization
+Check backend logs for sanitization activity:
+```bash
+aws logs filter-log-events \
+    --log-group-name "/ecs/${PROJECT_NAME}-backend" \
+    --filter-pattern "Sanitizing OpenAPI spec"
+```
+
+## Known Working Examples
+
+### Test Endpoints
+- **Simple API**: `https://httpbin.org` - Expected: ~11 findings
+- **Vulnerable API (VAmPI)**: `https://dbfpcim2pg.us-west-2.awsapprunner.com/` - Expected: ~19 findings
+
+### Troubleshooting Zero Findings
+If scanning returns 0 findings:
+
+1. **Check Authentication**: Verify admin credentials (MICS295/MaryMcHale) work for login
+2. **Review JWT Configuration**: Ensure JWT_SECRET is consistent in Secrets Manager
+3. **Monitor Spec Processing**: Check logs for spec sanitization messages
+4. **Verify S3 Integration**: Confirm chunk specs are uploaded to S3 bucket
+5. **Test with Known Vulnerable API**: Use VAmPI endpoint to verify scanner functionality
+
+This deployment guide provides a production-ready AWS infrastructure for the VentiAPI Scanner with proper security, monitoring, scalability considerations, and automatic OpenAPI spec sanitization for reliable vulnerability detection.
