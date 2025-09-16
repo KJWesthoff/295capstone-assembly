@@ -204,22 +204,18 @@ iptables -A INPUT -p tcp --dport 443 -j ACCEPT # HTTPS
 iptables -A INPUT -j DROP  # Drop all other traffic
 ```
 
-#### VPC/Network Isolation
+#### Network Isolation
 ```yaml
-# AWS Security Group Example
-SecurityGroup:
-  Type: AWS::EC2::SecurityGroup
-  Properties:
-    GroupDescription: VentiAPI Scanner Security Group
-    SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 443
-        ToPort: 443
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp  
-        FromPort: 22
-        ToPort: 22
-        CidrIp: 10.0.0.0/8  # Admin access only
+# Example firewall configuration
+# Allow HTTPS traffic from anywhere
+- protocol: tcp
+  port: 443
+  source: 0.0.0.0/0
+
+# Allow SSH from private networks only  
+- protocol: tcp
+  port: 22
+  source: 10.0.0.0/8
 ```
 
 ## 🔒 Security Best Practices

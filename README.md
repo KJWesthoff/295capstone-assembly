@@ -202,10 +202,10 @@ git submodule update --init --recursive
 - **Memory Efficient**: Streaming results, minimal persistent storage
 
 ### Scaling Considerations
-- **Horizontal Scaling**: Add more ECS tasks or K8s pods
+- **Horizontal Scaling**: Add more Docker containers or K8s pods
 - **Redis Clustering**: For high-concurrency scenarios  
-- **Database Integration**: Replace in-memory storage with RDS/DynamoDB
-- **CDN Integration**: CloudFront for static assets
+- **Database Integration**: Replace in-memory storage with PostgreSQL/MySQL
+- **CDN Integration**: For static assets
 
 ## Contributing
 

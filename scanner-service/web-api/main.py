@@ -29,100 +29,9 @@ from security import (
     SecurityConfig
 )
 
-# Import AWS scanner for cloud deployment
-try:
-    from aws_scanner import get_aws_scanner_command, aws_scanner
-    AWS_SCANNER_AVAILABLE = True
-    print("AWS scanner module loaded successfully")
-except (ImportError, ModuleNotFoundError, Exception) as e:
-    print(f"AWS scanner module failed to load: {e}")
-    AWS_SCANNER_AVAILABLE = False
-    # Create dummy functions to prevent import errors
-    def get_aws_scanner_command(*args, **kwargs):
-        return {'success': False, 'error': 'AWS scanner not available'}
-    
-    class DummyScanner:
-        def get_task_status(self, *args): return {'status': 'ERROR', 'error': 'AWS scanner not available'}
-        def stop_task(self, *args): return False
-        available = False
-    
-    aws_scanner = DummyScanner()
 
-# S3 client for file sharing in AWS ECS
-try:
-    import boto3
-    print(f"Initializing S3 client for region: {os.getenv('AWS_REGION', 'us-west-1')}")
-    s3_client = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'us-west-1'))
-    S3_BUCKET = os.getenv('S3_BUCKET', 'ventiapi-scanner-storage-712155057496')
-    print(f"S3 client initialized successfully, bucket: {S3_BUCKET}")
-    S3_AVAILABLE = True
-except Exception as e:
-    print(f"S3 client not available: {e}")
-    import traceback
-    traceback.print_exc()
-    s3_client = None
-    S3_AVAILABLE = False
 
-def upload_to_s3(local_path: str, s3_key: str) -> bool:
-    """Upload file to S3"""
-    if not S3_AVAILABLE:
-        print(f"S3 not available (S3_AVAILABLE={S3_AVAILABLE})")
-        return False
-    try:
-        print(f"Uploading {local_path} to s3://{S3_BUCKET}/{s3_key}")
-        s3_client.upload_file(local_path, S3_BUCKET, s3_key)
-        print(f"Upload successful: s3://{S3_BUCKET}/{s3_key}")
-        return True
-    except Exception as e:
-        print(f"S3 upload failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
 
-def download_from_s3(s3_key: str, local_path: str) -> bool:
-    """Download file from S3"""
-    if not S3_AVAILABLE:
-        return False
-    try:
-        s3_client.download_file(S3_BUCKET, s3_key, local_path)
-        return True
-    except Exception as e:
-        print(f"S3 download failed: {e}")
-        return False
-
-def is_aws_environment() -> bool:
-    """Check if we're running in AWS ECS environment"""
-    # First check if AWS scanner is available
-    if not AWS_SCANNER_AVAILABLE:
-        print("AWS scanner module not available, using local Docker environment")
-        return False
-        
-    # Check for explicit environment variable first
-    if os.getenv('USE_AWS_SCANNER', 'false').lower() == 'true':
-        if hasattr(aws_scanner, 'available') and aws_scanner.available:
-            print("AWS scanner enabled and available")
-            return True
-        else:
-            print("AWS scanner enabled but credentials not available, falling back to local Docker")
-            return False
-        
-    # Check for ECS environment indicators
-    aws_indicators = [
-        os.getenv('AWS_EXECUTION_ENV') == 'AWS_ECS_FARGATE',
-        os.getenv('ECS_CONTAINER_METADATA_URI_V4') is not None,
-        os.getenv('AWS_REGION') is not None and os.getenv('ECS_CLUSTER_NAME') is not None
-    ]
-    
-    if any(aws_indicators):
-        if hasattr(aws_scanner, 'available') and aws_scanner.available:
-            print("AWS environment detected and scanner available")
-            return True
-        else:
-            print("AWS environment detected but scanner not available, falling back to local Docker")
-            return False
-        
-    print("Using local Docker environment")
-    return False
 
 def get_allowed_origins():
     """Get allowed CORS origins based on environment"""
@@ -353,181 +262,58 @@ def merge_scan_findings(scan_id: str, num_chunks: int) -> Dict:
 async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_server_url: str, scan_id: str, user: Dict):
     """Run a single scanner container for one chunk of endpoints with progress monitoring"""
     try:
-        # Check if we're in AWS environment
-        if is_aws_environment():
-            print(f"Starting AWS ECS scanner task: {chunk_id}")
-            
-            # Use AWS ECS RunTask instead of Docker with S3 output
-            s3_output_path = f"s3://{S3_BUCKET}/results/{chunk_id}"
-            result = get_aws_scanner_command(
-                scan_id=chunk_id,
-                spec_url=spec_location,
-                server_url=scanner_server_url,
-                output_path=s3_output_path,
-                rps=1.0,
-                max_requests=100,
-                dangerous=user.get("is_admin", False)
-            )
-            
-            if not result['success']:
-                print(f"AWS ECS task failed: {result.get('error', 'Unknown error')}")
-                return {"success": False, "chunk_id": chunk_id, "error": result.get('error', 'AWS ECS task failed')}
-            
-            task_arn = result['task_arn']
-            print(f"AWS ECS task started: {task_arn}")
-            
-            # Start progress monitoring for AWS task
-            monitor_task = asyncio.create_task(monitor_aws_chunk_progress(chunk_id, scan_id, task_arn))
-            
-            # Poll task status until completion
-            try:
-                while True:
-                    status = aws_scanner.get_task_status(task_arn)
-                    
-                    if status['status'] == 'STOPPED':
-                        monitor_task.cancel()
-                        
-                        if status.get('stop_reason') == 'Essential container in task exited':
-                            print(f"AWS task {chunk_id} completed successfully")
-                            
-                            # Download results from S3
-                            s3_results_key = f"results/{chunk_id}/findings.json"
-                            local_results_path = SHARED_RESULTS / f"{chunk_id}" / "findings.json"
-                            local_results_path.parent.mkdir(parents=True, exist_ok=True)
-                            
-                            if download_from_s3(s3_results_key, str(local_results_path)):
-                                print(f"Downloaded results from S3: {s3_results_key}")
-                            else:
-                                print(f"Failed to download results from S3: {s3_results_key}")
-                            
-                            return {"success": True, "chunk_id": chunk_id}
-                        else:
-                            error_msg = status.get('stop_reason', 'Task stopped unexpectedly')
-                            print(f"AWS task {chunk_id} failed: {error_msg}")
-                            return {"success": False, "chunk_id": chunk_id, "error": error_msg}
-                    
-                    elif status['status'] == 'NOT_FOUND':
-                        monitor_task.cancel()
-                        error_msg = "Task not found"
-                        print(f"AWS task {chunk_id} not found")
-                        return {"success": False, "chunk_id": chunk_id, "error": error_msg}
-                    
-                    # Task still running, wait before next check
-                    await asyncio.sleep(10)
-                    
-            except asyncio.TimeoutError:
-                monitor_task.cancel()
-                # Stop the AWS task
-                aws_scanner.stop_task(task_arn)
-                error_msg = "Task timed out after 8 minutes"
-                print(f"AWS task {chunk_id} timed out")
-                return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+        # Local Docker execution
+        print(f"Starting local Docker scanner: {chunk_id}")
         
-        else:
-            # Local Docker execution
-            print(f"Starting local Docker scanner: {chunk_id}")
+        # Build secure Docker command for this chunk
+        docker_cmd = get_secure_docker_command(
+            image="ventiapi-scanner/scanner:latest",
+            scan_id=chunk_id,  # Use chunk_id for container naming
+            spec_path=spec_location,
+            server_url=scanner_server_url,
+            dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
+            is_admin=user.get("is_admin", False)
+        )
+        
+        print(f"DEBUG: Docker command: {' '.join(docker_cmd)}")
+        
+        # Execute with timeout
+        process = await asyncio.create_subprocess_exec(
+            *docker_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Start progress monitoring for this chunk
+        monitor_task = asyncio.create_task(monitor_chunk_progress(chunk_id, scan_id, process))
+        
+        # Wait with timeout (reduced to 8 minutes per chunk)
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=480)
             
-            # Build secure Docker command for this chunk
-            docker_cmd = get_secure_docker_command(
-                image="ventiapi-scanner/scanner:latest",
-                scan_id=chunk_id,  # Use chunk_id for container naming
-                spec_path=spec_location,
-                server_url=scanner_server_url,
-                dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
-                is_admin=user.get("is_admin", False)
-            )
+            # Cancel progress monitoring
+            monitor_task.cancel()
             
-            print(f"DEBUG: Docker command: {' '.join(docker_cmd)}")
-            
-            # Execute with timeout
-            process = await asyncio.create_subprocess_exec(
-                *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            # Start progress monitoring for this chunk
-            monitor_task = asyncio.create_task(monitor_chunk_progress(chunk_id, scan_id, process))
-            
-            # Wait with timeout (reduced to 8 minutes per chunk)
-            try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=480)
-                
-                # Cancel progress monitoring
-                monitor_task.cancel()
-                
-                if process.returncode == 0:
-                    print(f"Chunk {chunk_id} completed successfully")
-                    return {"success": True, "chunk_id": chunk_id}
-                else:
-                    error_msg = stderr.decode()[:200] if stderr else "Unknown error"
-                    print(f"Chunk {chunk_id} failed: {error_msg}")
-                    return {"success": False, "chunk_id": chunk_id, "error": error_msg}
-                    
-            except asyncio.TimeoutError:
-                monitor_task.cancel()
-                process.kill()
-                error_msg = "Chunk timed out after 8 minutes"
-                print(f"Chunk {chunk_id} timed out")
+            if process.returncode == 0:
+                print(f"Chunk {chunk_id} completed successfully")
+                return {"success": True, "chunk_id": chunk_id}
+            else:
+                error_msg = stderr.decode()[:200] if stderr else "Unknown error"
+                print(f"Chunk {chunk_id} failed: {error_msg}")
                 return {"success": False, "chunk_id": chunk_id, "error": error_msg}
+                
+        except asyncio.TimeoutError:
+            monitor_task.cancel()
+            process.kill()
+            error_msg = "Chunk timed out after 8 minutes"
+            print(f"Chunk {chunk_id} timed out")
+            return {"success": False, "chunk_id": chunk_id, "error": error_msg}
             
     except Exception as e:
         error_msg = str(e)[:200]
         print(f"Exception in chunk {chunk_id}: {error_msg}")
         return {"success": False, "chunk_id": chunk_id, "error": error_msg}
 
-async def monitor_aws_chunk_progress(chunk_id: str, scan_id: str, task_arn: str):
-    """Monitor progress of AWS ECS task by simulating progress"""
-    try:
-        # Find the chunk index and get endpoints
-        chunk_index = None
-        endpoints = []
-        if scan_id in scans and scans[scan_id].get("chunk_status"):
-            for i, chunk in enumerate(scans[scan_id]["chunk_status"]):
-                if chunk["chunk_id"] == chunk_id:
-                    chunk_index = i
-                    endpoints = chunk.get("endpoints", [])
-                    break
-        
-        if chunk_index is None or not endpoints:
-            print(f"Could not find chunk {chunk_id} in scan data")
-            return
-        
-        # Simulate scanning each endpoint based on ECS task status
-        for endpoint_idx, endpoint in enumerate(endpoints):
-            # Check task status
-            status = aws_scanner.get_task_status(task_arn)
-            if status['status'] in ['STOPPED', 'NOT_FOUND']:
-                break
-                
-            # Calculate progress (0-95% range for endpoint scanning)
-            progress = int((endpoint_idx / len(endpoints)) * 95)
-            
-            # Update chunk status
-            if scan_id in scans and chunk_index < len(scans[scan_id]["chunk_status"]):
-                scans[scan_id]["chunk_status"][chunk_index]["current_endpoint"] = endpoint
-                scans[scan_id]["chunk_status"][chunk_index]["progress"] = progress
-                
-                # Update overall scan progress
-                update_overall_scan_progress(scan_id)
-                
-                print(f"AWS Chunk {chunk_id} scanning endpoint: {endpoint} ({progress}%)")
-            
-            # Wait before next endpoint (simulate scan time)
-            await asyncio.sleep(5)
-        
-        # Final update for this chunk
-        status = aws_scanner.get_task_status(task_arn)
-        if status['status'] == 'RUNNING':
-            if scan_id in scans and chunk_index < len(scans[scan_id]["chunk_status"]):
-                scans[scan_id]["chunk_status"][chunk_index]["progress"] = 95
-                scans[scan_id]["chunk_status"][chunk_index]["current_endpoint"] = "Finalizing..."
-        
-    except asyncio.CancelledError:
-        # Progress monitoring was cancelled (chunk completed/failed)
-        pass
-    except Exception as e:
-        print(f"Error in AWS chunk progress monitoring: {e}")
 
 async def monitor_chunk_progress(chunk_id: str, scan_id: str, process):
     """Monitor progress of a single chunk by simulating progress and endpoint scanning"""
@@ -753,36 +539,17 @@ async def start_scan(
         # Save securely
         safe_filename = f"{scan_id}_{spec_file.filename}"
         
-        if is_aws_environment() and S3_AVAILABLE:
-            # In AWS environment, save to S3
-            temp_path = f"/tmp/{safe_filename}"
-            with open(temp_path, "wb") as f:
-                f.write(file_content)
-            
-            s3_key = f"specs/{safe_filename}"
-            print(f"Attempting S3 upload to bucket: {S3_BUCKET}, key: {s3_key}")
-            if upload_to_s3(temp_path, s3_key):
-                spec_location = f"s3://{S3_BUCKET}/{s3_key}"
-                print(f"Uploaded spec to S3: {spec_location}")
-            else:
-                # In AWS mode, S3 upload MUST succeed - raise error instead of fallback
-                os.remove(temp_path)
-                raise HTTPException(status_code=500, detail="Failed to upload spec file to S3 in AWS environment")
-            
-            # Clean up temp file
-            os.remove(temp_path)
-        else:
-            # Local environment, save to shared volume
-            spec_path = SHARED_SPECS / safe_filename
-            with open(spec_path, "wb") as f:
-                f.write(file_content)
-            
-            # Set permissions for scanner user (1000:1000)
-            spec_path.chmod(0o644)  # Allow group/other read access
-            # Change ownership to match scanner container user
-            import subprocess
-            subprocess.run(['chown', '1000:1000', str(spec_path)], check=False)
-            spec_location = f"/shared/specs/{safe_filename}"
+        # Local environment, save to shared volume
+        spec_path = SHARED_SPECS / safe_filename
+        with open(spec_path, "wb") as f:
+            f.write(file_content)
+        
+        # Set permissions for scanner user (1000:1000)
+        spec_path.chmod(0o644)  # Allow group/other read access
+        # Change ownership to match scanner container user
+        import subprocess
+        subprocess.run(['chown', '1000:1000', str(spec_path)], check=False)
+        spec_location = f"/shared/specs/{safe_filename}"
     
     # Create scan record
     scans[scan_id] = {
@@ -839,182 +606,79 @@ async def execute_secure_scan(scan_id: str, user: Dict):
         spec_location = scan_data["spec_location"]
         
         if not spec_location:
-            # In AWS environment, spec file is required
-            if is_aws_environment():
-                scan_data["status"] = "failed"
-                scan_data["current_phase"] = "Error: Spec file required in AWS environment"
-                scan_data["progress"] = 0
-                return {"error": "Spec file is required for AWS scans"}
-            
-            # No spec file provided, run single container scan (local only)
+            # No spec file provided, run single container scan
             scan_data["current_phase"] = "Starting single container scan"
             scan_data["progress"] = 10
             scan_data["parallel_mode"] = False
             scan_data["total_chunks"] = 1
             
-            # Check if we're in AWS environment (this should never be reached now)
-            if is_aws_environment():
-                print(f"Starting AWS ECS scanner task: {scan_id}")
+            # Local Docker execution
+            print(f"Starting local Docker scanner: {scan_id}")
+            
+            # Run single container scan
+            docker_cmd = get_secure_docker_command(
+                image="ventiapi-scanner/scanner:latest",
+                scan_id=scan_id,
+                spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
+                server_url=scanner_server_url,
+                dangerous=scan_data["dangerous"],
+                is_admin=user.get("is_admin", False)
+            )
+            
+            print(f"DEBUG: Single container Docker command: {' '.join(docker_cmd)}")
+            
+            # Execute single scan
+            process = await asyncio.create_subprocess_exec(
+                *docker_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Start progress monitoring
+            progress_task = asyncio.create_task(monitor_scan_progress(scan_id))
+            
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
+                progress_task.cancel()
                 
-                # Use AWS ECS RunTask for single scan
-                result = get_aws_scanner_command(
-                    scan_id=scan_id,
-                    spec_url=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
-                    server_url=scanner_server_url,
-                    output_path=f'/shared/results/{scan_id}',
-                    rps=1.0,
-                    max_requests=100,
-                    dangerous=scan_data["dangerous"]
-                )
-                
-                if not result['success']:
+                if process.returncode == 0:
+                    scan_data["status"] = "completed"
+                    scan_data["progress"] = 100
+                    scan_data["current_phase"] = "Scan completed"
+                    scan_data["completed_at"] = datetime.utcnow().isoformat()
+                    scan_data["completed_chunks"] = 1
+                    
+                    # Count findings
+                    findings_file = SHARED_RESULTS / scan_id / "findings.json"
+                    if findings_file.exists():
+                        with open(findings_file) as f:
+                            findings = json.load(f)
+                            scan_data["findings_count"] = len(findings)
+                    
+                    log_security_event("scan_completed", user['username'], {
+                        "scan_id": scan_id,
+                        "findings_count": scan_data["findings_count"]
+                    })
+                else:
                     scan_data["status"] = "failed"
-                    scan_data["error"] = result.get('error', 'AWS ECS task failed')
+                    scan_data["error"] = f"Scan execution failed: {stderr.decode()[:200]}"
                     scan_data["progress"] = 100
                     scan_data["current_phase"] = "Scan failed"
+                    
                     log_security_event("scan_failed", user['username'], {
                         "scan_id": scan_id,
-                        "error": result.get('error', 'AWS ECS task failed')
+                        "error": stderr.decode()[:200]
                     })
-                    return
-                
-                task_arn = result['task_arn']
-                print(f"AWS ECS task started: {task_arn}")
-                
-                # Start progress monitoring
-                progress_task = asyncio.create_task(monitor_scan_progress(scan_id))
-                
-                # Poll task status until completion
-                try:
-                    while True:
-                        status = aws_scanner.get_task_status(task_arn)
-                        
-                        if status['status'] == 'STOPPED':
-                            progress_task.cancel()
-                            
-                            if status.get('stop_reason') == 'Essential container in task exited':
-                                scan_data["status"] = "completed"
-                                scan_data["progress"] = 100
-                                scan_data["current_phase"] = "Scan completed"
-                                scan_data["completed_at"] = datetime.utcnow().isoformat()
-                                scan_data["completed_chunks"] = 1
-                                
-                                # Count findings
-                                findings_file = SHARED_RESULTS / scan_id / "findings.json"
-                                if findings_file.exists():
-                                    with open(findings_file) as f:
-                                        findings = json.load(f)
-                                        scan_data["findings_count"] = len(findings)
-                                
-                                log_security_event("scan_completed", user['username'], {
-                                    "scan_id": scan_id,
-                                    "findings_count": scan_data["findings_count"]
-                                })
-                            else:
-                                scan_data["status"] = "failed"
-                                scan_data["error"] = status.get('stop_reason', 'Task stopped unexpectedly')
-                                scan_data["progress"] = 100
-                                scan_data["current_phase"] = "Scan failed"
-                                
-                                log_security_event("scan_failed", user['username'], {
-                                    "scan_id": scan_id,
-                                    "error": status.get('stop_reason', 'Task stopped unexpectedly')[:200]
-                                })
-                            break
-                        
-                        elif status['status'] == 'NOT_FOUND':
-                            progress_task.cancel()
-                            scan_data["status"] = "failed"
-                            scan_data["error"] = "Task not found"
-                            scan_data["progress"] = 100
-                            scan_data["current_phase"] = "Scan failed"
-                            log_security_event("scan_failed", user['username'], {
-                                "scan_id": scan_id,
-                                "error": "Task not found"
-                            })
-                            break
-                        
-                        # Task still running, wait before next check
-                        await asyncio.sleep(10)
-                        
-                except asyncio.TimeoutError:
-                    progress_task.cancel()
-                    # Stop the AWS task
-                    aws_scanner.stop_task(task_arn)
-                    scan_data["status"] = "failed"
-                    scan_data["error"] = "Scan timed out after 10 minutes"
-                    scan_data["progress"] = 100
-                    scan_data["current_phase"] = "Scan timed out"
-                    log_security_event("scan_timeout", user['username'], {"scan_id": scan_id})
-            
-            else:
-                # Local Docker execution
-                print(f"Starting local Docker scanner: {scan_id}")
-                
-                # Run single container scan
-                docker_cmd = get_secure_docker_command(
-                    image="ventiapi-scanner/scanner:latest",
-                    scan_id=scan_id,
-                    spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
-                    server_url=scanner_server_url,
-                    dangerous=scan_data["dangerous"],
-                    is_admin=user.get("is_admin", False)
-                )
-                
-                print(f"DEBUG: Single container Docker command: {' '.join(docker_cmd)}")
-                
-                # Execute single scan
-                process = await asyncio.create_subprocess_exec(
-                    *docker_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                # Start progress monitoring
-                progress_task = asyncio.create_task(monitor_scan_progress(scan_id))
-                
-                try:
-                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
-                    progress_task.cancel()
                     
-                    if process.returncode == 0:
-                        scan_data["status"] = "completed"
-                        scan_data["progress"] = 100
-                        scan_data["current_phase"] = "Scan completed"
-                        scan_data["completed_at"] = datetime.utcnow().isoformat()
-                        scan_data["completed_chunks"] = 1
-                        
-                        # Count findings
-                        findings_file = SHARED_RESULTS / scan_id / "findings.json"
-                        if findings_file.exists():
-                            with open(findings_file) as f:
-                                findings = json.load(f)
-                                scan_data["findings_count"] = len(findings)
-                        
-                        log_security_event("scan_completed", user['username'], {
-                            "scan_id": scan_id,
-                            "findings_count": scan_data["findings_count"]
-                        })
-                    else:
-                        scan_data["status"] = "failed"
-                        scan_data["error"] = f"Scan execution failed: {stderr.decode()[:200]}"
-                        scan_data["progress"] = 100
-                        scan_data["current_phase"] = "Scan failed"
-                        
-                        log_security_event("scan_failed", user['username'], {
-                            "scan_id": scan_id,
-                            "error": stderr.decode()[:200]
-                        })
-                        
-                except asyncio.TimeoutError:
-                    progress_task.cancel()
-                    process.kill()
-                    scan_data["status"] = "failed"
-                    scan_data["error"] = "Scan timed out after 10 minutes"
-                    scan_data["progress"] = 100
-                    scan_data["current_phase"] = "Scan timed out"
-                    
-                    log_security_event("scan_timeout", user['username'], {"scan_id": scan_id})
+            except asyncio.TimeoutError:
+                progress_task.cancel()
+                process.kill()
+                scan_data["status"] = "failed"
+                scan_data["error"] = "Scan timed out after 10 minutes"
+                scan_data["progress"] = 100
+                scan_data["current_phase"] = "Scan timed out"
+                
+                log_security_event("scan_timeout", user['username'], {"scan_id": scan_id})
             
             return
         
@@ -1022,22 +686,9 @@ async def execute_secure_scan(scan_id: str, user: Dict):
         scan_data["current_phase"] = "Analyzing OpenAPI specification"
         scan_data["progress"] = 10
         
-        # Read the spec file (handle both S3 and local paths)
-        if spec_location.startswith('s3://'):
-            # Download from S3 to read content
-            temp_spec_path = f"/tmp/spec_{scan_id}.yaml"
-            s3_key = spec_location.replace(f"s3://{S3_BUCKET}/", "")
-            if download_from_s3(s3_key, temp_spec_path):
-                with open(temp_spec_path) as f:
-                    spec_content = f.read()
-                os.remove(temp_spec_path)  # Clean up
-            else:
-                # Fallback - disable parallel processing if can't read spec
-                spec_content = None
-        else:
-            # Local file
-            with open(spec_location.replace("/shared/specs/", str(SHARED_SPECS) + "/")) as f:
-                spec_content = f.read()
+        # Read the spec file (local only)
+        with open(spec_location.replace("/shared/specs/", str(SHARED_SPECS) + "/")) as f:
+            spec_content = f.read()
         
         # Sanitize and split spec into chunks (4 endpoints per chunk for optimal parallelism)
         if spec_content:
@@ -1045,35 +696,21 @@ async def execute_secure_scan(scan_id: str, user: Dict):
             sanitized_spec_content = sanitize_openapi_spec(spec_content)
             spec_chunks = split_openapi_spec_by_endpoints(sanitized_spec_content, chunk_size=4)
             
-            # Save sanitized specs back to storage for scanner containers
-            if spec_location.startswith('s3://'):
-                # Upload sanitized spec to S3 with a new key
-                sanitized_s3_key = s3_key.replace('.yaml', '_sanitized.yaml').replace('.yml', '_sanitized.yml').replace('.json', '_sanitized.json')
-                temp_sanitized_path = f"/tmp/sanitized_spec_{scan_id}.yaml"
-                with open(temp_sanitized_path, 'w') as f:
-                    f.write(sanitized_spec_content)
-                if upload_to_s3(temp_sanitized_path, sanitized_s3_key):
-                    # Update spec location to point to sanitized version
-                    spec_location = f"s3://{S3_BUCKET}/{sanitized_s3_key}"
-                    scan_data["spec_location"] = spec_location
-                    print(f"Uploaded sanitized spec to: {spec_location}")
-                os.remove(temp_sanitized_path)
-            else:
-                # Local file - save sanitized version
-                original_filename = os.path.basename(spec_location)
-                sanitized_filename = original_filename.replace('.yaml', '_sanitized.yaml').replace('.yml', '_sanitized.yml').replace('.json', '_sanitized.json')
-                if sanitized_filename == original_filename:  # No extension found, add suffix
-                    sanitized_filename = f"{original_filename}_sanitized.yaml"
-                sanitized_spec_path = SHARED_SPECS / sanitized_filename
-                with open(sanitized_spec_path, 'w') as f:
-                    f.write(sanitized_spec_content)
-                sanitized_spec_path.chmod(0o644)
-                import subprocess
-                subprocess.run(['chown', '1000:1000', str(sanitized_spec_path)], check=False)
-                # Update spec location to point to sanitized version
-                spec_location = f"/shared/specs/{sanitized_filename}"
-                scan_data["spec_location"] = spec_location
-                print(f"Saved sanitized spec to: {spec_location}")
+            # Local file - save sanitized version
+            original_filename = os.path.basename(spec_location)
+            sanitized_filename = original_filename.replace('.yaml', '_sanitized.yaml').replace('.yml', '_sanitized.yml').replace('.json', '_sanitized.json')
+            if sanitized_filename == original_filename:  # No extension found, add suffix
+                sanitized_filename = f"{original_filename}_sanitized.yaml"
+            sanitized_spec_path = SHARED_SPECS / sanitized_filename
+            with open(sanitized_spec_path, 'w') as f:
+                f.write(sanitized_spec_content)
+            sanitized_spec_path.chmod(0o644)
+            import subprocess
+            subprocess.run(['chown', '1000:1000', str(sanitized_spec_path)], check=False)
+            # Update spec location to point to sanitized version
+            spec_location = f"/shared/specs/{sanitized_filename}"
+            scan_data["spec_location"] = spec_location
+            print(f"Saved sanitized spec to: {spec_location}")
         else:
             # Fallback to single chunk mode if can't read spec
             spec_chunks = [scan_id]  # Single chunk with scan_id as identifier
@@ -1157,32 +794,15 @@ async def execute_secure_scan(scan_id: str, user: Dict):
                 # Update chunk status
                 scans[scan_id]["chunk_status"][i]["status"] = "starting"
                 
-                # Save chunk spec and handle AWS S3 upload
-                if is_aws_environment() and S3_AVAILABLE:
-                    # In AWS mode, save chunk spec to S3
-                    chunk_s3_key = f"specs/{chunk_id}_spec.yaml"
-                    temp_chunk_path = f"/tmp/{chunk_id}_spec.yaml"
-                    with open(temp_chunk_path, 'w') as f:
-                        f.write(chunk_spec)
-                    
-                    if upload_to_s3(temp_chunk_path, chunk_s3_key):
-                        chunk_spec_location = f"s3://{S3_BUCKET}/{chunk_s3_key}"
-                        print(f"Uploaded chunk spec to S3: {chunk_spec_location}")
-                    else:
-                        print(f"Failed to upload chunk spec to S3, scan may fail")
-                        chunk_spec_location = f"/shared/specs/{chunk_id}_spec.yaml"  # Fallback
-                    
-                    os.remove(temp_chunk_path)  # Clean up temp file
-                else:
-                    # Local mode, save to shared volume
-                    chunk_path = SHARED_SPECS / f"{chunk_id}_spec.yaml"
-                    with open(chunk_path, 'w') as f:
-                        f.write(chunk_spec)
-                    
-                    # Set proper permissions
-                    chunk_path.chmod(0o644)
-                    subprocess.run(['chown', '1000:1000', str(chunk_path)], check=False)
-                    chunk_spec_location = f"/shared/specs/{chunk_id}_spec.yaml"
+                # Local mode, save to shared volume
+                chunk_path = SHARED_SPECS / f"{chunk_id}_spec.yaml"
+                with open(chunk_path, 'w') as f:
+                    f.write(chunk_spec)
+                
+                # Set proper permissions
+                chunk_path.chmod(0o644)
+                subprocess.run(['chown', '1000:1000', str(chunk_path)], check=False)
+                chunk_spec_location = f"/shared/specs/{chunk_id}_spec.yaml"
                 
                 task = run_single_scanner_chunk(chunk_id, chunk_spec_location, scanner_server_url, scan_id, user)
                 chunk_tasks.append(task)
@@ -1330,36 +950,19 @@ async def get_findings(
     if scan_data["user"] != user["username"] and not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Read findings file - check S3 first in AWS mode, then local
+    # Read findings file (local only)
     all_findings = []
     
-    # Try S3 first if in AWS environment
-    if is_aws_environment() and S3_AVAILABLE:
-        try:
-            s3_key = f"results/{scan_id}/findings.json"
-            print(f"Attempting to read findings from S3: {s3_key}")
-            
-            response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key)
-            content = response['Body'].read().decode('utf-8')
-            all_findings = json.loads(content)
-            print(f"Successfully read {len(all_findings)} findings from S3")
-            
-        except Exception as s3_error:
-            print(f"Could not read from S3: {s3_error}")
-            # Fall through to local file check
+    findings_file = SHARED_RESULTS / scan_id / "findings.json"
+    if not findings_file.exists():
+        return {"findings": [], "total": 0}
     
-    # If no findings from S3, try local file
-    if not all_findings:
-        findings_file = SHARED_RESULTS / scan_id / "findings.json"
-        if not findings_file.exists():
-            return {"findings": [], "total": 0}
-        
-        try:
-            with open(findings_file) as f:
-                all_findings = json.load(f)
-        except Exception as e:
-            print(f"Could not read local findings file: {e}")
-            return {"findings": [], "total": 0}
+    try:
+        with open(findings_file) as f:
+            all_findings = json.load(f)
+    except Exception as e:
+        print(f"Could not read local findings file: {e}")
+        return {"findings": [], "total": 0}
     
     try:
         
