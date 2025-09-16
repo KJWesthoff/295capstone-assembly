@@ -64,3 +64,16 @@ results/*.html
 # Temporary files
 *.tmp
 *.temp
+
+# AWS/Cloud files (explicitly exclude)
+aws/
+*.pem
+.aws/
+aws-credentials
+**/aws_scanner.py
+deploy-to-aws.sh
+deploy-to-ecr.sh
+**/secrets_manager.py
+**/fetch-secrets.sh
+AWS_*.md
+DEPLOYMENT_STATUS.md
