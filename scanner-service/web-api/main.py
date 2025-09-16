@@ -694,7 +694,7 @@ async def execute_secure_scan(scan_id: str, user: Dict):
         if spec_content:
             # Sanitize the spec to improve vulnerability detection
             sanitized_spec_content = sanitize_openapi_spec(spec_content)
-            spec_chunks = split_openapi_spec_by_endpoints(sanitized_spec_content, chunk_size=4)
+            spec_chunks = split_openapi_spec_by_endpoints(sanitized_spec_content, chunk_size=2)  # More containers, smaller chunks
             
             # Local file - save sanitized version
             original_filename = os.path.basename(spec_location)

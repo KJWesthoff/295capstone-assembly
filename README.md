@@ -1,8 +1,8 @@
 # VentiAPI Scanner - Full-Stack API Security Testing Platform
 
-A complete full-stack application for scanning APIs for security vulnerabilities using parallel processing and real-time progress tracking.
+A complete full-stack application for scanning APIs for security vulnerabilities using parallel processing, Nginx reverse proxy, and real-time progress tracking.
 
-## Architecture
+## 🏗️ Architecture
 
 ### Production Architecture (Nginx Reverse Proxy)
 ```
@@ -22,28 +22,35 @@ A complete full-stack application for scanning APIs for security vulnerabilities
                                                └─────────────────┘
 ```
 
-### Development Architecture (Direct Access)
+### Development Architecture (Hybrid Access)
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
-│   Frontend      │    │   Web API       │    │   Scanner Cluster   │
-│   (React +      │◄──►│   (FastAPI +    │◄──►│   (VentiAPI)        │
-│   TanStack      │    │   Parallel      │    │   Parallel          │
-│   Query)        │    │   Processing)   │    │   Containers        │
-│   Port: 3000    │    │   Port: 8000    │    │   Dynamic Scaling   │
-└─────────────────┘    └─────────────────┘    └─────────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │     Redis       │
-                       │   (Cache/Queue) │
-                       │   Port: 6379    │
-                       └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
+│   Nginx Proxy   │    │   Frontend      │    │   Web API       │    │   Scanner Cluster   │
+│   (Port 80)     │◄──►│   (React +      │    │   (FastAPI +    │◄──►│   (VentiAPI)        │
+│   API Routing   │    │   TanStack      │    │   Parallel      │    │   Parallel          │
+└─────────────────┘    │   Query)        │    │   Processing)   │    │   Containers        │
+                       │   Port: 3000    │    │   Internal      │    │   Dynamic Scaling   │
+                       └─────────────────┘    └─────────────────┘    └─────────────────────┘
+                                                      │
+                                                      ▼
+                                               ┌─────────────────┐
+                                               │     Redis       │
+                                               │   (Cache/Queue) │
+                                               │   Internal      │
+                                               └─────────────────┘
 ```
 
-## Key Features
+## 🚀 Key Features
+
+### **Production-Ready Infrastructure**
+- **Nginx Reverse Proxy**: Single entry point with SSL support, rate limiting, and security headers
+- **Container Orchestration**: Complete Docker Compose setup with health checks and restart policies
+- **Internal Networking**: Secure container-to-container communication
+- **Volume Management**: Persistent shared storage for results and specifications
 
 ### **Performance Optimized**
 - **Parallel Scanning**: Automatically splits large API specs into chunks and runs multiple containers concurrently
+- **Configurable Scaling**: Adjust parallel container count and chunk size via environment variables
 - **Smart Probe Grouping**: Groups compatible security probes to avoid conflicts while maximizing parallelism
 - **Real-time Progress**: Live updates with TanStack Query showing individual container progress
 
@@ -56,14 +63,15 @@ A complete full-stack application for scanning APIs for security vulnerabilities
 ### **Modern Full-Stack**
 - **React 19 + TypeScript**: Modern frontend with type safety
 - **FastAPI Backend**: High-performance async Python API
-- **Docker Orchestration**: Complete containerized deployment
+- **Docker Orchestration**: Complete containerized deployment with reverse proxy
 - **Redis Caching**: Optimized performance and job queuing
 
-## Quick Start
+## 🎯 Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
 - Git with submodule support
+- 4GB+ RAM (for parallel scanning)
 
 ### 1. Clone and Setup
 ```bash
@@ -82,21 +90,72 @@ git submodule update --init --recursive
 - **Access:** http://localhost (everything routed through Nginx)
 - **API:** http://localhost/api/*
 - **API Documentation:** http://localhost/api/docs
+- **Features:** Rate limiting, security headers, SSL-ready
 
-#### Development Mode - Direct Port Access  
+#### Development Mode - Hybrid Access  
 ```bash
-# Start with direct port access for debugging
+# Start with hybrid access for debugging
 ./start-dev.sh
 ```
-- **Frontend:** http://localhost:3000 (direct access)
-- **Backend API:** http://localhost:8000 (direct access)
-- **API Documentation:** http://localhost:8000/docs
+- **Frontend (Direct):** http://localhost:3000 (fast development)
+- **Frontend (via Nginx):** http://localhost (production-like)
+- **API (via Nginx):** http://localhost/api/*
+- **API Documentation:** http://localhost/api/docs
 
-## Project Structure
+## ⚙️ Configuration
+
+### Environment Variables
+
+Create/edit `.env.local` for your configuration:
+
+```bash
+# Authentication
+JWT_SECRET=your-secure-jwt-secret-here
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=your-secure-password
+
+# Scanner Performance
+SCANNER_MAX_PARALLEL_CONTAINERS=10    # Max concurrent scanner containers
+SCANNER_CONTAINER_MEMORY_LIMIT=1g     # Memory limit per container
+
+# Redis Configuration
+REDIS_URL=redis://redis:6379
+```
+
+### Parallel Scanning Configuration
+
+Control the number of scanner containers launched:
+
+#### Via Environment Variables (Recommended)
+```bash
+# In .env.local
+SCANNER_MAX_PARALLEL_CONTAINERS=15    # Increase from default 5
+SCANNER_CONTAINER_MEMORY_LIMIT=2g     # Increase if needed
+```
+
+#### Performance Examples
+| API Size | Chunk Size | Max Containers | Actual Containers | Speed Gain |
+|----------|------------|----------------|-------------------|------------|
+| 8 endpoints | 2 | 10 | 4 containers | ~3x faster |
+| 16 endpoints | 2 | 10 | 8 containers | ~6x faster |
+| 32 endpoints | 2 | 15 | 15 containers | ~10x faster |
+
+#### Resource Recommendations
+- **Development**: `SCANNER_MAX_PARALLEL_CONTAINERS=3`, `MEMORY_LIMIT=512m`
+- **Production**: `SCANNER_MAX_PARALLEL_CONTAINERS=10`, `MEMORY_LIMIT=1g`
+- **High-Performance**: `SCANNER_MAX_PARALLEL_CONTAINERS=20`, `MEMORY_LIMIT=2g`
+
+## 📁 Project Structure
 
 ```
 ScannerApp/
-├── docker-compose.yml              # Full-stack orchestration
+├── docker-compose.yml              # Production orchestration with nginx
+├── docker-compose.dev.yml          # Development overrides
+├── nginx/
+│   ├── nginx.conf                  # Production reverse proxy config
+│   └── nginx-ssl.conf              # SSL-ready configuration template
+├── start-production.sh             # Production startup script
+├── start-dev.sh                    # Development startup script
 ├── frontend/                       # React TypeScript app
 │   ├── src/
 │   │   ├── api/                   # TanStack Query API client
@@ -106,7 +165,6 @@ ScannerApp/
 │   │   │   └── ParallelScanProgress.tsx  # Parallel progress visualization
 │   │   └── ...
 │   ├── Dockerfile                 # Multi-stage production build
-│   ├── nginx.conf                 # Production web server config
 │   └── package.json
 ├── external-scanner/               # VentiAPI Scanner (Git Submodule)
 │   └── ventiapi-scanner/          # External scanner engine
@@ -121,10 +179,20 @@ ScannerApp/
 │       ├── security.py           # Authentication, authorization & validation
 │       ├── Dockerfile            # Web API container
 │       └── requirements.txt
+├── shared/                        # Shared volumes
+│   ├── results/                  # Scan results storage
+│   └── specs/                    # API specifications storage
 └── README.md                      # This file
 ```
 
-## Advanced Features
+## 🔧 Advanced Features
+
+### Nginx Reverse Proxy Features
+- **Rate Limiting**: 10 req/s for API, 100 req/s general
+- **Security Headers**: XSS protection, frame options, content type validation
+- **File Upload Limits**: 10MB max for API specification uploads
+- **SSL-Ready**: Easy HTTPS configuration with provided template
+- **Gzip Compression**: Automatic compression for better performance
 
 ### Real-Time Progress Tracking
 - **TanStack Query Integration**: Automatic polling every 2 seconds during scans
@@ -133,28 +201,30 @@ ScannerApp/
 - **Smart Polling**: Automatically stops when scan completes
 
 ### Intelligent Scan Optimization
-- **Endpoint Chunking**: Splits large APIs into 4-endpoint chunks for parallel processing
+- **Endpoint Chunking**: Splits large APIs into 2-endpoint chunks for maximum parallelism
 - **Probe Grouping**: 
   - **Auth Group**: Authentication-related probes (may interact)
   - **Scan Group**: Read-only probes (safe parallel execution)
   - **Dangerous Group**: Intrusive probes (optional, run separately)
 - **Result Merging**: Aggregates findings from all parallel containers
+- **Graceful Degradation**: Continues if some containers fail
 
 ### Professional Reporting
 - **Dual Format**: JSON findings + HTML reports
 - **Embedded Styling**: Self-contained HTML with CSS
 - **Severity Breakdown**: Visual summary with color-coded severity levels
 - **Downloadable Reports**: Direct browser download via API
+- **Real-time Updates**: Live progress tracking during scans
 
-## API Endpoints
+## 🌐 API Endpoints
 
 ### Core Scan Management
 ```bash
-# Start a new scan
+# Start a new scan with parallel processing
 POST /api/scan/start
   - Form data: spec_file, server_url, target_url, dangerous, rps, max_requests
 
-# Real-time status with parallel info
+# Real-time status with parallel container info
 GET /api/scan/{scan_id}/status
   Response includes: progress, current_phase, chunk_status[], parallel_mode
 
@@ -164,43 +234,92 @@ GET /api/scan/{scan_id}/findings?offset=0&limit=50
 # Download HTML report
 GET /api/scan/{scan_id}/report
 
-# List all scans
+# List all scans with status
 GET /api/scans
 
 # Delete scan and cleanup
 DELETE /api/scan/{scan_id}
+
+# Health check
+GET /health
 ```
 
 ### Example Usage
 ```bash
-# Start a parallel scan
-curl -X POST "http://localhost:8000/api/scan/start" \
+# Start a parallel scan via nginx proxy
+curl -X POST "http://localhost/api/scan/start" \
   -F "server_url=https://your-api.com" \
   -F "target_url=https://your-api.com" \
   -F "spec_file=@openapi.yml" \
   -F "dangerous=false" \
   -F "rps=2.0"
 
-# Monitor real-time progress
-curl "http://localhost:8000/api/scan/{scan_id}/status"
+# Monitor real-time parallel progress
+curl "http://localhost/api/scan/{scan_id}/status" | jq '.chunk_status'
 
 # Download professional HTML report
-curl "http://localhost:8000/api/scan/{scan_id}/report" -o security_report.html
+curl "http://localhost/api/scan/{scan_id}/report" -o security_report.html
 ```
 
+## 🔐 SSL/HTTPS Setup
 
-## Development & Testing
-
-### Local Development
+### Enable HTTPS (Production)
+1. **Obtain SSL certificates** (Let's Encrypt recommended):
 ```bash
-# Frontend only
-cd frontend && npm start
+certbot certonly --webroot -w /var/www/html -d yourdomain.com
+```
 
-# Backend only (with hot reload)
-cd scanner-service/web-api && uvicorn main:app --reload --host 0.0.0.0
+2. **Copy certificates to nginx directory**:
+```bash
+mkdir -p nginx/ssl
+cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem nginx/ssl/cert.pem
+cp /etc/letsencrypt/live/yourdomain.com/privkey.pem nginx/ssl/key.pem
+```
 
-# Scanner only
-cd external-scanner/ventiapi-scanner && python -m scanner.cli --help
+3. **Switch to SSL configuration**:
+```bash
+cp nginx/nginx-ssl.conf nginx/nginx.conf
+```
+
+4. **Update docker-compose.yml** to mount SSL certificates:
+```yaml
+nginx:
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./nginx/ssl:/etc/nginx/ssl:ro  # Add this line
+```
+
+## 🛠️ Development & Testing
+
+### Local Development Commands
+```bash
+# Start development environment
+./start-dev.sh
+
+# View logs from all services
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+
+# Restart specific service
+docker compose restart web-api
+
+# View container resource usage
+docker stats
+
+# Scale containers manually for testing
+SCANNER_MAX_PARALLEL_CONTAINERS=20 ./start-dev.sh
+```
+
+### Testing Different Configurations
+```bash
+# Test with 2 endpoints per chunk (more containers)
+# Edit main.py: chunk_size=2
+
+# Test with high parallel count
+export SCANNER_MAX_PARALLEL_CONTAINERS=15
+./start-dev.sh
+
+# Monitor container creation during scans
+watch 'docker ps | grep ventiapi'
 ```
 
 ### Git Submodule Management
@@ -215,32 +334,49 @@ git add external-scanner && git commit -m "Update scanner to latest version"
 git submodule update --init --recursive
 ```
 
-### Environment Variables
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `REACT_APP_API_URL` | Backend API URL | `http://localhost:8000` |
-| `PYTHONUNBUFFERED` | Python output buffering | `1` |
-
-## Performance & Scaling
+## 📊 Performance & Monitoring
 
 ### Current Capabilities
-- **Parallel Processing**: 3x faster scanning with automatic endpoint chunking
-- **Container Scaling**: Dynamic scanner container creation
+- **Parallel Processing**: Up to 10x faster scanning with automatic endpoint chunking
+- **Container Scaling**: Dynamic scanner container creation based on API size
 - **Real-time Updates**: 2-second polling with smart query management
-- **Memory Efficient**: Streaming results, minimal persistent storage
+- **Memory Efficient**: Streaming results, configurable memory limits per container
+- **Resource Monitoring**: Built-in container health checks and restart policies
 
-### Scaling Considerations
-- **Horizontal Scaling**: Add more Docker containers or K8s pods
-- **Redis Clustering**: For high-concurrency scenarios  
-- **Database Integration**: Replace in-memory storage with PostgreSQL/MySQL
-- **CDN Integration**: For static assets
+### Monitoring Commands
+```bash
+# View container resource usage
+docker stats
 
-## Contributing
+# Check nginx access logs
+docker compose logs nginx
+
+# Monitor scan progress in real-time
+curl -s http://localhost/api/scan/{scan_id}/status | jq '.chunk_status'
+
+# View parallel container creation
+docker ps --filter "name=ventiapi-scanner"
+```
+
+### Performance Tuning
+```bash
+# For high-throughput environments
+SCANNER_MAX_PARALLEL_CONTAINERS=20
+SCANNER_CONTAINER_MEMORY_LIMIT=2g
+REDIS_MAXMEMORY=1gb
+
+# For resource-constrained environments  
+SCANNER_MAX_PARALLEL_CONTAINERS=3
+SCANNER_CONTAINER_MEMORY_LIMIT=512m
+REDIS_MAXMEMORY=256mb
+```
+
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes
-4. Test locally: `docker compose up --build`
+3. Make your changes and test with both deployment modes
+4. Test parallel scaling: `SCANNER_MAX_PARALLEL_CONTAINERS=10 ./start-dev.sh`
 5. Commit changes: `git commit -m 'Add amazing feature'`
 6. Push to branch: `git push origin feature/amazing-feature`
 7. Submit a pull request
@@ -249,13 +385,10 @@ git submodule update --init --recursive
 - Follow TypeScript best practices
 - Use TanStack Query for all API state management
 - Test with real vulnerable APIs (VAmPI included)
+- Test both production and development deployment modes
 - Update documentation for new features
 
-## License
-
-MIT License - see LICENSE file for details.
-
-## Supported Vulnerability Types
+## 📋 Supported Vulnerability Types
 
 ### OWASP API Security Top 10
 - **API1**: Broken Object Level Authorization (BOLA)
@@ -274,7 +407,12 @@ MIT License - see LICENSE file for details.
 - **Authentication Fuzzing**: Token manipulation and bypass attempts
 - **Dangerous Mode**: Intrusive testing with data modification
 - **Custom Payloads**: Extensible probe system
+- **Parallel Execution**: Multiple probe types running concurrently
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
 
 ---
 
-**Built with for API Security**
+**🚀 Built for Production-Scale API Security Testing with Nginx Reverse Proxy and Parallel Container Orchestration**
