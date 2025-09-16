@@ -4,6 +4,25 @@ A complete full-stack application for scanning APIs for security vulnerabilities
 
 ## Architecture
 
+### Production Architecture (Nginx Reverse Proxy)
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
+│   Nginx Proxy   │    │   Frontend      │    │   Web API       │    │   Scanner Cluster   │
+│   (Port 80)     │◄──►│   (React +      │    │   (FastAPI +    │◄──►│   (VentiAPI)        │
+│   /     → FE    │    │   TanStack      │    │   Parallel      │    │   Parallel          │
+│   /api  → BE    │    │   Query)        │    │   Processing)   │    │   Containers        │
+│   Rate Limiting │    │   Internal      │    │   Internal      │    │   Dynamic Scaling   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────────┘
+                                                      │
+                                                      ▼
+                                               ┌─────────────────┐
+                                               │     Redis       │
+                                               │   (Cache/Queue) │
+                                               │   Internal      │
+                                               └─────────────────┘
+```
+
+### Development Architecture (Direct Access)
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
 │   Frontend      │    │   Web API       │    │   Scanner Cluster   │
@@ -53,16 +72,25 @@ cd ScannerApp
 git submodule update --init --recursive
 ```
 
-### 2. Start the Full Stack
-```bash
-docker compose up --build
-```
+### 2. Choose Your Deployment Mode
 
-### 3. Access the Application
-- **Frontend:** http://localhost:3000
-- **Backend API:** http://localhost:8000
+#### Production Mode (Recommended) - Nginx Reverse Proxy
+```bash
+# Start with Nginx reverse proxy (single entry point)
+./start-production.sh
+```
+- **Access:** http://localhost (everything routed through Nginx)
+- **API:** http://localhost/api/*
+- **API Documentation:** http://localhost/api/docs
+
+#### Development Mode - Direct Port Access  
+```bash
+# Start with direct port access for debugging
+./start-dev.sh
+```
+- **Frontend:** http://localhost:3000 (direct access)
+- **Backend API:** http://localhost:8000 (direct access)
 - **API Documentation:** http://localhost:8000/docs
-- **Redis:** localhost:6379
 
 ## Project Structure
 

@@ -31,11 +31,11 @@ echo "   JWT Secret: ${JWT_SECRET:0:20}..."
 
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker compose down
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
-# Build and start containers
-echo "🏗️  Building and starting containers..."
-docker compose up --build -d
+# Build and start containers with development overrides
+echo "🏗️  Building and starting containers (development mode)..."
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 
 # Wait for services to start
 echo "⏳ Waiting for services to start..."
@@ -45,21 +45,23 @@ sleep 5
 echo "📊 Container Status:"
 docker compose ps
 
-# Test API health
+# Test API health via nginx proxy
 echo "🏥 Testing API health..."
-if curl -s http://localhost:8000/health > /dev/null; then
-    echo "✅ API is healthy!"
+sleep 3  # Give nginx time to start
+if curl -s http://localhost/health > /dev/null; then
+    echo "✅ API is healthy via nginx proxy!"
 else
-    echo "⚠️  API health check failed. Check logs with: docker compose logs web-api"
+    echo "⚠️  API health check failed. Check logs with: docker compose logs nginx web-api"
 fi
 
 echo ""
 echo "🎉 Development environment started successfully!"
 echo ""
 echo "📍 Access Points:"
-echo "   Frontend: http://localhost:3000"
-echo "   Backend API: http://localhost:8000"
-echo "   API Documentation: http://localhost:8000/docs"
+echo "   Frontend (Direct): http://localhost:3000"
+echo "   Frontend (via Nginx): http://localhost"
+echo "   API (via Nginx): http://localhost/api/*"
+echo "   API Documentation: http://localhost/api/docs"
 echo ""
 echo "🔑 Login Credentials:"
 echo "   Username: $DEFAULT_ADMIN_USERNAME"

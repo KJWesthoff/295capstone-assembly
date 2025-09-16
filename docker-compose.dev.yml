@@ -1,0 +1,20 @@
+# Development override - exposes frontend and nginx for dev workflow
+# API calls go through nginx proxy for consistency with production
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Enable nginx in development for API routing
+  nginx:
+    ports:
+      - "80:80"
+    profiles: []  # Enable nginx in dev mode
+  
+  # Also expose frontend directly for faster development/debugging
+  frontend:
+    ports:
+      - "3000:80"
+    environment:
+      # Use nginx proxy for API calls (consistent with production)
+      - REACT_APP_API_URL=http://localhost
+
+  # Backend and Redis stay internal - no direct access needed

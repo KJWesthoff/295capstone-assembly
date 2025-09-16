@@ -77,3 +77,11 @@ deploy-to-ecr.sh
 **/fetch-secrets.sh
 AWS_*.md
 DEPLOYMENT_STATUS.md
+
+# Nginx/Proxy files
+nginx/ssl/
+nginx/*.log
+shared/results/*
+shared/specs/*
+!shared/results/.gitkeep
+!shared/specs/.gitkeep

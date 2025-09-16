@@ -1,23 +1,48 @@
 services:
-  # Frontend React App
-  frontend:
-    build: ./frontend
-    container_name: ventiapi-frontend
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ventiapi-nginx
     ports:
-      - "3000:80"
+      - "80:80"
+      - "443:443"  # For future SSL support
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - scanner-network
+    depends_on:
+      - frontend
+      - web-api
+    restart: unless-stopped
+
+  # Frontend React App (internal only)
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ventiapi-frontend
+    # Remove external port exposure - traffic comes through nginx
+    expose:
+      - "80"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      # Point to nginx proxy instead of direct backend
+      - REACT_APP_API_URL=http://localhost
     networks:
       - scanner-network
     depends_on:
       - web-api
+    restart: unless-stopped
 
-  # Web API Backend
+  # Web API Backend (internal only)
   web-api:
-    build: ./scanner-service/web-api
+    build: 
+      context: ./scanner-service/web-api
+      dockerfile: Dockerfile
     container_name: ventiapi-web-api
-    ports:
-      - "8000:8000"
+    # Remove external port exposure - traffic comes through nginx
+    expose:
+      - "8000"
     volumes:
       - shared-results:/shared/results
       - shared-specs:/shared/specs
@@ -29,27 +54,34 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - DEFAULT_ADMIN_USERNAME=${DEFAULT_ADMIN_USERNAME}
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
-      - REDIS_URL=${REDIS_URL}
-      - SCANNER_MAX_PARALLEL_CONTAINERS=${SCANNER_MAX_PARALLEL_CONTAINERS}
-      - SCANNER_CONTAINER_MEMORY_LIMIT=${SCANNER_CONTAINER_MEMORY_LIMIT}
+      - REDIS_URL=redis://redis:6379
+      - SCANNER_MAX_PARALLEL_CONTAINERS=${SCANNER_MAX_PARALLEL_CONTAINERS:-5}
+      - SCANNER_CONTAINER_MEMORY_LIMIT=${SCANNER_CONTAINER_MEMORY_LIMIT:-1g}
     depends_on:
       - redis
+      - scanner-image-builder
+    restart: unless-stopped
 
-  # Redis for job queue and caching (optional but recommended)
+  # Redis for job queue and caching
   redis:
     image: redis:7-alpine
     container_name: ventiapi-redis
-    ports:
-      - "6379:6379"
+    # Remove external port exposure - only internal access needed
+    expose:
+      - "6379"
     networks:
       - scanner-network
     volumes:
       - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
 
-  # Scanner service (builds the image for web-api to use)
-  scanner:
-    build: ./external-scanner/ventiapi-scanner
-    image: ventiapi-scanner
+  # Scanner image builder (builds the scanner image for web-api to use)
+  scanner-image-builder:
+    build: 
+      context: ./external-scanner/ventiapi-scanner
+      dockerfile: Dockerfile
+    image: ventiapi-scanner/scanner:latest
     container_name: ventiapi-scanner-builder
     volumes:
       - shared-results:/shared/results
@@ -58,16 +90,33 @@ services:
       - scanner-network
     environment:
       - PYTHONUNBUFFERED=1
-    command: ["echo", "Scanner image built"]
-    profiles: ["build-only"]  # Only runs when explicitly requested
+    command: ["echo", "Scanner image built and ready"]
+    restart: "no"  # Don't restart this service
 
 volumes:
   shared-results:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/shared/results
   shared-specs:
+    driver: local  
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/shared/specs
   redis-data:
+    driver: local
+  nginx-logs:
+    driver: local
 
 networks:
   scanner-network:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.name: scanner-br0
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
