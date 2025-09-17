@@ -34,7 +34,9 @@ echo "Username: admin"
 echo "Password: $DEFAULT_ADMIN_PASSWORD"
 ```
 
-### Environment File (.env.local)
+### Environment Files
+
+#### Development (.env.local)
 ```bash
 # Create local environment file (git-ignored)
 cat > .env.local << EOF
@@ -45,6 +47,15 @@ SCANNER_MAX_PARALLEL_CONTAINERS=5
 SCANNER_CONTAINER_MEMORY_LIMIT=512m
 REDIS_URL=redis://redis:6379
 EOF
+```
+
+#### Production/Deployment (.env.deploy)
+```bash
+# Create deployment environment file (git-ignored)
+cp .env.local .env.deploy
+
+# Customize for production
+nano .env.deploy  # Edit with secure production values
 ```
 
 ## ☁️ Railway Cloud Deployment
@@ -73,23 +84,22 @@ railway up
 
 ### Docker Compose
 ```bash
-# 1. Generate production secrets
-export JWT_SECRET=$(openssl rand -base64 32)
-export DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
+# 1. Create deployment environment file
+cp .env.local .env.deploy
 
-# 2. Create production environment
-cat > .env.production << EOF
-JWT_SECRET=$JWT_SECRET
+# 2. Update with production values
+cat > .env.deploy << EOF
+JWT_SECRET=$(openssl rand -base64 32)
 DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=$DEFAULT_ADMIN_PASSWORD
+DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
 SCANNER_MAX_PARALLEL_CONTAINERS=10
 SCANNER_CONTAINER_MEMORY_LIMIT=1g
 REDIS_URL=redis://redis:6379
 EOF
 
 # 3. Secure the file and deploy
-chmod 600 .env.production
-docker compose --env-file .env.production up -d
+chmod 600 .env.deploy
+./start-production.sh  # Automatically uses .env.deploy
 ```
 
 ### Environment Variables
@@ -126,7 +136,7 @@ ADMIN_PASSWORD=$(openssl rand -base64 16)  # Strong admin password
 ### File Permissions
 ```bash
 # Secure environment files
-chmod 600 .env.production    # Owner read/write only
+chmod 600 .env.deploy        # Owner read/write only
 chmod 600 .env.local         # Owner read/write only
 
 # Check permissions

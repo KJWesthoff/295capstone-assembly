@@ -26,6 +26,18 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+# Check for production environment file
+if [ -f ".env.deploy" ]; then
+    print_status "Using .env.deploy for production configuration"
+    ENV_FILE=".env.deploy"
+elif [ -f ".env.local" ]; then
+    print_warning "Using .env.local (consider creating .env.deploy for production)"
+    ENV_FILE=".env.local"
+else
+    print_warning "No environment file found, using default values"
+    ENV_FILE=""
+fi
+
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
     print_error "Docker is not running. Please start Docker and try again."
@@ -73,7 +85,11 @@ docker compose down --remove-orphans 2>/dev/null || true
 
 # Build and start all services
 print_status "Building and starting all services with Nginx proxy..."
-docker compose up --build -d
+if [ -n "$ENV_FILE" ]; then
+    docker compose --env-file "$ENV_FILE" up --build -d
+else
+    docker compose up --build -d
+fi
 
 # Check if services started successfully
 sleep 5
