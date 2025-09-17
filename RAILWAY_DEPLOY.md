@@ -13,7 +13,8 @@ Deploy VentiAPI Scanner to Railway cloud platform with automatic HTTPS and scali
 - Installs Railway CLI (if needed)
 - Handles Railway login
 - Creates project and environment
-- Generates secure secrets
+- Loads secrets from `.env.deploy` (or `.env.local` as fallback)
+- Generates secure defaults if no environment file exists
 - Deploys optimized container
 - Provides your live HTTPS URL
 
@@ -38,15 +39,31 @@ railway variables
 
 ### Environment Variables
 
-Railway automatically sets these variables:
+Railway loads variables in this priority order:
 
-| Variable | Auto-Generated | Description |
-|----------|----------------|-------------|
-| `JWT_SECRET` | ✅ | Secure 256-bit signing key |
-| `DEFAULT_ADMIN_USERNAME` | ✅ | Admin username (`admin`) |
-| `DEFAULT_ADMIN_PASSWORD` | ✅ | Random secure password |
-| `SCANNER_MAX_PARALLEL_CONTAINERS` | ✅ | Parallel scanners (3) |
-| `REDIS_URL` | ✅ | Redis connection string |
+1. **`.env.deploy`** (recommended for Railway deployment)
+2. **`.env.local`** (fallback for development)
+3. **Auto-generated defaults** (if no files exist)
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `JWT_SECRET` | .env.deploy or auto-generated | Secure 256-bit signing key |
+| `DEFAULT_ADMIN_USERNAME` | .env.deploy or auto-generated | Admin username |
+| `DEFAULT_ADMIN_PASSWORD` | .env.deploy or auto-generated | Admin password |
+| `SCANNER_MAX_PARALLEL_CONTAINERS` | .env.deploy or auto-generated | Parallel scanners |
+| `REDIS_URL` | .env.deploy or auto-generated | Redis connection string |
+
+**Using .env.deploy for Railway:**
+```bash
+# Create deployment-specific environment file
+cp .env.local .env.deploy
+
+# Customize for Railway deployment
+nano .env.deploy
+
+# Deploy with custom environment
+./start-railway.sh
+```
 
 ### Manual Configuration
 

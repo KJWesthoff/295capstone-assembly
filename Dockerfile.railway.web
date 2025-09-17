@@ -1,4 +1,4 @@
-# Simplified Railway deployment - Backend only with static frontend
+# Railway-optimized single web service
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -20,7 +20,7 @@ COPY scanner-service/web-api/ ./
 COPY external-scanner/ventiapi-scanner/ /app/scanner/
 RUN pip install -e /app/scanner/
 
-# Build frontend
+# Build frontend in separate stage
 FROM node:18-alpine as frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
@@ -28,7 +28,7 @@ RUN npm ci --only=production
 COPY frontend/ ./
 RUN npm run build
 
-# Back to main stage - copy built frontend
+# Back to main stage
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -58,35 +58,16 @@ RUN mkdir -p /shared/results /shared/specs
 # Set environment variables
 ENV PYTHONPATH="/app/scanner:/app"
 ENV PYTHONUNBUFFERED=1
-ENV REDIS_URL=redis://localhost:6379
-ENV SCANNER_MAX_PARALLEL_CONTAINERS=3
-ENV SCANNER_CONTAINER_MEMORY_LIMIT=512m
-ENV PORT=8000
 
-# Create startup script that Railway can detect as a web service
-COPY <<EOF /app/start.sh
-#!/bin/bash
-echo "🚀 Starting VentiAPI Scanner on Railway..."
+# Create simple web startup script
+RUN echo '#!/bin/bash\n\
+redis-server --daemonize yes --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru\n\
+sleep 2\n\
+exec python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}' > /app/start.sh && \
+    chmod +x /app/start.sh
 
-# Start Redis in background
-redis-server --daemonize yes --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-
-# Wait for Redis to start
-sleep 2
-
-# Start FastAPI server
-export PYTHONPATH="/app/scanner:/app"
-exec python -m uvicorn main:app --host 0.0.0.0 --port \${PORT:-8000}
-EOF
-
-RUN chmod +x /app/start.sh
-
-# Expose port for Railway
+# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:\${PORT:-8000}/health || exit 1
-
-# Start the application
+# Start the web application
 CMD ["/app/start.sh"]
