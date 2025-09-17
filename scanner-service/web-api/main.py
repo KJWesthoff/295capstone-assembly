@@ -30,6 +30,14 @@ from security import (
     SecurityConfig
 )
 
+# Import plugin system
+try:
+    from plugin_api import plugin_router
+    PLUGIN_SYSTEM_AVAILABLE = True
+except ImportError as e:
+    print(f"Plugin system not available: {e}")
+    PLUGIN_SYSTEM_AVAILABLE = False
+
 
 
 
@@ -65,6 +73,13 @@ app = FastAPI(
 
 # Add rate limiting
 app.state.limiter = limiter
+
+# Include plugin router if available
+if PLUGIN_SYSTEM_AVAILABLE:
+    app.include_router(plugin_router)
+    print("✅ Plugin system enabled - containerized scanners available at /api/v2/*")
+else:
+    print("⚠️ Plugin system disabled - using legacy scanner implementation only")
 
 # Add security headers middleware
 @app.middleware("http")
@@ -505,33 +520,27 @@ async def get_current_user(user: Dict = Depends(verify_token)):
 @limiter.limit(RateLimits.SCAN_START)
 async def start_scan(
     request: Request,
-    server_url: str = Form(...),
-    target_url: Optional[str] = Form(None),
-    rps: float = Form(1.0),
+    target_url: str = Form(...),
+    scanner_type: str = Form("venti-api"),
     max_requests: int = Form(100),
-    dangerous: bool = Form(False),
+    requests_per_second: float = Form(1.0),
+    dangerous_mode: bool = Form(False),
     fuzz_auth: bool = Form(False),
     spec_file: Optional[UploadFile] = File(None),
     user: Dict = Depends(verify_token)
 ):
-    """Secure scan start endpoint with comprehensive validation"""
-    
-    # Debug logging
-    print(f"DEBUG: Scan request received")
-    print(f"DEBUG: server_url={server_url}")
-    print(f"DEBUG: target_url={target_url}")
-    print(f"DEBUG: rps={rps}")
-    print(f"DEBUG: max_requests={max_requests}")
-    print(f"DEBUG: dangerous={dangerous}")
-    print(f"DEBUG: fuzz_auth={fuzz_auth}")
-    print(f"DEBUG: spec_file={spec_file}")
-    print(f"DEBUG: user={user}")
-    
-    scan_id = str(uuid.uuid4())
+    """Start a scan using the plugin system with VentiAPI as default"""
     
     # Rate limit per user
-    current_scans = len([s for s in scans.values() 
-                        if s.get('user') == user['username'] and s.get('status') in ['pending', 'running']])
+    if PLUGIN_SYSTEM_AVAILABLE:
+        try:
+            from scanner_plugins.manager import scanner_manager
+            current_scans = len(scanner_manager.get_active_scans(user['username']))
+        except:
+            current_scans = 0
+    else:
+        current_scans = len([s for s in scans.values() 
+                            if s.get('user') == user['username'] and s.get('status') in ['pending', 'running']])
     
     if current_scans >= SecurityConfig.MAX_CONCURRENT_SCANS:
         raise HTTPException(
@@ -539,13 +548,129 @@ async def start_scan(
             detail=f"Maximum {SecurityConfig.MAX_CONCURRENT_SCANS} concurrent scans allowed"
         )
     
+    # Try plugin system first
+    if PLUGIN_SYSTEM_AVAILABLE:
+        try:
+            from scanner_plugins.manager import scanner_manager
+            from scanner_plugins.base import ScanTarget, ScanConfig, ScannerType
+            
+            # Validate inputs
+            allow_localhost = user.get('is_admin', False)
+            target_url = validate_url(target_url, allow_localhost=allow_localhost)
+            
+            # Validate scanner type
+            try:
+                scanner_enum = ScannerType(scanner_type)
+            except ValueError:
+                # Default to venti-api if invalid scanner type
+                scanner_enum = ScannerType.VENTI_API
+            
+            # Check if scanner is available, fall back to venti-api
+            scanner = scanner_manager.get_scanner(scanner_enum)
+            if not scanner:
+                scanner_enum = ScannerType.VENTI_API
+                scanner = scanner_manager.get_scanner(scanner_enum)
+            
+            # Only admins can run dangerous scans
+            if dangerous_mode and not user.get('is_admin'):
+                raise HTTPException(status_code=403, detail="Admin privileges required for dangerous scans")
+            
+            # Handle spec file
+            spec_file_path = None
+            if spec_file:
+                file_content = await spec_file.read()
+                validate_file_upload(file_content, spec_file.filename)
+                
+                from pathlib import Path
+                shared_specs = Path("/shared/specs")
+                safe_filename = f"{uuid.uuid4()}_{spec_file.filename}"
+                spec_path = shared_specs / safe_filename
+                
+                with open(spec_path, "wb") as f:
+                    f.write(file_content)
+                
+                spec_file_path = f"/shared/specs/{safe_filename}"
+            
+            # Create scan target and config
+            target = ScanTarget(
+                url=target_url,
+                spec_file=spec_file_path,
+                target_type="api"
+            )
+            
+            config = ScanConfig(
+                max_requests=max_requests,
+                requests_per_second=requests_per_second,
+                timeout=600,
+                dangerous_mode=dangerous_mode,
+                fuzz_auth=fuzz_auth
+            )
+            
+            # Generate scan ID
+            scan_id = str(uuid.uuid4())
+            
+            # Log security event
+            log_security_event("scan_started", user['username'], {
+                "scan_id": scan_id,
+                "ip": request.client.host,
+                "target_url": target_url[:50] + "..." if len(target_url) > 50 else target_url,
+                "scanner_type": scanner_type,
+                "dangerous": dangerous_mode
+            })
+            
+            # Start scan asynchronously
+            asyncio.create_task(
+                scanner_manager.start_scan(
+                    scan_id=scan_id,
+                    target=target,
+                    config=config,
+                    scanner_type=scanner_enum,
+                    user_info=user
+                )
+            )
+            
+            # Update user scan count
+            user_db.users[user['username']]['scan_count'] += 1
+            
+            return {
+                "scan_id": scan_id,
+                "status": "pending",
+                "scanner_type": scanner_type,
+                "target_url": target_url
+            }
+            
+        except Exception as e:
+            print(f"Plugin system failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy scan implementation
+    return await start_legacy_scan(
+        request=request,
+        target_url=target_url,
+        rps=requests_per_second,
+        max_requests=max_requests,
+        dangerous=dangerous_mode,
+        fuzz_auth=fuzz_auth,
+        spec_file=spec_file,
+        user=user
+    )
+
+async def start_legacy_scan(
+    request: Request,
+    target_url: str,
+    rps: float = 1.0,
+    max_requests: int = 100,
+    dangerous: bool = False,
+    fuzz_auth: bool = False,
+    spec_file: Optional[UploadFile] = None,
+    user: Dict = None
+):
+    """Legacy scan implementation fallback"""
+    
+    scan_id = str(uuid.uuid4())
+    
     # Validate inputs (admin users can scan localhost for development)
     allow_localhost = user.get('is_admin', False)
-    server_url = validate_url(server_url, allow_localhost=allow_localhost)
-    if target_url:
-        target_url = validate_url(target_url, allow_localhost=allow_localhost)
-    else:
-        target_url = server_url
+    target_url = validate_url(target_url, allow_localhost=allow_localhost)
     
     validate_scan_params(rps, max_requests)
     
@@ -585,7 +710,7 @@ async def start_scan(
         "progress": 0,
         "current_phase": "initializing",
         "user": user['username'],
-        "server_url": server_url,
+        "server_url": target_url,
         "target_url": target_url,
         "spec_location": spec_location,
         "dangerous": dangerous,
@@ -601,7 +726,7 @@ async def start_scan(
     log_security_event("scan_started", user['username'], {
         "scan_id": scan_id,
         "ip": request.client.host,
-        "server_url": server_url[:50] + "..." if len(server_url) > 50 else server_url,
+        "server_url": target_url[:50] + "..." if len(target_url) > 50 else target_url,
         "dangerous": dangerous
     })
     
@@ -958,12 +1083,63 @@ async def get_scan_status(
     scan_id: str,
     user: Dict = Depends(verify_token)
 ):
-    """Get scan status with user ownership check"""
+    """Get scan status using plugin system with fallback to legacy"""
     
     # Validate scan ID format
     if not re.match(r'^[a-zA-Z0-9-_]+$', scan_id):
         raise HTTPException(status_code=400, detail="Invalid scan ID format")
     
+    # Try plugin system first
+    if PLUGIN_SYSTEM_AVAILABLE:
+        try:
+            from scanner_plugins.manager import scanner_manager
+            
+            scan_status = scanner_manager.get_scan_status(scan_id)
+            
+            if scan_status:
+                # Check ownership (admins can see all scans)
+                if (scan_status.get("user", {}).get("username") != user["username"] and 
+                    not user.get("is_admin")):
+                    raise HTTPException(status_code=403, detail="Access denied")
+                
+                # Extract information
+                scanner = scan_status["scanner"]
+                target = scan_status["target"]
+                status = scan_status["status"]
+                
+                # Get result if available
+                result = scan_status.get("result")
+                if result:
+                    return {
+                        "scan_id": scan_id,
+                        "status": result.status,
+                        "scanner_type": result.scanner_type.value,
+                        "target_url": result.target.url,
+                        "progress": 100 if result.status in ["completed", "failed"] else 50,
+                        "findings_count": len(result.findings),
+                        "started_at": result.started_at.isoformat(),
+                        "completed_at": result.completed_at.isoformat() if result.completed_at else None,
+                        "error_message": result.error_message,
+                        "user": scan_status.get("user", {}).get("username", "unknown"),
+                        "current_phase": "Completed" if result.status == "completed" else "Processing"
+                    }
+                else:
+                    # Scan still running
+                    return {
+                        "scan_id": scan_id,
+                        "status": status,
+                        "scanner_type": scanner.scanner_type.value,
+                        "target_url": target.url,
+                        "progress": 25,  # Estimated progress
+                        "findings_count": 0,
+                        "started_at": scan_status["started_at"].isoformat(),
+                        "user": scan_status.get("user", {}).get("username", "unknown"),
+                        "current_phase": "Running scan"
+                    }
+        except Exception as e:
+            print(f"Plugin system status check failed: {e}")
+    
+    # Fallback to legacy scan status
     if scan_id not in scans:
         raise HTTPException(status_code=404, detail="Scan not found")
     
@@ -1118,6 +1294,384 @@ async def delete_scan(
     log_security_event("scan_deleted", user['username'], {"scan_id": scan_id})
     
     return {"message": "Scan deleted successfully"}
+
+# Plugin System Endpoints (Merged from v2 API)
+@app.get("/api/scanners")
+async def get_available_scanners_plugin(user: Dict = Depends(verify_token)):
+    """Get list of available scanner plugins and their capabilities"""
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to basic scanner info
+        return {
+            "scanners": [
+                {
+                    "type": "venti-api",
+                    "name": "VentiAPI Scanner",
+                    "capabilities": {
+                        "description": "Comprehensive API security scanner",
+                        "supported_targets": ["api"],
+                        "supported_formats": ["openapi", "swagger"],
+                        "parallel_capable": True,
+                        "healthy": True
+                    }
+                }
+            ],
+            "total_count": 1
+        }
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        scanners = scanner_manager.get_available_scanners()
+        
+        # Add health status
+        health_status = await scanner_manager.health_check_all()
+        
+        for scanner in scanners:
+            scanner_type = scanner["type"]
+            scanner["healthy"] = health_status.get(scanner_type, False)
+        
+        return {
+            "scanners": scanners,
+            "total_count": len(scanners)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting scanners: {str(e)}")
+
+@app.post("/api/scan/start-plugin")
+async def start_plugin_scan(
+    target_url: str = Form(...),
+    scanner_type: str = Form("venti-api"),
+    max_requests: int = Form(100),
+    requests_per_second: float = Form(1.0),
+    dangerous_mode: bool = Form(False),
+    fuzz_auth: bool = Form(False),
+    spec_file: Optional[UploadFile] = File(None),
+    user: Dict = Depends(verify_token)
+):
+    """Start a scan using the plugin architecture"""
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to legacy scan
+        return await start_scan(
+            request=None,  # Will be handled by dependency injection
+            server_url=target_url,
+            target_url=target_url,
+            rps=requests_per_second,
+            max_requests=max_requests,
+            dangerous=dangerous_mode,
+            fuzz_auth=fuzz_auth,
+            spec_file=spec_file,
+            user=user
+        )
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        from scanner_plugins.base import ScanTarget, ScanConfig, ScannerType
+        
+        # Validate inputs
+        allow_localhost = user.get('is_admin', False)
+        target_url = validate_url(target_url, allow_localhost=allow_localhost)
+        
+        # Validate scanner type
+        try:
+            scanner_enum = ScannerType(scanner_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid scanner type: {scanner_type}")
+        
+        # Check if scanner is available
+        scanner = scanner_manager.get_scanner(scanner_enum)
+        if not scanner:
+            raise HTTPException(status_code=400, detail=f"Scanner {scanner_type} not available")
+        
+        # Only admins can run dangerous scans
+        if dangerous_mode and not user.get('is_admin'):
+            raise HTTPException(status_code=403, detail="Admin privileges required for dangerous scans")
+        
+        # Handle spec file
+        spec_file_path = None
+        if spec_file:
+            # Validate and save spec file
+            file_content = await spec_file.read()
+            validate_file_upload(file_content, spec_file.filename)
+            
+            # Save to shared specs directory
+            import uuid
+            
+            safe_filename = f"{uuid.uuid4()}_{spec_file.filename}"
+            spec_path = SHARED_SPECS / safe_filename
+            
+            with open(spec_path, "wb") as f:
+                f.write(file_content)
+            
+            spec_file_path = f"/shared/specs/{safe_filename}"
+        
+        # Create scan target and config
+        target = ScanTarget(
+            url=target_url,
+            spec_file=spec_file_path,
+            target_type="api"
+        )
+        
+        config = ScanConfig(
+            max_requests=max_requests,
+            requests_per_second=requests_per_second,
+            timeout=600,
+            dangerous_mode=dangerous_mode,
+            fuzz_auth=fuzz_auth
+        )
+        
+        # Generate scan ID
+        scan_id = str(uuid.uuid4())
+        
+        # Start scan asynchronously
+        asyncio.create_task(
+            scanner_manager.start_scan(
+                scan_id=scan_id,
+                target=target,
+                config=config,
+                scanner_type=scanner_enum,
+                user_info=user
+            )
+        )
+        
+        return {
+            "scan_id": scan_id,
+            "status": "pending",
+            "scanner_type": scanner_type,
+            "target_url": target_url
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error starting scan: {str(e)}")
+
+@app.get("/api/scan/{scan_id}/status-plugin")
+async def get_plugin_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
+    """Get status of a plugin-based scan with fallback to legacy"""
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to legacy status
+        return await get_scan_status(None, scan_id, user)
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        
+        # Try plugin system first
+        scan_status = scanner_manager.get_scan_status(scan_id)
+        
+        if scan_status:
+            # Check ownership (admins can see all scans)
+            if (scan_status.get("user", {}).get("username") != user["username"] and 
+                not user.get("is_admin")):
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Extract information
+            scanner = scan_status["scanner"]
+            target = scan_status["target"]
+            status = scan_status["status"]
+            
+            # Get result if available
+            result = scan_status.get("result")
+            if result:
+                return {
+                    "scan_id": scan_id,
+                    "status": result.status,
+                    "scanner_type": result.scanner_type.value,
+                    "target_url": result.target.url,
+                    "progress": 100 if result.status in ["completed", "failed"] else 50,
+                    "findings_count": len(result.findings),
+                    "started_at": result.started_at.isoformat(),
+                    "completed_at": result.completed_at.isoformat() if result.completed_at else None,
+                    "error_message": result.error_message
+                }
+            else:
+                # Scan still running
+                return {
+                    "scan_id": scan_id,
+                    "status": status,
+                    "scanner_type": scanner.scanner_type.value,
+                    "target_url": target.url,
+                    "progress": 25,  # Estimated progress
+                    "findings_count": 0,
+                    "started_at": scan_status["started_at"].isoformat()
+                }
+        else:
+            # Fallback to legacy scan status
+            return await get_scan_status(None, scan_id, user)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Fallback to legacy scan status
+        return await get_scan_status(None, scan_id, user)
+
+@app.get("/api/scan/{scan_id}/findings-plugin")
+async def get_plugin_scan_findings(
+    scan_id: str,
+    offset: int = 0,
+    limit: int = 50,
+    user: Dict = Depends(verify_token)
+):
+    """Get findings from a plugin-based scan with fallback to legacy"""
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to legacy findings
+        return await get_findings(None, scan_id, offset, limit, user)
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        
+        # Try plugin system first
+        scan_status = scanner_manager.get_scan_status(scan_id)
+        
+        if scan_status:
+            # Check ownership
+            if (scan_status.get("user", {}).get("username") != user["username"] and 
+                not user.get("is_admin")):
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Get result
+            result = scan_status.get("result")
+            if not result or result.status != "completed":
+                return {"findings": [], "total": 0}
+            
+            # Convert findings to legacy format for compatibility
+            all_findings = []
+            for finding in result.findings:
+                finding_dict = {
+                    "id": finding.id,
+                    "title": finding.title,
+                    "description": finding.description,
+                    "severity": finding.severity.value.upper(),
+                    "category": finding.category,
+                    "endpoint": finding.endpoint,
+                    "method": finding.method,
+                    "evidence": finding.evidence,
+                    "remediation": finding.remediation,
+                    "references": finding.references,
+                    "cvss_score": finding.cvss_score,
+                    "cwe_id": finding.cwe_id
+                }
+                all_findings.append(finding_dict)
+            
+            # Apply pagination
+            total = len(all_findings)
+            findings = all_findings[offset:offset + limit]
+            
+            response = {
+                "findings": findings,
+                "total": total
+            }
+            
+            if offset + limit < total:
+                response["nextOffset"] = offset + limit
+            
+            return response
+        else:
+            # Fallback to legacy findings
+            return await get_findings(None, scan_id, offset, limit, user)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Fallback to legacy findings
+        return await get_findings(None, scan_id, offset, limit, user)
+
+@app.delete("/api/scan/{scan_id}/stop-plugin")
+async def stop_plugin_scan(scan_id: str, user: Dict = Depends(verify_token)):
+    """Stop a plugin-based scan with fallback to legacy"""
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to legacy stop scan
+        return await stop_scan(None, scan_id, user)
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        
+        # Try plugin system first
+        scan_status = scanner_manager.get_scan_status(scan_id)
+        
+        if scan_status:
+            # Check ownership
+            if (scan_status.get("user", {}).get("username") != user["username"] and 
+                not user.get("is_admin")):
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            # Stop the scan
+            success = await scanner_manager.stop_scan(scan_id)
+            
+            if success:
+                return {"message": "Scan stopped successfully"}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to stop scan")
+        else:
+            # Fallback to legacy stop scan
+            return await stop_scan(None, scan_id, user)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Fallback to legacy stop scan
+        return await stop_scan(None, scan_id, user)
+
+@app.get("/api/scans-plugin")
+async def list_plugin_scans(user: Dict = Depends(verify_token)):
+    """List scans from plugin system with fallback to legacy"""
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to legacy scan list
+        return await list_scans(user)
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        
+        if user.get("is_admin"):
+            scans = scanner_manager.get_active_scans()
+        else:
+            scans = scanner_manager.get_active_scans(user["username"])
+        
+        return {"scans": scans}
+        
+    except Exception as e:
+        # Fallback to legacy scan list
+        return await list_scans(user)
+
+@app.get("/api/statistics-plugin")
+async def get_scanner_statistics_plugin(admin_user: Dict = Depends(verify_token)):
+    """Get scanner statistics from plugin system (admin only) with fallback"""
+    
+    if not admin_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    
+    if not PLUGIN_SYSTEM_AVAILABLE:
+        # Fallback to basic stats
+        return {
+            "total_scans": 0,
+            "scanner_types": {"venti-api": 1},
+            "scanner_health": {"venti-api": True},
+            "system_mode": "legacy"
+        }
+    
+    try:
+        from scanner_plugins.manager import scanner_manager
+        
+        stats = scanner_manager.get_scan_statistics()
+        health_status = await scanner_manager.health_check_all()
+        
+        stats["scanner_health"] = health_status
+        stats["system_mode"] = "plugin"
+        
+        return stats
+        
+    except Exception as e:
+        # Fallback to basic stats
+        return {
+            "total_scans": 0,
+            "scanner_types": {"venti-api": 1},
+            "scanner_health": {"venti-api": True},
+            "system_mode": "legacy",
+            "error": str(e)
+        }
 
 # Admin endpoints
 @app.get("/api/admin/users")

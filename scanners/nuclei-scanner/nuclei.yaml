@@ -1,0 +1,36 @@
+# Nuclei Scanner Configuration
+# Custom configuration for containerized Nuclei scanner
+
+# Template configuration
+templates:
+  - /app/templates
+
+# Network configuration
+timeout: 10
+retries: 1
+rate-limit: 1
+bulk-size: 25
+
+# Output configuration
+json: true
+no-color: true
+silent: true
+
+# Default severity levels (can be overridden by wrapper)
+severity:
+  - critical
+  - high
+  - medium
+  - low
+  - info
+
+# Exclude noisy templates by default
+exclude-tags:
+  - fuzz
+  - dos
+  - intrusive
+  - bruteforce
+
+# Performance tuning
+max-host-error: 30
+track-error: true

@@ -1,0 +1,97 @@
+# Docker Compose for Containerized Scanner Development
+# This file manages the scanner container registry and development environment
+
+services:
+  # Local container registry for scanner images
+  scanner-registry:
+    image: registry:2
+    container_name: scanner-registry
+    ports:
+      - "5000:5000"
+    volumes:
+      - scanner-registry-data:/var/lib/registry
+    environment:
+      - REGISTRY_STORAGE_DELETE_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - scanner-network
+
+  # Scanner image builder service
+  scanner-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner-builder
+    container_name: scanner-builder
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scanners:/scanners:ro
+    environment:
+      - REGISTRY_URL=scanner-registry:5000
+    depends_on:
+      - scanner-registry
+    networks:
+      - scanner-network
+    command: ["sleep", "infinity"]  # Keep running for manual builds
+
+  # Development scanner instances (for testing)
+  nuclei-scanner-dev:
+    image: nuclei-scanner:latest
+    container_name: nuclei-scanner-dev
+    volumes:
+      - shared-results:/output
+      - shared-specs:/input
+    networks:
+      - scanner-network
+    command: ["sleep", "infinity"]  # Keep running for testing
+    profiles:
+      - dev
+
+  zap-scanner-dev:
+    image: zap-scanner:latest
+    container_name: zap-scanner-dev
+    volumes:
+      - shared-results:/output
+      - shared-specs:/input
+    networks:
+      - scanner-network
+    command: ["sleep", "infinity"]  # Keep running for testing
+    profiles:
+      - dev
+
+  # Scanner manifest server (for dynamic discovery)
+  scanner-manifest-server:
+    image: nginx:alpine
+    container_name: scanner-manifest-server
+    ports:
+      - "5001:80"
+    volumes:
+      - ./scanner-manifests:/usr/share/nginx/html:ro
+    networks:
+      - scanner-network
+    restart: unless-stopped
+
+volumes:
+  scanner-registry-data:
+    driver: local
+  shared-results:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/shared/results
+  shared-specs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/shared/specs
+
+networks:
+  scanner-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: scanner-br0
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1

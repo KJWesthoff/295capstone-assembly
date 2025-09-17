@@ -18,10 +18,14 @@ const getAuthHeadersForFormData = (): HeadersInit => {
 export interface ScanRequest {
   spec_url?: string;
   server_url: string;
+  target_url: string;
   rps?: number;
+  requests_per_second?: number;
   max_requests?: number;
   dangerous?: boolean;
+  dangerous_mode?: boolean;
   fuzz_auth?: boolean;
+  scanner_type?: string;
 }
 
 export interface ChunkStatus {
@@ -68,7 +72,38 @@ export interface FindingsResponse {
   nextOffset?: number;
 }
 
+export interface Scanner {
+  type: string;
+  name: string;
+  display_name?: string;
+  capabilities?: {
+    description: string;
+    supported_targets: string[];
+    supported_formats: string[];
+    parallel_capable: boolean;
+    auth_capable: boolean;
+    custom_headers: boolean;
+  };
+  healthy?: boolean;
+}
+
+export interface ScannersResponse {
+  scanners: Scanner[];
+  total_count: number;
+}
+
 export const scannerApi = {
+  async getAvailableScanners(): Promise<ScannersResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/scanners`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get scanners: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
   async startScan(request: ScanRequest, specFile?: File): Promise<{ scan_id: string; status: string }> {
     const formData = new FormData();
     
@@ -77,13 +112,14 @@ export const scannerApi = {
       formData.append('spec_file', specFile);
     }
     
-    // Add other request parameters
-    formData.append('server_url', request.server_url);
-    // If spec_url is provided, use it as target_url, otherwise use server_url
-    formData.append('target_url', request.spec_url || request.server_url);
-    if (request.rps) formData.append('rps', request.rps.toString());
+    // Add new plugin API parameters
+    formData.append('target_url', request.target_url || request.spec_url || request.server_url);
+    formData.append('scanner_type', request.scanner_type || 'venti-api');
     if (request.max_requests) formData.append('max_requests', request.max_requests.toString());
-    if (request.dangerous) formData.append('dangerous', 'true');
+    if (request.requests_per_second || request.rps) {
+      formData.append('requests_per_second', (request.requests_per_second || request.rps)!.toString());
+    }
+    if (request.dangerous_mode || request.dangerous) formData.append('dangerous_mode', 'true');
     if (request.fuzz_auth) formData.append('fuzz_auth', 'true');
 
     const response = await fetch(`${API_BASE_URL}/api/scan/start`, {

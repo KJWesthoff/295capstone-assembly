@@ -1,0 +1,28 @@
+capabilities:
+  auth: true
+  formats:
+  - openapi
+  - swagger
+  headers: true
+  parallel: true
+  targets:
+  - api
+description: Comprehensive API security scanner with OpenAPI support
+environment:
+- PYTHONUNBUFFERED=1
+- SCANNER_MODE=container
+healthcheck:
+  command:
+  - --health-check
+  interval: 30
+image: ventiapi-scanner:latest
+name: VentiAPI Scanner
+resources:
+  cpu: 500m
+  memory: 512Mi
+  timeout: 600
+type: venti-api
+version: 2.0.0
+volumes:
+- /shared/specs:/input:ro
+- /shared/results:/output:rw

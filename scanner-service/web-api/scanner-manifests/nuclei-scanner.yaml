@@ -1,0 +1,27 @@
+capabilities:
+  auth: false
+  formats:
+  - url
+  headers: true
+  parallel: true
+  targets:
+  - web
+  - api
+description: Fast vulnerability scanner based on community templates
+environment:
+- NUCLEI_CONFIG=/app/nuclei.yaml
+healthcheck:
+  command:
+  - --health-check
+  interval: 30
+image: nuclei-scanner:latest
+name: Nuclei Scanner
+resources:
+  cpu: 500m
+  memory: 256Mi
+  timeout: 300
+type: nuclei
+version: 3.0.0
+volumes:
+- /shared/specs:/input:ro
+- /shared/results:/output:rw

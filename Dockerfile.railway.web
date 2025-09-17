@@ -13,8 +13,11 @@ RUN apt-get update && apt-get install -y \
 COPY scanner-service/web-api/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy web API code
+# Copy web API code (including plugin system)
 COPY scanner-service/web-api/ ./
+
+# Create scanner manifest directory
+RUN mkdir -p /app/scanner-manifests
 
 # Copy scanner code
 COPY external-scanner/ventiapi-scanner/ /app/scanner/
