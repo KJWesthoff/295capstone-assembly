@@ -1,0 +1,89 @@
+# Simplified Railway deployment - Backend only with static frontend
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies for web API
+COPY scanner-service/web-api/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy web API code
+COPY scanner-service/web-api/ ./
+
+# Copy scanner code
+COPY external-scanner/ventiapi-scanner/ /app/scanner/
+RUN pip install -e /app/scanner/
+
+# Build frontend
+FROM node:18-alpine as frontend-build
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci --only=production
+COPY frontend/ ./
+RUN npm run build
+
+# Back to main stage - copy built frontend
+FROM python:3.11-slim
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY scanner-service/web-api/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy web API code
+COPY scanner-service/web-api/ ./
+
+# Copy scanner code
+COPY external-scanner/ventiapi-scanner/ /app/scanner/
+RUN pip install -e /app/scanner/
+
+# Copy built frontend
+COPY --from=frontend-build /app/frontend/build ./static
+
+# Create shared directories
+RUN mkdir -p /shared/results /shared/specs
+
+# Set environment variables
+ENV PYTHONPATH="/app/scanner:/app"
+ENV PYTHONUNBUFFERED=1
+ENV REDIS_URL=redis://localhost:6379
+ENV SCANNER_MAX_PARALLEL_CONTAINERS=3
+ENV SCANNER_CONTAINER_MEMORY_LIMIT=512m
+
+# Create startup script
+RUN echo '#!/bin/bash' > /app/start.sh && \
+    echo 'echo "🚀 Starting VentiAPI Scanner on Railway..."' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Start Redis in background' >> /app/start.sh && \
+    echo 'redis-server --daemonize yes --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Wait for Redis to start' >> /app/start.sh && \
+    echo 'sleep 2' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Start FastAPI server' >> /app/start.sh && \
+    echo 'PORT=${PORT:-8000}' >> /app/start.sh && \
+    echo 'export PYTHONPATH="/app/scanner:/app"' >> /app/start.sh && \
+    echo 'exec python -m uvicorn main:app --host 0.0.0.0 --port $PORT' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+# Expose port 8000
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+
+# Start the application
+CMD ["/app/start.sh"]

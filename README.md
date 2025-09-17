@@ -1,6 +1,8 @@
 # VentiAPI Scanner - Full-Stack API Security Testing Platform
 
-A complete full-stack application for scanning APIs for security vulnerabilities using parallel processing, Nginx reverse proxy, and real-time progress tracking.
+A complete full-stack application for scanning APIs for security vulnerabilities using parallel processing, Nginx reverse proxy, real-time progress tracking, and cloud deployment support.
+
+🌐 **Live Demo**: [https://ventiapiscanner-production.up.railway.app](https://ventiapiscanner-production.up.railway.app)
 
 ## 🏗️ Architecture
 
@@ -40,16 +42,41 @@ A complete full-stack application for scanning APIs for security vulnerabilities
                                                └─────────────────┘
 ```
 
+### Railway Cloud Architecture (Serverless)
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           Railway Container                                     │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────────┐  │
+│  │   Nginx Proxy   │    │   Frontend      │    │   Web API + Scanner        │  │
+│  │   (Port 8000)   │◄──►│   (Static Files)│    │   (FastAPI + VentiAPI)     │  │
+│  │   /     → FE    │    │   Built React   │    │   Direct Subprocess        │  │
+│  │   /api  → BE    │    │   Served by     │    │   Railway Compatible       │  │
+│  │   Rate Limiting │    │   FastAPI       │    │   No Docker Required       │  │
+│  └─────────────────┘    └─────────────────┘    └─────────────────────────────┘  │
+│                                                            │                     │
+│                                                            ▼                     │
+│                                                 ┌─────────────────┐             │
+│                                                 │     Redis       │             │
+│                                                 │   (Cache/Queue) │             │
+│                                                 │   Local Process │             │
+│                                                 └─────────────────┘             │
+│                                                                                 │
+│  🌐 HTTPS: ventiapiscanner-production.up.railway.app                          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## 🚀 Key Features
 
 ### **Production-Ready Infrastructure**
 - **Nginx Reverse Proxy**: Single entry point with SSL support, rate limiting, and security headers
 - **Container Orchestration**: Complete Docker Compose setup with health checks and restart policies
+- **Cloud Deployment**: One-command Railway deployment with automatic HTTPS and scaling
 - **Internal Networking**: Secure container-to-container communication
 - **Volume Management**: Persistent shared storage for results and specifications
 
 ### **Performance Optimized**
 - **Parallel Scanning**: Automatically splits large API specs into chunks and runs multiple containers concurrently
+- **Railway-Compatible**: Direct subprocess execution for cloud environments without Docker-in-Docker
 - **Configurable Scaling**: Adjust parallel container count and chunk size via environment variables
 - **Smart Probe Grouping**: Groups compatible security probes to avoid conflicts while maximizing parallelism
 - **Real-time Progress**: Live updates with TanStack Query showing individual container progress
@@ -69,9 +96,8 @@ A complete full-stack application for scanning APIs for security vulnerabilities
 ## 🎯 Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose
-- Git with submodule support
-- 4GB+ RAM (for parallel scanning)
+- **Local Development**: Docker & Docker Compose, Git with submodule support, 4GB+ RAM
+- **Cloud Deployment**: Railway account (free tier available)
 
 ### 1. Clone and Setup
 ```bash
@@ -81,6 +107,52 @@ git submodule update --init --recursive
 ```
 
 ### 2. Choose Your Deployment Mode
+
+## 🌐 Cloud Deployment (Railway)
+
+### ⚡ One-Command Deploy
+```bash
+# Deploy to Railway with one command
+./start-railway.sh
+```
+
+**What this does:**
+- Installs Railway CLI (if needed)
+- Handles Railway login
+- Initializes Railway project
+- Sets secure environment variables automatically
+- Deploys with optimized multi-stage build
+- Provides your live HTTPS URL
+
+**Result**: Your app will be live at `https://your-app.railway.app` with:
+- ✅ Automatic HTTPS
+- ✅ Professional domain
+- ✅ Nginx reverse proxy
+- ✅ Parallel scanning (Railway-compatible)
+- ✅ Real-time progress tracking
+- ✅ Admin authentication
+
+### 🔧 Railway Management
+```bash
+# View your app URL
+railway domain
+
+# Check environment variables
+railway variables
+
+# View logs
+railway logs
+
+# Update deployment
+railway up
+```
+
+### 💰 Railway Pricing
+- **Free Tier**: Perfect for testing and demos
+- **Pro Tier** ($5/month): Custom domains, increased resources
+- **Automatic scaling** based on usage
+
+## 🏠 Local Development
 
 #### Production Mode (Recommended) - Nginx Reverse Proxy
 ```bash
@@ -106,8 +178,7 @@ git submodule update --init --recursive
 
 ### Environment Variables
 
-Create/edit `.env.local` for your configuration:
-
+#### Local Development (`.env.local`)
 ```bash
 # Authentication
 JWT_SECRET=your-secure-jwt-secret-here
@@ -120,6 +191,20 @@ SCANNER_CONTAINER_MEMORY_LIMIT=1g     # Memory limit per container
 
 # Redis Configuration
 REDIS_URL=redis://redis:6379
+```
+
+#### Railway Cloud (Managed via CLI)
+```bash
+# Set Railway environment variables
+railway variables --set "DEFAULT_ADMIN_PASSWORD=your-secure-password"
+railway variables --set "SCANNER_MAX_PARALLEL_CONTAINERS=5"
+railway variables --set "SCANNER_CONTAINER_MEMORY_LIMIT=512m"
+
+# View current variables
+railway variables
+
+# Auto-generated by deployment script:
+# JWT_SECRET, DEFAULT_ADMIN_USERNAME, REDIS_URL
 ```
 
 ### Parallel Scanning Configuration
@@ -151,11 +236,17 @@ SCANNER_CONTAINER_MEMORY_LIMIT=2g     # Increase if needed
 ScannerApp/
 ├── docker-compose.yml              # Production orchestration with nginx
 ├── docker-compose.dev.yml          # Development overrides
+├── docker-compose.railway.yml      # Railway single-service deployment
 ├── nginx/
 │   ├── nginx.conf                  # Production reverse proxy config
+│   ├── nginx.railway.conf          # Railway-optimized config
 │   └── nginx-ssl.conf              # SSL-ready configuration template
 ├── start-production.sh             # Production startup script
 ├── start-dev.sh                    # Development startup script
+├── start-railway.sh                # One-command Railway deployment
+├── Dockerfile.railway.simple       # Railway-optimized container build
+├── railway.json                    # Railway platform configuration
+├── RAILWAY_DEPLOY.md              # Complete Railway deployment guide
 ├── frontend/                       # React TypeScript app
 │   ├── src/
 │   │   ├── api/                   # TanStack Query API client
@@ -202,6 +293,9 @@ ScannerApp/
 
 ### Intelligent Scan Optimization
 - **Endpoint Chunking**: Splits large APIs into 2-endpoint chunks for maximum parallelism
+- **Cloud-Compatible Execution**: Automatically detects environment and chooses execution method:
+  - **Local Development**: Docker containers for isolation
+  - **Railway/Cloud**: Direct subprocess execution (no Docker-in-Docker required)
 - **Probe Grouping**: 
   - **Auth Group**: Authentication-related probes (may interact)
   - **Scan Group**: Read-only probes (safe parallel execution)
@@ -371,6 +465,69 @@ SCANNER_CONTAINER_MEMORY_LIMIT=512m
 REDIS_MAXMEMORY=256mb
 ```
 
+## 🐛 Troubleshooting
+
+### Railway Deployment Issues
+
+#### Scanner Returns 0 Findings
+✅ **Fixed in latest version**: The app now automatically detects Railway environment and uses direct subprocess execution instead of Docker containers.
+
+If you still see this issue:
+```bash
+# Check logs for Railway-compatible execution
+railway logs
+
+# Should see: "Starting Railway-compatible scanner" instead of "docker run"
+```
+
+#### Authentication Issues
+```bash
+# Check environment variables are set
+railway variables
+
+# Restart service after changing variables
+railway up
+
+# Reset admin password
+railway variables --set "DEFAULT_ADMIN_PASSWORD=newpassword123"
+railway up
+```
+
+#### Performance Issues
+```bash
+# Reduce parallel containers for Railway free tier
+railway variables --set "SCANNER_MAX_PARALLEL_CONTAINERS=2"
+
+# Check resource usage
+railway logs
+
+# Scale up on Railway Pro plan
+railway variables --set "SCANNER_MAX_PARALLEL_CONTAINERS=8"
+```
+
+### Local Development Issues
+
+#### Docker Container Failures
+```bash
+# Check Docker is running
+docker ps
+
+# Restart services
+docker compose down && docker compose up
+
+# Check container logs
+docker compose logs scanner-service
+```
+
+#### Port Conflicts
+```bash
+# Check what's using port 80
+sudo lsof -i :80
+
+# Use development mode with port 3000
+./start-dev.sh
+```
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -415,4 +572,12 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**🚀 Built for Production-Scale API Security Testing with Nginx Reverse Proxy and Parallel Container Orchestration**
+**🚀 Built for Production-Scale API Security Testing**
+
+✨ **Local Development**: Nginx Reverse Proxy + Parallel Container Orchestration  
+☁️ **Cloud Deployment**: Railway-Compatible with One-Command Deploy  
+🔍 **Security Testing**: Complete OWASP API Top 10 Coverage  
+⚡ **Performance**: Intelligent Parallel Processing + Real-time Progress
+
+**Deploy to Railway**: `./start-railway.sh`  
+**Live Demo**: [ventiapiscanner-production.up.railway.app](https://ventiapiscanner-production.up.railway.app)

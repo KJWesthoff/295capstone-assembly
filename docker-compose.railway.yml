@@ -1,0 +1,29 @@
+# Railway-optimized Docker Compose (single service)
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.railway
+    ports:
+      - "80:80"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - DEFAULT_ADMIN_USERNAME=${DEFAULT_ADMIN_USERNAME:-admin}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
+      - REDIS_URL=redis://localhost:6379
+      - SCANNER_MAX_PARALLEL_CONTAINERS=${SCANNER_MAX_PARALLEL_CONTAINERS:-3}
+      - SCANNER_CONTAINER_MEMORY_LIMIT=${SCANNER_CONTAINER_MEMORY_LIMIT:-512m}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - app-data:/shared
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  app-data:
+    driver: local

@@ -1,227 +1,194 @@
 # Secrets Management
 
-This document explains how to manage secrets and credentials for the Scanner Application across different environments.
+Simple, secure credential management for VentiAPI Scanner across all deployment environments.
 
-## Overview
+## 🔑 Required Secrets
 
-The application uses a multi-tiered approach for managing secrets:
+### Core Credentials
+- **`JWT_SECRET`**: Token signing key (256-bit recommended)
+- **`DEFAULT_ADMIN_USERNAME`**: Admin username (default: `admin`)
+- **`DEFAULT_ADMIN_PASSWORD`**: Admin password (strong password required)
 
-1. **Development**: Local `.env.local` file (git-ignored)
-2. **Production**: Environment variables or external secrets management
-3. **CI/CD**: Environment variables or integrated secrets management
+### Configuration
+- **`SCANNER_MAX_PARALLEL_CONTAINERS`**: Parallel scanner limit
+- **`SCANNER_CONTAINER_MEMORY_LIMIT`**: Memory per scanner
+- **`REDIS_URL`**: Redis connection (auto-configured in most cases)
 
-## Development Environment
+## 🏠 Local Development
 
-### Local Development Setup
+### Quick Setup
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd ScannerApp
 
-1. **Copy development credentials:**
-   ```bash
-   # Credentials are already in .env.local (git-ignored)
-   # Default admin credentials:
-   # Username: admin
-   # Password: admin123
-   ```
+# 2. Generate secure secrets
+export JWT_SECRET=$(openssl rand -base64 32)
+export DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
 
-2. **Start development environment:**
-   ```bash
-   # Backend (loads .env.local automatically)
-   JWT_SECRET=$(cat .env.local | grep JWT_SECRET | cut -d'=' -f2) docker compose up --build -d
-   
-   # Frontend (development server)
-   cd frontend && PORT=3001 REACT_APP_API_URL=http://localhost:8000 npm start
-   ```
+# 3. Start development
+./start-dev.sh
+
+# Your admin credentials:
+echo "Username: admin"
+echo "Password: $DEFAULT_ADMIN_PASSWORD"
+```
+
+### Environment File (.env.local)
+```bash
+# Create local environment file (git-ignored)
+cat > .env.local << EOF
+JWT_SECRET=$(openssl rand -base64 32)
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
+SCANNER_MAX_PARALLEL_CONTAINERS=5
+SCANNER_CONTAINER_MEMORY_LIMIT=512m
+REDIS_URL=redis://redis:6379
+EOF
+```
+
+## ☁️ Railway Cloud Deployment
+
+### Automatic Setup
+```bash
+# One-command deployment with auto-generated secrets
+./start-railway.sh
+```
+
+### Manual Configuration
+```bash
+# Set secure variables manually
+railway variables --set "JWT_SECRET=$(openssl rand -base64 32)"
+railway variables --set "DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)"
+railway variables --set "SCANNER_MAX_PARALLEL_CONTAINERS=3"
+
+# Check variables
+railway variables
+
+# Deploy
+railway up
+```
+
+## 🚀 Production Deployment
+
+### Docker Compose
+```bash
+# 1. Generate production secrets
+export JWT_SECRET=$(openssl rand -base64 32)
+export DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
+
+# 2. Create production environment
+cat > .env.production << EOF
+JWT_SECRET=$JWT_SECRET
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_PASSWORD=$DEFAULT_ADMIN_PASSWORD
+SCANNER_MAX_PARALLEL_CONTAINERS=10
+SCANNER_CONTAINER_MEMORY_LIMIT=1g
+REDIS_URL=redis://redis:6379
+EOF
+
+# 3. Secure the file and deploy
+chmod 600 .env.production
+docker compose --env-file .env.production up -d
+```
 
 ### Environment Variables
-
-The following secrets are managed:
-
-- `JWT_SECRET`: Secret key for JWT token signing
-- `DEFAULT_ADMIN_USERNAME`: Default administrator username
-- `DEFAULT_ADMIN_PASSWORD`: Default administrator password
-- `REDIS_URL`: Redis connection string
-- `SCANNER_MAX_PARALLEL_CONTAINERS`: Maximum parallel scanner containers
-- `SCANNER_CONTAINER_MEMORY_LIMIT`: Memory limit per scanner container
-
-## Production Environment
-
-### Environment Variables Setup
-
-1. **Set production environment variables:**
-   ```bash
-   export JWT_SECRET="your-production-jwt-secret-here"
-   export DEFAULT_ADMIN_USERNAME="admin"
-   export DEFAULT_ADMIN_PASSWORD="your-secure-admin-password"
-   export REDIS_URL="redis://your-production-redis:6379"
-   export SCANNER_MAX_PARALLEL_CONTAINERS="10"
-   export SCANNER_CONTAINER_MEMORY_LIMIT="1g"
-   ```
-
-2. **Use a secrets management solution:**
-   - **Docker Secrets**: For Docker Swarm deployments
-   - **Kubernetes Secrets**: For K8s deployments
-   - **HashiCorp Vault**: For enterprise environments
-   - **External secrets operator**: For cloud-agnostic solutions
-
-### Production Deployment
-
-#### Option 1: Environment variables
 ```bash
-# Set environment variables
+# Set directly in environment
 export JWT_SECRET="your-secure-jwt-secret"
 export DEFAULT_ADMIN_PASSWORD="your-secure-password"
 
-# Deploy application
-docker compose up --build -d
+# Start production
+./start-production.sh
 ```
 
-#### Option 2: Docker secrets (Swarm mode)
+## 🔒 Security Best Practices
+
+### Secret Generation
 ```bash
-# Create Docker secrets
-echo "your-jwt-secret" | docker secret create jwt_secret -
-echo "your-admin-password" | docker secret create admin_password -
+# Generate cryptographically secure secrets
+JWT_SECRET=$(openssl rand -base64 32)      # 256-bit JWT secret
+ADMIN_PASSWORD=$(openssl rand -base64 16)  # Strong admin password
 
-# Deploy with Docker secrets
-docker stack deploy -c docker-compose.yml scanner-app
+# Alternative: Use a password manager
+# - 1Password
+# - Bitwarden  
+# - LastPass
 ```
 
-#### Option 3: Environment file
+### Storage Security
+- ✅ **Never commit** secrets to git
+- ✅ **Use environment variables** in production
+- ✅ **Rotate secrets** regularly
+- ✅ **Limit access** to secrets
+- ✅ **Monitor access** to credentials
+
+### File Permissions
 ```bash
-# Create production environment file
-cat > .env.production << EOF
-JWT_SECRET=your-secure-jwt-secret
-DEFAULT_ADMIN_PASSWORD=your-secure-password
-EOF
+# Secure environment files
+chmod 600 .env.production    # Owner read/write only
+chmod 600 .env.local         # Owner read/write only
 
-# Deploy application
-docker compose --env-file .env.production up --build -d
+# Check permissions
+ls -la .env*
 ```
 
-## Secret Generation
+## 🐛 Troubleshooting
 
-### Generate Secure Secrets
-
+### Check Secrets Status
 ```bash
-# Generate a secure JWT secret (256-bit)
-export JWT_SECRET=$(openssl rand -base64 32)
+# Verify secrets are set (without showing values)
+[ -n "$JWT_SECRET" ] && echo "✅ JWT_SECRET set" || echo "❌ JWT_SECRET missing"
+[ -n "$DEFAULT_ADMIN_PASSWORD" ] && echo "✅ ADMIN_PASSWORD set" || echo "❌ ADMIN_PASSWORD missing"
 
-# Generate a secure admin password
-export DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
-
-# Display generated secrets (for manual configuration)
-echo "JWT_SECRET=${JWT_SECRET}"
-echo "DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}"
+# Railway environment
+railway variables | grep -E "(JWT_SECRET|DEFAULT_ADMIN)"
 ```
-
-### Environment File Template
-
-```bash
-# Create .env.production template
-cat > .env.production.template << EOF
-JWT_SECRET=REPLACE_WITH_SECURE_SECRET
-DEFAULT_ADMIN_USERNAME=admin
-DEFAULT_ADMIN_PASSWORD=REPLACE_WITH_SECURE_PASSWORD
-REDIS_URL=redis://redis:6379
-SCANNER_MAX_PARALLEL_CONTAINERS=10
-SCANNER_CONTAINER_MEMORY_LIMIT=1g
-EOF
-```
-
-## Security Best Practices
-
-1. **Never commit secrets to version control**
-   - The `.env.local` file is git-ignored
-   - Use environment variables for CI/CD
-   - Store production secrets securely
-
-2. **Use strong, unique secrets**
-   - Generate JWT secrets with sufficient entropy (recommended: 256-bit)
-   - Use complex passwords for admin accounts
-   - Rotate secrets regularly
-
-3. **Principle of least privilege**
-   - Grant minimal permissions for accessing secrets
-   - Use service accounts instead of hardcoded credentials
-   - Limit secret access to only required applications
-
-4. **Audit and monitoring**
-   - Enable access logging for secrets
-   - Monitor for unauthorized access attempts
-   - Set up alerts for secret access
-
-## Troubleshooting
 
 ### Common Issues
 
-1. **Environment variables not set:**
-   ```bash
-   # Check if variables are set
-   env | grep -E "(JWT_SECRET|DEFAULT_ADMIN|REDIS_URL)"
-   
-   # Set missing variables
-   export JWT_SECRET="your-secret-here"
-   ```
-
-2. **JWT secret not working:**
-   - Ensure the secret is base64-encoded if required
-   - Check secret length (minimum 256 bits recommended)
-   - Verify no trailing whitespace or newlines
-
-3. **Permission denied:**
-   - Check file permissions on environment files
-   - Verify container has access to secrets
-   - Ensure proper user/group ownership
-
-4. **Secrets in logs:**
-   - Never log secret values
-   - Use environment variable names in logs instead
-   - Implement log sanitization
-
-### Debug Commands
-
+#### Login Failed
 ```bash
-# Validate environment variables (without showing values)
-env | grep -E "(JWT_SECRET|DEFAULT_ADMIN|REDIS_URL)" | cut -d'=' -f1
+# Check admin credentials
+railway variables | grep DEFAULT_ADMIN
 
-# Check if secrets are properly loaded (without showing values)
-[ -n "$JWT_SECRET" ] && echo "JWT_SECRET is set" || echo "JWT_SECRET is missing"
-[ -n "$DEFAULT_ADMIN_PASSWORD" ] && echo "DEFAULT_ADMIN_PASSWORD is set" || echo "DEFAULT_ADMIN_PASSWORD is missing"
-
-# Check container logs
-docker compose logs web-api
-
-# Test secret strength
-echo "$JWT_SECRET" | wc -c  # Should be > 32 characters
+# Reset password
+railway variables --set "DEFAULT_ADMIN_PASSWORD=newpassword123"
+railway up
 ```
 
-## Migration from Development to Production
+#### JWT Errors
+```bash
+# Generate new JWT secret
+export JWT_SECRET=$(openssl rand -base64 32)
+echo "New JWT secret: $JWT_SECRET"
 
-1. **Generate production secrets:**
-   ```bash
-   # Generate secure secrets for production
-   openssl rand -base64 32 > jwt_secret.txt
-   openssl rand -base64 16 > admin_password.txt
-   ```
+# Update and restart
+railway variables --set "JWT_SECRET=$JWT_SECRET"
+railway up
+```
 
-2. **Create production environment file:**
-   ```bash
-   # Create secure production environment
-   cat > .env.production << EOF
-   JWT_SECRET=$(cat jwt_secret.txt)
-   DEFAULT_ADMIN_USERNAME=admin
-   DEFAULT_ADMIN_PASSWORD=$(cat admin_password.txt)
-   REDIS_URL=redis://redis:6379
-   SCANNER_MAX_PARALLEL_CONTAINERS=10
-   SCANNER_CONTAINER_MEMORY_LIMIT=1g
-   EOF
-   
-   # Secure the file
-   chmod 600 .env.production
-   ```
+## 📋 Quick Reference
 
-3. **Deploy to production:**
-   ```bash
-   docker compose --env-file .env.production up --build -d
-   
-   # Clean up temporary files
-   rm jwt_secret.txt admin_password.txt
-   ```
+### Development
+```bash
+./start-dev.sh              # Auto-generated secrets
+```
+
+### Railway Cloud
+```bash
+./start-railway.sh          # Auto-deployment
+railway variables           # Check secrets
+```
+
+### Production
+```bash
+# Set secrets → Deploy
+export JWT_SECRET=$(openssl rand -base64 32)
+export DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 16)
+./start-production.sh
+```
+
+---
+
+**🔐 Keep secrets secure, rotate regularly, and never commit to version control.**

@@ -343,6 +343,30 @@ def validate_scan_params(rps: float, max_requests: int) -> None:
             detail="Max requests must be between 1 and 500"
         )
 
+def get_railway_scanner_command(scan_id: str, spec_path: str, server_url: str, 
+                              dangerous: bool = False, is_admin: bool = False) -> List[str]:
+    """Generate Railway-compatible scanner command (direct subprocess)"""
+    
+    # Validate inputs
+    if not re.match(r'^[a-zA-Z0-9-_]+$', scan_id):
+        raise ValueError("Invalid scan ID format")
+    
+    # Base command to run VentiAPI scanner directly
+    cmd = [
+        'python', '-m', 'scanner.cli',
+        '--spec', spec_path,
+        '--server', server_url,
+        '--out', f'/shared/results/{scan_id}',
+        '--rps', '1.0',
+        '--max-requests', '100'
+    ]
+    
+    # Add dangerous flag only for admin users
+    if dangerous and is_admin:
+        cmd.append('--dangerous')
+    
+    return cmd
+
 def log_security_event(event_type: str, user: Optional[str], details: Dict):
     """Log security events for monitoring"""
     timestamp = datetime.utcnow().isoformat()

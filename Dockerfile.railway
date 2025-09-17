@@ -1,0 +1,106 @@
+# Multi-stage build for Railway deployment
+# Stage 1: Build frontend
+FROM node:18-alpine as frontend-build
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci --only=production
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Build scanner image
+FROM python:3.11-slim as scanner-build
+WORKDIR /app/scanner
+COPY external-scanner/ventiapi-scanner/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY external-scanner/ventiapi-scanner/ ./
+RUN pip install -e .
+RUN mkdir -p /shared/results /shared/specs
+
+# Stage 3: Main application with nginx
+FROM nginx:alpine
+WORKDIR /app
+
+# Install Python, Docker, Redis, and required tools
+RUN apk add --no-cache python3 py3-pip docker redis supervisor curl
+
+# Install Python dependencies for web API
+COPY scanner-service/web-api/requirements.txt /app/web-api/
+RUN pip3 install --no-cache-dir -r /app/web-api/requirements.txt
+
+# Copy web API code
+COPY scanner-service/web-api/ /app/web-api/
+
+# Copy scanner from previous stage
+COPY --from=scanner-build /app/scanner /app/scanner
+COPY --from=scanner-build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
+# Copy built frontend
+COPY --from=frontend-build /app/frontend/build /usr/share/nginx/html
+
+# Copy Railway-specific nginx configuration
+COPY nginx/nginx.railway.conf /etc/nginx/nginx.conf
+
+# Create shared directories
+RUN mkdir -p /shared/results /shared/specs /var/log/redis
+
+# Create supervisord configuration for multi-process management
+RUN echo '[supervisord]' > /etc/supervisord.conf && \
+    echo 'nodaemon=true' >> /etc/supervisord.conf && \
+    echo 'user=root' >> /etc/supervisord.conf && \
+    echo 'logfile=/var/log/supervisor/supervisord.log' >> /etc/supervisord.conf && \
+    echo 'pidfile=/var/run/supervisord.pid' >> /etc/supervisord.conf && \
+    echo '' >> /etc/supervisord.conf && \
+    echo '[program:redis]' >> /etc/supervisord.conf && \
+    echo 'command=redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --dir /var/log/redis' >> /etc/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisord.conf && \
+    echo 'stdout_logfile=/var/log/redis.log' >> /etc/supervisord.conf && \
+    echo 'stderr_logfile=/var/log/redis.log' >> /etc/supervisord.conf && \
+    echo '' >> /etc/supervisord.conf && \
+    echo '[program:web-api]' >> /etc/supervisord.conf && \
+    echo 'command=python3 -m uvicorn main:app --host 0.0.0.0 --port 8001' >> /etc/supervisord.conf && \
+    echo 'directory=/app/web-api' >> /etc/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisord.conf && \
+    echo 'stdout_logfile=/var/log/web-api.log' >> /etc/supervisord.conf && \
+    echo 'stderr_logfile=/var/log/web-api.log' >> /etc/supervisord.conf && \
+    echo 'environment=PYTHONPATH="/app/scanner:/usr/local/lib/python3.11/site-packages",PYTHONUNBUFFERED="1"' >> /etc/supervisord.conf && \
+    echo '' >> /etc/supervisord.conf && \
+    echo '[program:nginx]' >> /etc/supervisord.conf && \
+    echo 'command=nginx -g "daemon off;"' >> /etc/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisord.conf && \
+    echo 'stdout_logfile=/var/log/nginx.log' >> /etc/supervisord.conf && \
+    echo 'stderr_logfile=/var/log/nginx.log' >> /etc/supervisord.conf
+
+# Set environment variables
+ENV PYTHONPATH="/app/scanner:/usr/local/lib/python3.11/site-packages"
+ENV PYTHONUNBUFFERED=1
+ENV REDIS_URL=redis://localhost:6379
+ENV SCANNER_MAX_PARALLEL_CONTAINERS=3
+ENV SCANNER_CONTAINER_MEMORY_LIMIT=512m
+
+# Create a startup script
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "🚀 Starting VentiAPI Scanner on Railway..."' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Start Docker daemon in background (if available)' >> /app/start.sh && \
+    echo 'if command -v dockerd >/dev/null 2>&1; then' >> /app/start.sh && \
+    echo '    dockerd &' >> /app/start.sh && \
+    echo '    sleep 5' >> /app/start.sh && \
+    echo 'fi' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Start all services with supervisord' >> /app/start.sh && \
+    echo 'exec supervisord -c /etc/supervisord.conf' >> /app/start.sh
+
+RUN chmod +x /app/start.sh
+
+# Expose port 8000 (Railway expects this port)
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Start the application
+CMD ["/app/start.sh"]

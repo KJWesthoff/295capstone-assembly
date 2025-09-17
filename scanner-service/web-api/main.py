@@ -18,13 +18,14 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Req
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # Import our security module
 from security import (
     verify_token, require_admin, user_db, create_access_token,
     validate_file_upload, validate_url, sanitize_path, 
-    get_secure_docker_command, SecurityHeaders, limiter,
+    get_secure_docker_command, get_railway_scanner_command, SecurityHeaders, limiter,
     RateLimits, validate_scan_params, log_security_event,
     SecurityConfig
 )
@@ -80,6 +81,12 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],  # Limited headers
     max_age=600,  # Cache preflight for 10 minutes
 )
+
+# Mount static files for Railway deployment (frontend) - but not at root yet
+static_path = Path("static")
+static_files_app = None
+if static_path.exists():
+    static_files_app = StaticFiles(directory="static", html=True)
 
 # Secure storage (use Redis/DB in production)
 scans: Dict[str, dict] = {}
@@ -262,26 +269,46 @@ def merge_scan_findings(scan_id: str, num_chunks: int) -> Dict:
 async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_server_url: str, scan_id: str, user: Dict):
     """Run a single scanner container for one chunk of endpoints with progress monitoring"""
     try:
-        # Local Docker execution
-        print(f"Starting local Docker scanner: {chunk_id}")
+        # Check if Docker is available
+        docker_available = shutil.which('docker') is not None
         
-        # Build secure Docker command for this chunk
-        docker_cmd = get_secure_docker_command(
-            image="ventiapi-scanner/scanner:latest",
-            scan_id=chunk_id,  # Use chunk_id for container naming
-            spec_path=spec_location,
-            server_url=scanner_server_url,
-            dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
-            is_admin=user.get("is_admin", False)
-        )
-        
-        print(f"DEBUG: Docker command: {' '.join(docker_cmd)}")
+        if docker_available:
+            # Local Docker execution
+            print(f"Starting local Docker scanner: {chunk_id}")
+            
+            # Build secure Docker command for this chunk
+            cmd = get_secure_docker_command(
+                image="ventiapi-scanner/scanner:latest",
+                scan_id=chunk_id,  # Use chunk_id for container naming
+                spec_path=spec_location,
+                server_url=scanner_server_url,
+                dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
+                is_admin=user.get("is_admin", False)
+            )
+            
+            print(f"DEBUG: Docker command: {' '.join(cmd)}")
+        else:
+            # Railway-compatible direct execution
+            print(f"Starting Railway-compatible scanner: {chunk_id}")
+            
+            # Build Railway scanner command
+            cmd = get_railway_scanner_command(
+                scan_id=chunk_id,
+                spec_path=spec_location,
+                server_url=scanner_server_url,
+                dangerous=user.get("is_admin", False),
+                is_admin=user.get("is_admin", False)
+            )
+            
+            print(f"DEBUG: Railway command: {' '.join(cmd)}")
         
         # Execute with timeout
         process = await asyncio.create_subprocess_exec(
-            *docker_cmd,
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            cwd="/app/scanner" if not docker_available else None,  # Set working directory for Railway
+            env={**os.environ, "PYTHONPATH": "/app/scanner"} if not docker_available else None
         )
         
         # Start progress monitoring for this chunk
@@ -612,26 +639,46 @@ async def execute_secure_scan(scan_id: str, user: Dict):
             scan_data["parallel_mode"] = False
             scan_data["total_chunks"] = 1
             
-            # Local Docker execution
-            print(f"Starting local Docker scanner: {scan_id}")
+            # Check if Docker is available
+            docker_available = shutil.which('docker') is not None
             
-            # Run single container scan
-            docker_cmd = get_secure_docker_command(
-                image="ventiapi-scanner/scanner:latest",
-                scan_id=scan_id,
-                spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
-                server_url=scanner_server_url,
-                dangerous=scan_data["dangerous"],
-                is_admin=user.get("is_admin", False)
-            )
-            
-            print(f"DEBUG: Single container Docker command: {' '.join(docker_cmd)}")
+            if docker_available:
+                # Local Docker execution
+                print(f"Starting local Docker scanner: {scan_id}")
+                
+                # Run single container scan
+                cmd = get_secure_docker_command(
+                    image="ventiapi-scanner/scanner:latest",
+                    scan_id=scan_id,
+                    spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
+                    server_url=scanner_server_url,
+                    dangerous=scan_data["dangerous"],
+                    is_admin=user.get("is_admin", False)
+                )
+                
+                print(f"DEBUG: Single container Docker command: {' '.join(cmd)}")
+            else:
+                # Railway-compatible direct execution
+                print(f"Starting Railway-compatible single scanner: {scan_id}")
+                
+                # Run single Railway scan
+                cmd = get_railway_scanner_command(
+                    scan_id=scan_id,
+                    spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
+                    server_url=scanner_server_url,
+                    dangerous=scan_data["dangerous"],
+                    is_admin=user.get("is_admin", False)
+                )
+                
+                print(f"DEBUG: Single container Railway command: {' '.join(cmd)}")
             
             # Execute single scan
             process = await asyncio.create_subprocess_exec(
-                *docker_cmd,
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                cwd="/app/scanner" if not docker_available else None,  # Set working directory for Railway
+                env={**os.environ, "PYTHONPATH": "/app/scanner"} if not docker_available else None
             )
             
             # Start progress monitoring
@@ -1137,6 +1184,10 @@ async def rate_limit_handler(request: Request, exc):
         status_code=429,
         content={"detail": "Rate limit exceeded. Please try again later."}
     )
+
+# Mount static files at the end so API routes take precedence
+if static_files_app is not None:
+    app.mount("/", static_files_app, name="static")
 
 if __name__ == "__main__":
     import uvicorn
