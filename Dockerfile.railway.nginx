@@ -1,0 +1,89 @@
+# Railway deployment with Nginx proxy - more similar to local setup
+FROM node:18-alpine as frontend-build
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci --only=production
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.11-slim as backend-build
+WORKDIR /app
+COPY scanner-service/web-api/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY scanner-service/web-api/ ./
+COPY external-scanner/ventiapi-scanner/ /app/scanner/
+RUN pip install -e /app/scanner/
+
+FROM nginx:alpine
+# Install Python and Redis in Nginx container
+RUN apk add --no-cache python3 py3-pip redis curl bash
+WORKDIR /app
+
+# Copy Python dependencies and backend
+COPY --from=backend-build /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --from=backend-build /app/ /app/
+
+# Copy frontend build
+COPY --from=frontend-build /app/build /usr/share/nginx/html/
+
+# Create Nginx config similar to local setup
+RUN echo 'events { worker_connections 1024; }\n\
+http {\n\
+    include /etc/nginx/mime.types;\n\
+    default_type application/octet-stream;\n\
+    \n\
+    upstream backend {\n\
+        server 127.0.0.1:8000;\n\
+    }\n\
+    \n\
+    server {\n\
+        listen 80;\n\
+        server_name _;\n\
+        \n\
+        # Frontend routes\n\
+        location / {\n\
+            root /usr/share/nginx/html;\n\
+            try_files $uri $uri/ /index.html;\n\
+        }\n\
+        \n\
+        # API routes\n\
+        location /api/ {\n\
+            proxy_pass http://backend;\n\
+            proxy_set_header Host $host;\n\
+            proxy_set_header X-Real-IP $remote_addr;\n\
+        }\n\
+        \n\
+        # Health check\n\
+        location /health {\n\
+            proxy_pass http://backend;\n\
+        }\n\
+    }\n\
+}' > /etc/nginx/nginx.conf
+
+# Create shared directories
+RUN mkdir -p /shared/results /shared/specs
+
+# Environment variables
+ENV PYTHONPATH="/app/scanner:/app"
+ENV PYTHONUNBUFFERED=1
+
+# Create startup script that mimics docker-compose behavior
+RUN echo '#!/bin/bash\n\
+echo "🚀 Starting VentiAPI Scanner with Nginx (Railway)..."\n\
+\n\
+# Start Redis\n\
+redis-server --daemonize yes --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru\n\
+\n\
+# Start FastAPI backend\n\
+cd /app\n\
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 &\n\
+\n\
+# Wait for backend to start\n\
+sleep 3\n\
+\n\
+# Start Nginx\n\
+nginx -g "daemon off;"\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+EXPOSE $PORT
+CMD ["/app/start.sh"]

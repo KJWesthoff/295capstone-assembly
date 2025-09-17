@@ -1,0 +1,40 @@
+# Railway multi-service deployment - similar to docker-compose.yml
+services:
+  # Frontend Service
+  frontend:
+    build:
+      dockerfile: frontend/Dockerfile
+    environment:
+      REACT_APP_API_URL: https://${{web-api.RAILWAY_PUBLIC_DOMAIN}}
+    healthcheck:
+      path: /
+      timeout: 300
+    expose:
+      - 80
+
+  # Backend API Service  
+  web-api:
+    build:
+      dockerfile: scanner-service/web-api/Dockerfile
+    environment:
+      PYTHONUNBUFFERED: 1
+      JWT_SECRET: ${{JWT_SECRET}}
+      DEFAULT_ADMIN_USERNAME: ${{DEFAULT_ADMIN_USERNAME}}
+      DEFAULT_ADMIN_PASSWORD: ${{DEFAULT_ADMIN_PASSWORD}}
+      REDIS_URL: ${{redis.REDIS_URL}}
+      SCANNER_MAX_PARALLEL_CONTAINERS: 3
+      SCANNER_CONTAINER_MEMORY_LIMIT: 512m
+    healthcheck:
+      path: /health
+      timeout: 300
+    expose:
+      - 8000
+    depends_on:
+      - redis
+
+  # Redis Database Service
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    expose:
+      - 6379
