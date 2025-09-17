@@ -1,6 +1,6 @@
 # 🛡️ Security Guide
 
-VentiAPI Scanner implements comprehensive security measures for production-ready API security testing.
+VentiAPI Scanner implements comprehensive security measures for production-ready API security testing with containerized architecture.
 
 ## 🔐 Authentication & Authorization
 
@@ -41,20 +41,29 @@ POST /api/auth/login
 
 ## 🐳 Container Security
 
+### Scanner Container Isolation
+- **Isolated execution**: Each scanner runs in separate containers
+- **Resource limits**: Memory and CPU constraints per scanner
+- **Non-root users**: All containers run as user 1000:1000
+- **Read-only filesystem**: Containers cannot modify system files
+- **No privileged access**: Containers run without elevated permissions
+
 ### Docker Hardening
 ```yaml
-# Applied to all containers
+# Applied to all scanner containers
 security_opt: [no-new-privileges]
-user: "1000:1000"  # Non-root
-read_only: true
-mem_limit: 512m
-cap_drop: [ALL]
+user: "1000:1000"  # Non-root execution
+read_only: true    # Read-only root filesystem
+mem_limit: 512m    # Memory constraints
+cpu_limit: 0.5     # CPU limitations
+cap_drop: [ALL]    # Drop all capabilities
 ```
 
 ### Network Isolation
 - **Internal networks** for service communication
-- **Minimal port exposure**
-- **Host network** only for scanners (when needed)
+- **Minimal port exposure** (only necessary ports)
+- **Container-to-container** communication only
+- **Scanner isolation** prevents cross-contamination
 
 ## 🌐 Web Security
 
