@@ -1,44 +1,46 @@
-# VentiAPI Scanner - Full-Stack API Security Testing Platform
+# VentiAPI Scanner - Microservice API Security Testing Platform
 
-A complete full-stack application for scanning APIs for security vulnerabilities using parallel processing and real-time progress tracking.
+A modern full-stack application for scanning APIs for security vulnerabilities using microservice architecture and real-time progress tracking.
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
-│   Frontend      │    │   Web API       │    │   Scanner Cluster   │
-│   (React +      │◄──►│   (FastAPI +    │◄──►│   (VentiAPI)        │
-│   TanStack      │    │   Parallel      │    │   Parallel          │
-│   Query)        │    │   Processing)   │    │   Containers        │
-│   Port: 3000    │    │   Port: 8000    │    │   Dynamic Scaling   │
+│   Frontend      │    │   Web API       │    │   Scanner           │
+│   (React +      │◄──►│   (FastAPI +    │◄──►│   Microservices     │
+│   TypeScript)   │    │   Auth +        │    │   (Docker           │
+│                 │    │   Orchestration)│    │   Containers)       │
+│   Port: 3000    │    │   Port: 8000    │    │   Parallel Chunks   │
 └─────────────────┘    └─────────────────┘    └─────────────────────┘
                               │
                               ▼
                        ┌─────────────────┐
                        │     Redis       │
-                       │   (Cache/Queue) │
+                       │   (Rate Limit   │
+                       │   & Caching)    │
                        │   Port: 6379    │
                        └─────────────────┘
 ```
 
 ## Key Features
 
-### **Performance Optimized**
-- **Parallel Scanning**: Automatically splits large API specs into chunks and runs multiple containers concurrently
-- **Smart Probe Grouping**: Groups compatible security probes to avoid conflicts while maximizing parallelism
-- **Real-time Progress**: Live updates with TanStack Query showing individual container progress
+### **Microservice Architecture**
+- **Parallel Processing**: Automatically splits large API specs into chunks and runs multiple Docker containers
+- **Independent Scanners**: Each endpoint chunk runs in isolated containers for maximum reliability
+- **Real-time Progress**: Live updates showing progress of each parallel container
+- **Secure Authentication**: JWT-based auth with role-based access control
 
 ### **Comprehensive Security Testing** 
 - **OWASP API Top 10** complete coverage (API1-API10)
-- **Static & Active Probes**: Both specification analysis and runtime testing
-- **Severity Classification**: Critical, High, Medium, Low with detailed scoring
-- **Professional Reports**: HTML reports with embedded CSS and findings breakdown
+- **19+ Vulnerability Types**: Authentication, Authorization, Data Exposure, Rate Limiting, etc.
+- **Severity Classification**: High, Medium, Low with detailed evidence
+- **Professional Reports**: Detailed findings with evidence and remediation guidance
 
-### **Modern Full-Stack**
-- **React 19 + TypeScript**: Modern frontend with type safety
-- **FastAPI Backend**: High-performance async Python API
-- **Docker Orchestration**: Complete containerized deployment
-- **Redis Caching**: Optimized performance and job queuing
+### **Modern Stack**
+- **React + TypeScript**: Modern frontend with type safety
+- **FastAPI Backend**: High-performance async Python API with security middleware
+- **Docker Microservices**: Containerized scanner components
+- **Redis Integration**: Rate limiting and caching
 
 ## Quick Start
 
@@ -53,10 +55,15 @@ cd ScannerApp
 git submodule update --init --recursive
 ```
 
-### 2. Start the Full Stack
+### 2. Start the Development Environment
 ```bash
-docker compose up --build
+./start-dev.sh
 ```
+
+This script will:
+- Load environment variables from `.env.local`
+- Build and start all containers
+- Display login credentials and access points
 
 ### 3. Access the Application
 - **Frontend:** http://localhost:3000
@@ -68,14 +75,14 @@ docker compose up --build
 
 ```
 ScannerApp/
-├── docker-compose.yml              # Full-stack orchestration
+├── docker-compose.yml              # Microservice orchestration
+├── start-dev.sh                    # Development setup script
+├── test.sh                         # API testing script
 ├── frontend/                       # React TypeScript app
 │   ├── src/
-│   │   ├── api/                   # TanStack Query API client
 │   │   ├── components/            # React components
 │   │   │   ├── ApiScanner.tsx     # Main scanning interface
-│   │   │   ├── Report.tsx         # Results display with real-time updates
-│   │   │   └── ParallelScanProgress.tsx  # Parallel progress visualization
+│   │   │   └── Report.tsx         # Results display
 │   │   └── ...
 │   ├── Dockerfile                 # Multi-stage production build
 │   ├── nginx.conf                 # Production web server config
@@ -87,13 +94,18 @@ ScannerApp/
 │       │   ├── core/             # Scanner framework
 │       │   └── report/           # HTML report generation
 │       └── templates/            # Report templates
-├── scanner-service/                # Custom backend services
+├── scanner-service/                # Backend API service
 │   └── web-api/                   # FastAPI backend
-│       ├── main.py               # API endpoints + parallel orchestration + security
-│       ├── security.py           # Authentication, authorization & validation
+│       ├── main.py               # API endpoints + microservice orchestration
+│       ├── security.py           # JWT auth + security middleware
+│       ├── scanner_plugins/      # Scanner plugin system
+│       │   └── microservice_scanner.py  # Docker container orchestration
 │       ├── Dockerfile            # Web API container
 │       └── requirements.txt
-└── README.md                      # This file
+├── shared/                         # Shared volumes
+│   ├── results/                  # Scan results storage
+│   └── specs/                    # OpenAPI spec storage
+└── .env.local                     # Development environment variables
 ```
 
 ## Advanced Features
@@ -145,19 +157,25 @@ DELETE /api/scan/{scan_id}
 
 ### Example Usage
 ```bash
-# Start a parallel scan
+# Login and get token
+TOKEN=$(curl -s -X POST "http://localhost:8000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "MICS295", "password": "MaryMcHale"}' | \
+  jq -r '.access_token')
+
+# Start a microservice scan
 curl -X POST "http://localhost:8000/api/scan/start" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "server_url=https://your-api.com" \
-  -F "target_url=https://your-api.com" \
-  -F "spec_file=@openapi.yml" \
-  -F "dangerous=false" \
-  -F "rps=2.0"
+  -F "spec_file=@openapi.json"
 
 # Monitor real-time progress
-curl "http://localhost:8000/api/scan/{scan_id}/status"
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/scan/{scan_id}/status"
 
-# Download professional HTML report
-curl "http://localhost:8000/api/scan/{scan_id}/report" -o security_report.html
+# Get detailed findings
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8000/api/scan/{scan_id}/findings"
 ```
 
 

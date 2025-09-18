@@ -14,20 +14,48 @@ The application uses a multi-tiered approach for managing secrets:
 
 ### Local Development Setup
 
-1. **Copy development credentials:**
+The `.env.local` file contains development credentials and is **git-ignored** for security.
+
+1. **Use the development script (recommended):**
    ```bash
-   # Credentials are already in .env.local (git-ignored)
-   # Default admin credentials:
-   # Username: admin
-   # Password: admin123
+   # Start development environment with proper credentials
+   ./start-dev.sh
+   
+   # This script loads .env.local automatically and displays:
+   # Username: MICS295
+   # Password: MaryMcHale
    ```
 
-2. **Start development environment:**
+2. **Manual start (alternative):**
    ```bash
-   # Backend (loads .env.local automatically)
-   JWT_SECRET=$(cat .env.local | grep JWT_SECRET | cut -d'=' -f2) docker compose up --build -d
+   # Load environment variables and start
+   source .env.local && docker compose up --build
+   ```
+
+## Production Environment
+
+### Deployment Setup
+
+1. **Copy the template:**
+   ```bash
+   cp .env.deploy.example .env.deploy
+   ```
+
+2. **Edit with secure values:**
+   ```bash
+   # Generate a secure JWT secret
+   openssl rand -base64 32
    
-   # Frontend (development server)
+   # Edit .env.deploy with:
+   # - Secure JWT_SECRET
+   # - Strong admin credentials
+   # - Production database URLs
+   ```
+
+3. **Deploy with environment:**
+   ```bash
+   source .env.deploy && docker compose up --build -d
+   ```
    cd frontend && PORT=3001 REACT_APP_API_URL=http://localhost:8000 npm start
    ```
 

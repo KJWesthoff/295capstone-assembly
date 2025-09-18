@@ -1,6 +1,6 @@
-# Parallel Scanning Orchestration
+# Microservice Scanning Orchestration
 
-This document provides a detailed technical explanation of how the VentiAPI Scanner orchestrates parallel scanning operations, including endpoint splitting, container management, and result aggregation.
+This document provides a detailed technical explanation of how the VentiAPI Scanner orchestrates parallel microservice scanning operations, including endpoint splitting, container management, and result aggregation.
 
 ## Overview
 
