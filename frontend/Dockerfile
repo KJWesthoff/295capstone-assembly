@@ -1,4 +1,4 @@
-# Multi-stage build for React app
+# Build stage for React app
 FROM node:18-alpine as build
 
 WORKDIR /app
@@ -12,24 +12,11 @@ RUN npm ci --only=production
 # Copy source code
 COPY . .
 
-# Accept build args for environment variables
-ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
-
-# Build the app
+# Build the app (API_BASE_URL will be empty for relative URLs)
 RUN npm run build
 
-# Production stage with Nginx
-FROM nginx:alpine
+# Copy build files to shared volume
+VOLUME ["/app/build"]
 
-# Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy built app from build stage
-COPY --from=build /app/build /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Default command
+CMD ["sh", "-c", "echo 'Frontend build complete'"]

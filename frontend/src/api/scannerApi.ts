@@ -1,3 +1,4 @@
+// Use relative URLs for API calls (handled by nginx reverse proxy)
 const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 // Helper function to get auth headers
