@@ -29,9 +29,22 @@ echo "   Admin Username: $DEFAULT_ADMIN_USERNAME"
 echo "   Admin Password: $DEFAULT_ADMIN_PASSWORD"
 echo "   JWT Secret: ${JWT_SECRET:0:20}..."
 
-# Stop existing containers
+# Stop existing containers and clean up
 echo "🛑 Stopping existing containers..."
-docker compose down
+docker compose down --remove-orphans
+
+# Clean up Docker networking issues
+echo "🧹 Cleaning up Docker networks and containers..."
+docker network prune -f
+docker container prune -f
+
+# Build scanner image first
+echo "🔨 Building scanner image..."
+docker compose --profile build-only up --build scanner
+
+# Tag scanner image with expected name
+echo "🏷️  Tagging scanner image..."
+docker tag ventiapi-scanner:latest ventiapi-scanner/scanner:latest
 
 # Build and start containers
 echo "🏗️  Building and starting containers..."
