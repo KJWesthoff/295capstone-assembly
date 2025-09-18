@@ -5,22 +5,42 @@ A modern full-stack application for scanning APIs for security vulnerabilities u
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐
-│   Frontend      │    │   Web API       │    │   Scanner           │
-│   (React +      │◄──►│   (FastAPI +    │◄──►│   Microservices     │
-│   TypeScript)   │    │   Auth +        │    │   (Docker           │
-│                 │    │   Orchestration)│    │   Containers)       │
-│   Port: 3000    │    │   Port: 8000    │    │   Parallel Chunks   │
-└─────────────────┘    └─────────────────┘    └─────────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │     Redis       │
-                       │   (Rate Limit   │
-                       │   & Caching)    │
-                       │   Port: 6379    │
-                       └─────────────────┘
+                                                 ┌─────────────────────┐
+                                                 │   Scanner           │
+                                                 │   Microservices     │
+                           ┌─────────────────┐   │   (Docker           │
+                           │   Web API       │◄─►│   Containers)       │
+                           │   (FastAPI +    │   │   Parallel Chunks   │
+                           │   Auth +        │   │                     │
+┌─────────────────┐        │   Orchestration)│   └─────────────────────┘
+│   Users/Clients │        │   Port: 8000    │
+│                 │        └─────────────────┘
+└─────────────────┘                 │
+          │                         │
+          ▼                         ▼
+┌─────────────────┐        ┌─────────────────┐
+│  Nginx Reverse  │        │     Redis       │
+│     Proxy       │        │   (Rate Limit   │
+│                 │        │   & Caching)    │
+│ • Static Files  │        │   Port: 6379    │
+│ • /api routing  │        └─────────────────┘
+│ • Port: 3000    │
+└─────────────────┘
+          │
+          ▼
+┌─────────────────┐
+│   Frontend      │
+│   (React +      │
+│   TypeScript)   │
+│   Static Build  │
+└─────────────────┘
 ```
+
+### **Railway-Ready Deployment Architecture**
+- **Single Port Entry**: Nginx serves everything on port 3000
+- **API Routing**: `/api/*` requests proxied to backend
+- **Static Assets**: Frontend served directly by nginx
+- **Internal Communication**: Services communicate via Docker network
 
 ## Key Features
 
@@ -80,10 +100,11 @@ This script will:
 - Display login credentials and access points
 
 ### 4. Access the Application
-- **Frontend:** http://localhost:3000
-- **Backend API:** http://localhost:8000
-- **API Documentation:** http://localhost:8000/docs
-- **Redis:** localhost:6379
+- **Application:** http://localhost:3000 (nginx serves frontend + proxies API)
+- **API Endpoints:** http://localhost:3000/api/* (proxied to backend)
+- **API Documentation:** http://localhost:3000/api/docs (via nginx proxy)
+- **Health Check:** http://localhost:3000/health
+- **Redis:** localhost:6379 (internal)
 
 ### 5. Login and Start Scanning
 1. Open http://localhost:3000 in your browser
