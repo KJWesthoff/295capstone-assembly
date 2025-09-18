@@ -1,0 +1,220 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>VAmPI – VentiAPI Report</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+    .header { display:flex; justify-content:space-between; align-items:baseline; }
+    .badge { padding: 2px 8px; border-radius: 16px; font-size: 12px; }
+    .Critical{ background:#8b0000; color:#fff; }
+    .High{ background:#b22222; color:#fff; }
+    .Medium{ background:#ff8c00; color:#000; }
+    .Low{ background:#ffd700; color:#000; }
+    .Info{ background:#ccc; color:#000; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px; text-align: left; vertical-align: top; }
+    pre {background: #1e1e1e; color: #dcdcdc; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: "Courier New", monospace; font-size: 13px;line-height: 1.4;}
+    code {
+    color: inherit;
+    background: none;}
+    .muted { color:#666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>VentiAPI Report</h1>
+    <div class="muted">VAmPI v0.1</div>
+  </div>
+
+  <p><strong>Servers:</strong> </p>
+
+  <h2>Findings (7)</h2>
+  <table>
+    <thead>
+      <tr><th>Rule</th><th>Endpoint</th><th>Description</th><th>Severity</th></tr>
+    </thead>
+    <tbody>
+    
+      <tr>
+        <td><strong>API2</strong><br/><span class="muted">Broken Authentication</span></td>
+        <td><code>GET /</code></td>
+        <td>
+          <div>Endpoint returns success for unauthenticated/invalid credentials requests.</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "bogus": {
+    "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "len": 271,
+    "status": 200
+  },
+  "unauth": {
+    "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "len": 271,
+    "status": 200
+  }
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge High">High (7.2)</span></td>
+      </tr>
+    
+      <tr>
+        <td><strong>API2</strong><br/><span class="muted">Broken Authentication</span></td>
+        <td><code>GET /books/v1</code></td>
+        <td>
+          <div>Endpoint returns success for unauthenticated/invalid credentials requests.</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "bogus": {
+    "excerpt": "{\"Books\":[{\"book_title\":\"bookTitle81\",\"user\":\"name1\"},{\"book_title\":\"bookTitle39\",\"user\":\"name2\"},{\"book_title\":\"bookTitle62\",\"user\":\"admin\"}]}\n",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "len": 144,
+    "status": 200
+  },
+  "unauth": {
+    "excerpt": "{\"Books\":[{\"book_title\":\"bookTitle81\",\"user\":\"name1\"},{\"book_title\":\"bookTitle39\",\"user\":\"name2\"},{\"book_title\":\"bookTitle62\",\"user\":\"admin\"}]}\n",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "len": 144,
+    "status": 200
+  }
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge High">High (7.2)</span></td>
+      </tr>
+    
+      <tr>
+        <td><strong>API4</strong><br/><span class="muted">Lack of Rate Limiting</span></td>
+        <td><code>GET /</code></td>
+        <td>
+          <div>Burst of requests did not trigger 429 nor expose rate limit headers; RL likely missing.</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "headers_sample": [
+    {},
+    {},
+    {}
+  ],
+  "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+  ]
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge Low">Low (3.0)</span></td>
+      </tr>
+    
+      <tr>
+        <td><strong>API7</strong><br/><span class="muted">Security Misconfiguration</span></td>
+        <td><code>GET /</code></td>
+        <td>
+          <div>Server base URL uses plaintext HTTP (no TLS).</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "server_base": "http://127.0.0.1:5002"
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge Medium">Medium (4.8)</span></td>
+      </tr>
+    
+      <tr>
+        <td><strong>API9</strong><br/><span class="muted">Improper Assets Management</span></td>
+        <td><code>HEAD /</code></td>
+        <td>
+          <div>Endpoint appears to support an undocumented method.</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "hint": "alt-method",
+  "status": 200
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge Low">Low (3.0)</span></td>
+      </tr>
+    
+      <tr>
+        <td><strong>API9</strong><br/><span class="muted">Improper Assets Management</span></td>
+        <td><code>HEAD /books/v1</code></td>
+        <td>
+          <div>Endpoint appears to support an undocumented method.</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "hint": "alt-method",
+  "status": 200
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge Low">Low (3.0)</span></td>
+      </tr>
+    
+      <tr>
+        <td><strong>API10</strong><br/><span class="muted">Insufficient Logging & Monitoring</span></td>
+        <td><code>GET /</code></td>
+        <td>
+          <div>Invalid-auth requests produced success/inconsistent responses without correlation headers.</div>
+          
+            <details>
+              <summary>Evidence</summary>
+              <pre><code class="language-json">{
+  "codes": [
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "obs_headers_seen": 0
+}</code></pre>
+            </details>
+          
+        </td>
+        <td><span class="badge Low">Low (2.0)</span></td>
+      </tr>
+    
+    </tbody>
+  </table>
+
+  
+</body>
+</html>

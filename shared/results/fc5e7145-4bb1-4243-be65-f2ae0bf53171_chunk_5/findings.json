@@ -1,0 +1,14 @@
+[
+  {
+    "rule": "API7",
+    "title": "Security Misconfiguration",
+    "severity": "Medium",
+    "score": 4.8,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Server base URL uses plaintext HTTP (no TLS).",
+    "evidence": {
+      "server_base": "http://127.0.0.1:5002"
+    }
+  }
+]

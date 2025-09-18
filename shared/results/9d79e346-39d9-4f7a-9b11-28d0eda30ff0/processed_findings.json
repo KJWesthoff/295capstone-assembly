@@ -1,0 +1,366 @@
+[
+  {
+    "id": "venti-API2",
+    "title": "Broken Authentication",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "severity": "SeverityLevel.HIGH",
+    "category": "api-security",
+    "endpoint": "/",
+    "method": "GET",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 271,
+        "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 271,
+        "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API2",
+    "title": "Broken Authentication",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "severity": "SeverityLevel.HIGH",
+    "category": "api-security",
+    "endpoint": "/books/v1",
+    "method": "GET",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 143,
+        "excerpt": "{\"Books\":[{\"book_title\":\"bookTitle73\",\"user\":\"name1\"},{\"book_title\":\"bookTitle6\",\"user\":\"name2\"},{\"book_title\":\"bookTitle20\",\"user\":\"admin\"}]}\n"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 143,
+        "excerpt": "{\"Books\":[{\"book_title\":\"bookTitle73\",\"user\":\"name1\"},{\"book_title\":\"bookTitle6\",\"user\":\"name2\"},{\"book_title\":\"bookTitle20\",\"user\":\"admin\"}]}\n"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API2",
+    "title": "Broken Authentication",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "severity": "SeverityLevel.HIGH",
+    "category": "api-security",
+    "endpoint": "/createdb",
+    "method": "GET",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 36,
+        "excerpt": "{ \"message\": \"Database populated.\" }"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 36,
+        "excerpt": "{ \"message\": \"Database populated.\" }"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API2",
+    "title": "Broken Authentication",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "severity": "SeverityLevel.HIGH",
+    "category": "api-security",
+    "endpoint": "/users/v1",
+    "method": "GET",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 150,
+        "excerpt": "{\"users\":[{\"email\":\"mail1@mail.com\",\"username\":\"name1\"},{\"email\":\"mail2@mail.com\",\"username\":\"name2\"},{\"email\":\"admin@mail.com\",\"username\":\"admin\"}]}\n"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 150,
+        "excerpt": "{\"users\":[{\"email\":\"mail1@mail.com\",\"username\":\"name1\"},{\"email\":\"mail2@mail.com\",\"username\":\"name2\"},{\"email\":\"admin@mail.com\",\"username\":\"admin\"}]}\n"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API2",
+    "title": "Broken Authentication",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "severity": "SeverityLevel.HIGH",
+    "category": "api-security",
+    "endpoint": "/users/v1/_debug",
+    "method": "GET",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 248,
+        "excerpt": "{\"users\":[{\"admin\":false,\"email\":\"mail1@mail.com\",\"password\":\"pass1\",\"username\":\"name1\"},{\"admin\":false,\"email\":\"mail2@mail.com\",\"password\":\"pass2\",\"username\":\"name2\"},{\"admin\":true,\"email\":\"admin@mai"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 248,
+        "excerpt": "{\"users\":[{\"admin\":false,\"email\":\"mail1@mail.com\",\"password\":\"pass1\",\"username\":\"name1\"},{\"admin\":false,\"email\":\"mail2@mail.com\",\"password\":\"pass2\",\"username\":\"name2\"},{\"admin\":true,\"email\":\"admin@mai"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API4",
+    "title": "Lack of Rate Limiting",
+    "description": "Burst of requests did not trigger 429 nor expose rate limit headers; RL likely missing.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/",
+    "method": "GET",
+    "evidence": {
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "headers_sample": [
+        {},
+        {},
+        {}
+      ]
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API3",
+    "title": "Excessive Data Exposure",
+    "description": "Live response includes sensitive-looking fields.",
+    "severity": "SeverityLevel.MEDIUM",
+    "category": "api-security",
+    "endpoint": "/users/v1",
+    "method": "GET",
+    "evidence": {
+      "fields": [
+        "email"
+      ],
+      "sample": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 150,
+        "excerpt": "{\"users\":[{\"email\":\"mail1@mail.com\",\"username\":\"name1\"},{\"email\":\"mail2@mail.com\",\"username\":\"name2\"},{\"email\":\"admin@mail.com\",\"username\":\"admin\"}]}\n"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API3",
+    "title": "Excessive Data Exposure",
+    "description": "Live response includes sensitive-looking fields.",
+    "severity": "SeverityLevel.MEDIUM",
+    "category": "api-security",
+    "endpoint": "/users/v1/_debug",
+    "method": "GET",
+    "evidence": {
+      "fields": [
+        "email",
+        "password"
+      ],
+      "sample": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 248,
+        "excerpt": "{\"users\":[{\"admin\":false,\"email\":\"mail1@mail.com\",\"password\":\"pass1\",\"username\":\"name1\"},{\"admin\":false,\"email\":\"mail2@mail.com\",\"password\":\"pass2\",\"username\":\"name2\"},{\"admin\":true,\"email\":\"admin@mai"
+      }
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API7",
+    "title": "Security Misconfiguration",
+    "description": "Server base URL uses plaintext HTTP (no TLS).",
+    "severity": "SeverityLevel.MEDIUM",
+    "category": "api-security",
+    "endpoint": "/",
+    "method": "GET",
+    "evidence": {
+      "server_base": "http://172.20.0.8:5000"
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API9",
+    "title": "Improper Assets Management",
+    "description": "Endpoint appears to support an undocumented method.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/",
+    "method": "HEAD",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API9",
+    "title": "Improper Assets Management",
+    "description": "Endpoint appears to support an undocumented method.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/books/v1",
+    "method": "HEAD",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API9",
+    "title": "Improper Assets Management",
+    "description": "Endpoint appears to support an undocumented method.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/createdb",
+    "method": "HEAD",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API9",
+    "title": "Improper Assets Management",
+    "description": "Endpoint appears to support an undocumented method.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/users/v1",
+    "method": "HEAD",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API9",
+    "title": "Improper Assets Management",
+    "description": "Endpoint appears to support an undocumented method.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/users/v1/_debug",
+    "method": "HEAD",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  },
+  {
+    "id": "venti-API10",
+    "title": "Insufficient Logging & Monitoring",
+    "description": "Invalid-auth requests produced success/inconsistent responses without correlation headers.",
+    "severity": "SeverityLevel.LOW",
+    "category": "api-security",
+    "endpoint": "/",
+    "method": "GET",
+    "evidence": {
+      "codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "obs_headers_seen": 0
+    },
+    "remediation": "Review and fix the identified security issue",
+    "references": null,
+    "cvss_score": null,
+    "cwe_id": null
+  }
+]

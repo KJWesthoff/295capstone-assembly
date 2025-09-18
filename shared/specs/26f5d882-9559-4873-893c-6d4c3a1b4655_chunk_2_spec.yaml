@@ -1,0 +1,84 @@
+components:
+  securitySchemes:
+    bearerAuth:
+      scheme: bearer
+      type: http
+info:
+  description: OpenAPI v3 specs for VAmPI
+  title: VAmPI
+  version: '0.1'
+openapi: 3.0.1
+paths:
+  /me:
+    get:
+      description: Displays information about the currently authenticated user
+      operationId: api_views.users.me
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                properties:
+                  data:
+                    properties:
+                      admin:
+                        example: false
+                        type: boolean
+                      email:
+                        example: mail1@mail.com
+                        type: string
+                      username:
+                        example: name1
+                        type: string
+                    type: object
+                  status:
+                    example: success
+                    type: string
+                type: object
+          description: Display current user info
+        '401':
+          content:
+            application/json:
+              schema:
+                properties:
+                  message:
+                    enum:
+                    - Signature expired. Please log in again.
+                    - Invalid token. Please log in again.
+                    type: string
+                  status:
+                    example: fail
+                    type: string
+                type: object
+          description: Unauthorized access due to expired, invalid, or missing token
+      summary: Retrieves currently logged in user
+      tags:
+      - users
+  /users/v1:
+    get:
+      description: Displays all users with basic information
+      operationId: api_views.users.get_all_users
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                properties:
+                  users:
+                    items:
+                      properties:
+                        email:
+                          example: mail1@mail.com
+                          type: string
+                        username:
+                          example: name1
+                          type: string
+                      type: object
+                    type: array
+                type: object
+          description: See basic info about all users
+      summary: Retrieves all users
+      tags:
+      - users
+servers:
+- url: ''

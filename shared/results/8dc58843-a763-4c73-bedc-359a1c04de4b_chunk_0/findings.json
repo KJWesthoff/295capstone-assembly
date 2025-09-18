@@ -1,0 +1,150 @@
+[
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 271,
+        "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 271,
+        "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b"
+      }
+    }
+  },
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/books/v1",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 144,
+        "excerpt": "{\"Books\":[{\"book_title\":\"bookTitle69\",\"user\":\"name1\"},{\"book_title\":\"bookTitle81\",\"user\":\"name2\"},{\"book_title\":\"bookTitle11\",\"user\":\"admin\"}]}\n"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 144,
+        "excerpt": "{\"Books\":[{\"book_title\":\"bookTitle69\",\"user\":\"name1\"},{\"book_title\":\"bookTitle81\",\"user\":\"name2\"},{\"book_title\":\"bookTitle11\",\"user\":\"admin\"}]}\n"
+      }
+    }
+  },
+  {
+    "rule": "API4",
+    "title": "Lack of Rate Limiting",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Burst of requests did not trigger 429 nor expose rate limit headers; RL likely missing.",
+    "evidence": {
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "headers_sample": [
+        {},
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "rule": "API7",
+    "title": "Security Misconfiguration",
+    "severity": "Medium",
+    "score": 4.8,
+    "endpoint": "/",
+    "method": "OPTIONS",
+    "description": "Potential security misconfiguration (permissive CORS and/or missing HSTS).",
+    "evidence": {
+      "status": 200,
+      "headers": {
+        "allow": "GET, OPTIONS, HEAD",
+        "content-length": "0",
+        "content-type": "text/html; charset=utf-8",
+        "date": "Wed, 17 Sep 2025 16:31:43 GMT",
+        "server": "envoy",
+        "x-envoy-upstream-service-time": "5"
+      },
+      "hsts_missing": true
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/books/v1",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API10",
+    "title": "Insufficient Logging & Monitoring",
+    "severity": "Low",
+    "score": 2.0,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Invalid-auth requests produced success/inconsistent responses without correlation headers.",
+    "evidence": {
+      "codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "obs_headers_seen": 0
+    }
+  }
+]

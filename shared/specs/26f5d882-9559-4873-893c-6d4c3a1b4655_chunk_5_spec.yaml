@@ -1,0 +1,121 @@
+components:
+  securitySchemes:
+    bearerAuth:
+      scheme: bearer
+      type: http
+info:
+  description: OpenAPI v3 specs for VAmPI
+  title: VAmPI
+  version: '0.1'
+openapi: 3.0.1
+paths:
+  /users/v1/{username}/email:
+    put:
+      description: Update a single users email
+      operationId: api_views.users.update_email
+      parameters:
+      - in: path
+        name: username
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        description: field to update
+        required: true
+      responses:
+        '204':
+          content: {}
+          description: Successfully updated user email
+        '400':
+          content:
+            application/json:
+              schema:
+                properties:
+                  message:
+                    example: Please Provide a valid email address.
+                    type: string
+                  status:
+                    enum:
+                    - fail
+                    example: fail
+                    type: string
+                type: object
+          description: Invalid request
+        '401':
+          content:
+            application/json:
+              schema:
+                properties:
+                  message:
+                    example: Invalid token. Please log in again.
+                    type: string
+                  status:
+                    enum:
+                    - fail
+                    example: fail
+                    type: string
+                type: object
+          description: User not authorized
+      summary: Update users email
+      tags:
+      - users
+  /users/v1/{username}/password:
+    put:
+      description: Update users password
+      operationId: api_views.users.update_password
+      parameters:
+      - in: path
+        name: username
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        description: field to update
+        required: true
+      responses:
+        '204':
+          content: {}
+          description: Successfully updated users password
+        '400':
+          content:
+            application/json:
+              schema:
+                properties:
+                  message:
+                    example: Malformed Data
+                    type: string
+                  status:
+                    enum:
+                    - fail
+                    example: fail
+                    type: string
+                type: object
+          description: Invalid request
+        '401':
+          content:
+            application/json:
+              schema:
+                properties:
+                  message:
+                    example: Invalid token. Please log in again.
+                    type: string
+                  status:
+                    enum:
+                    - fail
+                    example: fail
+                    type: string
+                type: object
+          description: User not authorized
+      summary: Update users password
+      tags:
+      - users
+servers:
+- url: ''

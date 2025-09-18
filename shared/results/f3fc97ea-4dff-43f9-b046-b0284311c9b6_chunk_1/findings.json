@@ -1,0 +1,167 @@
+[
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/users/v1",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 13,
+        "excerpt": "{\"users\":[]}\n"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 13,
+        "excerpt": "{\"users\":[]}\n"
+      }
+    }
+  },
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/users/v1/_debug",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 13,
+        "excerpt": "{\"users\":[]}\n"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 13,
+        "excerpt": "{\"users\":[]}\n"
+      }
+    }
+  },
+  {
+    "rule": "API4",
+    "title": "Lack of Rate Limiting",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/me",
+    "method": "GET",
+    "description": "Burst of requests did not trigger 429 nor expose rate limit headers; RL likely missing.",
+    "evidence": {
+      "statuses": [
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401
+      ],
+      "headers_sample": [
+        {},
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "rule": "API3",
+    "title": "Excessive Data Exposure",
+    "severity": "Medium",
+    "score": 4.2,
+    "endpoint": "/users/v1",
+    "method": "GET",
+    "description": "Live response includes sensitive-looking fields.",
+    "evidence": {
+      "fields": [
+        "email"
+      ],
+      "sample": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 150,
+        "excerpt": "{\"users\":[{\"email\":\"mail1@mail.com\",\"username\":\"name1\"},{\"email\":\"mail2@mail.com\",\"username\":\"name2\"},{\"email\":\"admin@mail.com\",\"username\":\"admin\"}]}\n"
+      }
+    }
+  },
+  {
+    "rule": "API3",
+    "title": "Excessive Data Exposure",
+    "severity": "Medium",
+    "score": 4.2,
+    "endpoint": "/users/v1/_debug",
+    "method": "GET",
+    "description": "Live response includes sensitive-looking fields.",
+    "evidence": {
+      "fields": [
+        "email",
+        "password"
+      ],
+      "sample": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 248,
+        "excerpt": "{\"users\":[{\"admin\":false,\"email\":\"mail1@mail.com\",\"password\":\"pass1\",\"username\":\"name1\"},{\"admin\":false,\"email\":\"mail2@mail.com\",\"password\":\"pass2\",\"username\":\"name2\"},{\"admin\":true,\"email\":\"admin@mai"
+      }
+    }
+  },
+  {
+    "rule": "API7",
+    "title": "Security Misconfiguration",
+    "severity": "Medium",
+    "score": 4.8,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Server base URL uses plaintext HTTP (no TLS).",
+    "evidence": {
+      "server_base": "http://localhost:5002"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/users/v1",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/users/v1/_debug",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  }
+]

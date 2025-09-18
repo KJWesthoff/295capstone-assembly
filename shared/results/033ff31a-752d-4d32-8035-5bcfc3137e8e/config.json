@@ -1,0 +1,1 @@
+{"scan_id": "033ff31a-752d-4d32-8035-5bcfc3137e8e", "target": {"url": "https://httpbin.org", "spec_file": null, "target_type": "api", "authentication": null, "headers": null}, "config": {"max_requests": 100, "requests_per_second": 1.0, "timeout": 600, "dangerous_mode": false, "fuzz_auth": false, "parallel_chunks": 1, "custom_params": null}}
