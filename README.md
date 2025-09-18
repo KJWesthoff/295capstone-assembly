@@ -55,21 +55,56 @@ cd ScannerApp
 git submodule update --init --recursive
 ```
 
-### 2. Start the Development Environment
+### 2. Configure Local Environment
+```bash
+# Copy the example environment file
+cp .env.local.example .env.local
+
+# Edit .env.local with your preferred credentials
+# At minimum, update these values:
+# - JWT_SECRET (use a secure random string)
+# - DEFAULT_ADMIN_USERNAME (your preferred admin username)
+# - DEFAULT_ADMIN_PASSWORD (your preferred admin password)
+```
+
+### 3. Start the Development Environment
 ```bash
 ./start-dev.sh
 ```
 
 This script will:
 - Load environment variables from `.env.local`
-- Build and start all containers
+- Clean up any Docker networking issues
+- Build the scanner image and tag it properly
+- Build and start all containers (frontend, backend, redis)
 - Display login credentials and access points
 
-### 3. Access the Application
+### 4. Access the Application
 - **Frontend:** http://localhost:3000
 - **Backend API:** http://localhost:8000
 - **API Documentation:** http://localhost:8000/docs
 - **Redis:** localhost:6379
+
+### 5. Login and Start Scanning
+1. Open http://localhost:3000 in your browser
+2. Login with the credentials you set in `.env.local`
+3. Upload an OpenAPI spec file or enter a server URL
+4. Start scanning and monitor real-time progress
+
+## Environment Variables
+
+The application uses environment variables for configuration. Copy `.env.local.example` to `.env.local` and update:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `JWT_SECRET` | Secret key for JWT token signing | `H6KaXFDmL0C+qWzrzl5y4sDH2wbVSwrifZ16dHZZKAA=` |
+| `DEFAULT_ADMIN_USERNAME` | Admin username for login | `admin` |
+| `DEFAULT_ADMIN_PASSWORD` | Admin password for login | `your-secure-password` |
+| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
+| `SCANNER_MAX_PARALLEL_CONTAINERS` | Max parallel scanner containers | `5` |
+| `SCANNER_CONTAINER_MEMORY_LIMIT` | Memory limit per scanner | `512m` |
+
+⚠️ **Security Note**: Never commit `.env.local` to version control. It's already in `.gitignore`.
 
 ## Project Structure
 
