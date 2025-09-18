@@ -48,7 +48,9 @@ services:
 
   # Scanner service (builds the image for web-api to use)
   scanner:
-    build: ./external-scanner/ventiapi-scanner
+    build:
+      context: .
+      dockerfile: scanner.Dockerfile
     image: ventiapi-scanner
     container_name: ventiapi-scanner-builder
     volumes:
