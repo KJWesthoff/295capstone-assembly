@@ -45,9 +45,9 @@ A modern full-stack application for scanning APIs for security vulnerabilities u
 ## Key Features
 
 ### **Microservice Architecture**
-- **Parallel Processing**: Automatically splits large API specs into chunks and runs multiple Docker containers
-- **Independent Scanners**: Each endpoint chunk runs in isolated containers for maximum reliability
-- **Real-time Progress**: Live updates showing progress of each parallel container
+- **Parallel Processing**: Simulates parallel execution with 3 worker chunks for enhanced progress tracking
+- **Independent Scanners**: Docker container execution with async subprocess management
+- **Real-time Progress**: Live updates showing progress of each parallel worker with TanStack Query
 - **Secure Authentication**: JWT-based auth with role-based access control
 
 ### **Comprehensive Security Testing** 
