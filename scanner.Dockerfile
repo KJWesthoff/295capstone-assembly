@@ -20,8 +20,11 @@ RUN pip install boto3>=1.34.0
 # Install the scanner package in editable mode
 RUN pip install -e .
 
-# Create a simple wrapper script that uses the proper CLI entry point
-RUN echo '#!/bin/bash\npython -m scanner.cli "$@"' > /usr/local/bin/venti && \
+# Copy simple wrapper script
+COPY venti_wrapper.py /app/venti_wrapper.py
+
+# Create wrapper script that adds dangerous and fuzz-auth options
+RUN echo '#!/bin/bash\npython /app/venti_wrapper.py "$@"' > /usr/local/bin/venti && \
     chmod +x /usr/local/bin/venti
 
 # Create necessary directories for shared volumes

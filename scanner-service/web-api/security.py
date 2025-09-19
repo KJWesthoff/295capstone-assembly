@@ -236,7 +236,7 @@ def sanitize_path(path: str) -> Path:
     return safe_path
 
 def get_secure_docker_command(image: str, scan_id: str, spec_path: str, server_url: str, 
-                            dangerous: bool = False, is_admin: bool = False) -> List[str]:
+                            dangerous: bool = False, fuzz_auth: bool = False, is_admin: bool = False) -> List[str]:
     """Generate secure Docker command with restrictions"""
     
     # Validate inputs
@@ -281,6 +281,9 @@ def get_secure_docker_command(image: str, scan_id: str, spec_path: str, server_u
     
     if dangerous and is_admin:  # Only admins can run dangerous scans
         cmd.append('--dangerous')
+    
+    if fuzz_auth:  # Authentication fuzzing for any user
+        cmd.append('--fuzz-auth')
     
     return cmd
 

@@ -5,7 +5,7 @@
 
 set -e  # Exit on any error
 
-API_BASE="http://localhost"
+API_BASE="http://localhost:3000"
 VAMPI_URL="http://localhost:5002"
 USERNAME="MICS295"
 PASSWORD="MaryMcHale"
@@ -32,16 +32,17 @@ echo "✅ Login successful"
 echo "📥 Downloading VAmPI OpenAPI specification..."
 curl -s "${VAMPI_URL}/openapi.json" > /tmp/vampi-spec.json
 
-# Start a scan on VAmPI with OpenAPI spec
+# Start a scan on VAmPI using file upload
 echo "🚀 Starting security scan on VAmPI at ${VAMPI_URL}..."
 
 SCAN_RESPONSE=$(curl -s -X POST "${API_BASE}/api/scan/start" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -F "target_url=${VAMPI_URL}" \
+  -F "server_url=${VAMPI_URL}" \
   -F "spec_file=@/tmp/vampi-spec.json" \
-  -F "scanner_type=venti-api" \
-  -F "max_requests=500" \
-  -F "requests_per_second=3")
+  -F "rps=2.0" \
+  -F "max_requests=50" \
+  -F "dangerous=false" \
+  -F "fuzz_auth=false")
 
 SCAN_ID=$(echo "$SCAN_RESPONSE" | jq -r '.scan_id')
 

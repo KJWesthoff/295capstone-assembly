@@ -15,8 +15,5 @@ COPY . .
 # Build the app (API_BASE_URL will be empty for relative URLs)
 RUN npm run build
 
-# Copy build files to shared volume
-VOLUME ["/app/build"]
-
-# Default command
-CMD ["sh", "-c", "echo 'Frontend build complete'"]
+# Default command - copy build to shared volume
+CMD ["sh", "-c", "cp -r /app/build/* /shared/ && echo 'Frontend built successfully'"]

@@ -259,7 +259,7 @@ def merge_scan_findings(scan_id: str, num_chunks: int) -> Dict:
         "chunks_expected": num_chunks
     }
 
-async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_server_url: str, scan_id: str, user: Dict):
+async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_server_url: str, scan_id: str, user: Dict, dangerous: bool = False, fuzz_auth: bool = False):
     """Run a single scanner container for one chunk of endpoints with progress monitoring"""
     try:
         # Local Docker execution
@@ -271,7 +271,8 @@ async def run_single_scanner_chunk(chunk_id: str, spec_location: str, scanner_se
             scan_id=chunk_id,  # Use chunk_id for container naming
             spec_path=spec_location,
             server_url=scanner_server_url,
-            dangerous=user.get("is_admin", False),  # Only admins can run dangerous scans
+            dangerous=dangerous and user.get("is_admin", False),  # Only admins can run dangerous scans
+            fuzz_auth=fuzz_auth,
             is_admin=user.get("is_admin", False)
         )
         
@@ -562,6 +563,7 @@ async def start_scan(
         "target_url": target_url,
         "spec_location": spec_location,
         "dangerous": dangerous,
+        "fuzz_auth": fuzz_auth,
         "created_at": datetime.utcnow().isoformat(),
         "findings_count": 0,
         "parallel_mode": False,  # Single container scan for secure mode
@@ -579,14 +581,14 @@ async def start_scan(
     })
     
     # Start scan asynchronously (implement your scanning logic here)
-    asyncio.create_task(execute_secure_scan(scan_id, user))
+    asyncio.create_task(execute_secure_scan(scan_id, user, dangerous, fuzz_auth))
     
     # Update user scan count
     user_db.users[user['username']]['scan_count'] += 1
     
     return {"scan_id": scan_id, "status": "pending"}
 
-async def execute_secure_scan(scan_id: str, user: Dict):
+async def execute_secure_scan(scan_id: str, user: Dict, dangerous: bool = False, fuzz_auth: bool = False):
     """Execute scan with security restrictions and parallel processing"""
     try:
         scan_data = scans[scan_id]
@@ -621,7 +623,8 @@ async def execute_secure_scan(scan_id: str, user: Dict):
                 scan_id=scan_id,
                 spec_path=scanner_server_url + "/openapi.json",  # Use OpenAPI spec endpoint
                 server_url=scanner_server_url,
-                dangerous=scan_data["dangerous"],
+                dangerous=dangerous and user.get("is_admin", False),  # Only admins can run dangerous scans
+                fuzz_auth=fuzz_auth,
                 is_admin=user.get("is_admin", False)
             )
             
@@ -728,7 +731,7 @@ async def execute_secure_scan(scan_id: str, user: Dict):
             scan_data["current_phase"] = "Running single container scan"
             scan_data["progress"] = 30
             
-            chunk_result = await run_single_scanner_chunk(scan_id, spec_location, scanner_server_url, scan_id, user)
+            chunk_result = await run_single_scanner_chunk(scan_id, spec_location, scanner_server_url, scan_id, user, dangerous, fuzz_auth)
             if chunk_result["success"]:
                 scan_data["status"] = "completed"
                 scan_data["progress"] = 100
@@ -804,7 +807,7 @@ async def execute_secure_scan(scan_id: str, user: Dict):
                 subprocess.run(['chown', '1000:1000', str(chunk_path)], check=False)
                 chunk_spec_location = f"/shared/specs/{chunk_id}_spec.yaml"
                 
-                task = run_single_scanner_chunk(chunk_id, chunk_spec_location, scanner_server_url, scan_id, user)
+                task = run_single_scanner_chunk(chunk_id, chunk_spec_location, scanner_server_url, scan_id, user, dangerous, fuzz_auth)
                 chunk_tasks.append(task)
             
             # Update all chunks to running status

@@ -19,10 +19,9 @@ services:
     build: ./frontend
     container_name: ventiapi-frontend
     volumes:
-      - frontend-build:/app/build
+      - frontend-build:/shared
     networks:
       - scanner-network
-    command: ["sh", "-c", "echo 'Frontend built successfully'"]
 
   # Web API Backend
   web-api:

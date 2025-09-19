@@ -58,21 +58,21 @@ sleep 5
 echo "📊 Container Status:"
 docker compose ps
 
-# Test API health
-echo "🏥 Testing API health..."
-if curl -s http://localhost:8000/health > /dev/null; then
-    echo "✅ API is healthy!"
+# Test nginx and API health
+echo "🏥 Testing application health..."
+if curl -s http://localhost:3000/health > /dev/null; then
+    echo "✅ Application is healthy!"
 else
-    echo "⚠️  API health check failed. Check logs with: docker compose logs web-api"
+    echo "⚠️  Health check failed. Check logs with: docker compose logs"
 fi
 
 echo ""
 echo "🎉 Development environment started successfully!"
 echo ""
 echo "📍 Access Points:"
-echo "   Frontend: http://localhost:3000"
-echo "   Backend API: http://localhost:8000"
-echo "   API Documentation: http://localhost:8000/docs"
+echo "   Application: http://localhost:3000 (nginx serves frontend + proxies API)"
+echo "   API Endpoints: http://localhost:3000/api/* (proxied to backend)"
+echo "   API Documentation: http://localhost:3000/api/docs"
 echo ""
 echo "🔑 Login Credentials:"
 echo "   Username: $DEFAULT_ADMIN_USERNAME"
