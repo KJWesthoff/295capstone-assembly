@@ -12,6 +12,8 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
   const [apiSpec, setApiSpec] = useState('');
   const [specFile, setSpecFile] = useState<File | null>(null);
   const [useFile, setUseFile] = useState(false);
+  const [dangerous, setDangerous] = useState(false);
+  const [fuzzAuth, setFuzzAuth] = useState(false);
 
   const startScanMutation = useMutation({
     mutationFn: ({ request, file }: { request: any; file?: File }) => 
@@ -65,8 +67,8 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
       ...(useFile ? {} : { spec_url: apiSpec }),
       rps: 1.0,
       max_requests: 100,
-      dangerous: false,
-      fuzz_auth: false
+      dangerous: dangerous,
+      fuzz_auth: fuzzAuth
     };
 
     startScanMutation.mutate({ 
@@ -144,6 +146,41 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
               />
             </div>
           )}
+
+          <div className="form-group">
+            <label>Advanced Security Testing Options</label>
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={dangerous}
+                  onChange={(e) => setDangerous(e.target.checked)}
+                  disabled={startScanMutation.isPending}
+                />
+                <span className="checkbox-text">
+                  <strong>Dangerous Tests</strong>
+                  <span className="checkbox-description">
+                    Enable destructive/invasive security tests that may modify data
+                  </span>
+                </span>
+              </label>
+              
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={fuzzAuth}
+                  onChange={(e) => setFuzzAuth(e.target.checked)}
+                  disabled={startScanMutation.isPending}
+                />
+                <span className="checkbox-text">
+                  <strong>Authentication Fuzzing</strong>
+                  <span className="checkbox-description">
+                    Test authentication mechanisms with various attack vectors
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
 
           <div className="button-group">
             <button
