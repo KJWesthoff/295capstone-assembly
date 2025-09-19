@@ -35,14 +35,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Access to Docker daemon
     networks:
       - scanner-network
+    env_file:
+      - .env.local
     environment:
       - PYTHONUNBUFFERED=1
-      - JWT_SECRET=${JWT_SECRET}
-      - DEFAULT_ADMIN_USERNAME=${DEFAULT_ADMIN_USERNAME}
-      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
-      - REDIS_URL=${REDIS_URL}
-      - SCANNER_MAX_PARALLEL_CONTAINERS=${SCANNER_MAX_PARALLEL_CONTAINERS}
-      - SCANNER_CONTAINER_MEMORY_LIMIT=${SCANNER_CONTAINER_MEMORY_LIMIT}
     depends_on:
       - redis
 
@@ -73,6 +69,24 @@ services:
       - PYTHONUNBUFFERED=1
     command: ["echo", "Scanner image built"]
     profiles: ["build-only"]  # Only runs when explicitly requested
+
+  # Scanner Worker (for job queue mode - optional for local dev)
+  scanner-worker:
+    build:
+      context: .
+      dockerfile: scanner-worker.Dockerfile
+    volumes:
+      - shared-results:/shared/results
+      - shared-specs:/shared/specs
+    networks:
+      - scanner-network
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    profiles: ["jobqueue"]  # Only runs in job queue mode
+    scale: 2  # Run 2 workers by default
 
 volumes:
   shared-results:

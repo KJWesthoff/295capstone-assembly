@@ -21,12 +21,12 @@ from pydantic import BaseModel, Field
 from security import (
     verify_token, require_admin, user_db, create_access_token,
     validate_file_upload, validate_url, sanitize_path, 
-    get_secure_docker_command, SecurityHeaders, limiter, 
-    RateLimits, validate_scan_params, log_security_event, SecurityConfig
+    SecurityHeaders, limiter, RateLimits, validate_scan_params, 
+    log_security_event, SecurityConfig
 )
 
 # Import job queue
-# from job_queue import job_queue  # Disabled for direct execution mode
+from job_queue import job_queue
 
 # Configuration
 SHARED_RESULTS = Path("/shared/results")
@@ -60,12 +60,8 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Add security headers via middleware function
-@app.middleware("http")
-async def add_security_headers(request, call_next):
-    response = await call_next(request)
-    SecurityHeaders.add_security_headers(response)
-    return response
+# Add security headers
+app.add_middleware(SecurityHeaders)
 
 # CORS configuration
 app.add_middleware(
@@ -75,13 +71,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-
-# Startup event disabled - using direct execution mode
-# @app.on_event("startup")
-# async def startup_event():
-#     """Initialize connections on startup"""
-#     job_queue.connect()
-#     print("✅ Job queue connected to Redis")
 
 # In-memory scan tracking (replace with Redis in production)
 scans: Dict[str, Dict] = {}
@@ -146,7 +135,7 @@ async def health_check():
     """Health check endpoint for Railway"""
     try:
         # Check Redis connection
-        queue_stats = {"queue_length": 0, "active_workers": 0, "processing_workers": 0, "waiting_workers": 0}
+        queue_stats = job_queue.get_queue_stats()
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
@@ -156,7 +145,7 @@ async def health_check():
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
 
 @app.post("/api/auth/login")
-@limiter.limit(RateLimits.LOGIN)
+@limiter.limit(RateLimits.AUTH)
 async def login(request: Request, login_req: LoginRequest):
     """Authenticate user and return JWT token"""
     
@@ -165,11 +154,9 @@ async def login(request: Request, login_req: LoginRequest):
         "user_agent": request.headers.get("user-agent", "unknown")
     })
     
-    # Verify user credentials
-    user = user_db.verify_user(login_req.username, login_req.password)
-    if not user:
+    if login_req.username not in user_db.users:
         log_security_event("login_failed", login_req.username, {
-            "reason": "invalid_credentials",
+            "reason": "user_not_found",
             "ip": request.client.host
         })
         raise HTTPException(
@@ -177,7 +164,19 @@ async def login(request: Request, login_req: LoginRequest):
             detail="Invalid username or password"
         )
     
-    access_token = create_access_token(user['username'], user.get('is_admin', False))
+    user = user_db.users[login_req.username]
+    
+    if not user_db.verify_password(login_req.password, user['password_hash']):
+        log_security_event("login_failed", login_req.username, {
+            "reason": "invalid_password",
+            "ip": request.client.host
+        })
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
+    
+    access_token = create_access_token(data={"username": login_req.username})
     
     log_security_event("login_success", login_req.username, {
         "ip": request.client.host,
@@ -187,7 +186,7 @@ async def login(request: Request, login_req: LoginRequest):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/api/scan/start", response_model=ScanResponse)
-@limiter.limit(RateLimits.SCAN_START)
+@limiter.limit(RateLimits.SCAN)
 async def start_scan(
     request: Request,
     user: Dict = Depends(verify_token),
@@ -212,12 +211,7 @@ async def start_scan(
     print(f"DEBUG: user={user}")
     
     # Validate scan parameters
-    validate_scan_params(rps, max_requests)
-    
-    # Validate URLs
-    validate_url(server_url, allow_localhost=True)
-    if target_url:
-        validate_url(target_url, allow_localhost=True)
+    validate_scan_params(server_url, target_url, rps, max_requests, user)
     
     # Only admins can run dangerous scans
     if dangerous and not user.get('is_admin'):
@@ -232,15 +226,15 @@ async def start_scan(
     # Validate and save spec file if provided
     spec_location = None
     if spec_file:
-        file_content = await spec_file.read()
-        validate_file_upload(file_content, spec_file.filename)
+        validate_file_upload(spec_file)
         
         scan_id = str(uuid.uuid4())
         spec_filename = f"{scan_id}_{spec_file.filename}"
         spec_path = SHARED_SPECS / spec_filename
         
         with open(spec_path, "wb") as f:
-            f.write(file_content)
+            content = await spec_file.read()
+            f.write(content)
         
         spec_location = f"/shared/specs/{spec_filename}"
     else:
@@ -256,14 +250,8 @@ async def start_scan(
         "server_url": server_url,
         "target_url": target_url,
         "spec_location": spec_location,
-        "parallel_mode": True,
-        "total_chunks": 3,
-        "completed_chunks": 0,
-        "chunk_status": [
-            {"chunk_id": 0, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []},
-            {"chunk_id": 1, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []},
-            {"chunk_id": 2, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
-        ],
+        "parallel_mode": False,
+        "total_chunks": 1,
         "job_ids": [],
         "dangerous": dangerous,
         "fuzz_auth": fuzz_auth
@@ -276,12 +264,8 @@ async def start_scan(
         "dangerous": dangerous
     })
     
-    # Execute scan using Docker container
-    print(f"🚀 Starting direct scan execution for {scan_id}")
-    
-    # Start the scan in the background with progress monitoring
-    asyncio.create_task(execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
-    asyncio.create_task(monitor_scan_progress(scan_id))
+    # Start scan job asynchronously
+    asyncio.create_task(execute_scan_with_queue(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
     
     # Update user scan count
     user_db.users[user['username']]['scan_count'] += 1
@@ -455,11 +439,24 @@ async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
     
     scan_data = scans[scan_id]
     
-    # Get chunk statuses directly from scan data
-    chunk_status = scan_data.get("chunk_status", [])
+    # Get job statuses
+    job_ids = scan_data.get("job_ids", [])
+    chunk_status = []
     
-    # Get queue statistics (disabled for direct execution mode)
-    queue_stats = {'queue_length': 0, 'active_workers': 0, 'processing_workers': 0, 'waiting_workers': 0}
+    for i, job_id in enumerate(job_ids):
+        job_status = job_queue.get_job_status(job_id)
+        chunk_status.append({
+            "chunk_id": i,
+            "job_id": job_id,
+            "status": job_status.get('status', 'unknown'),
+            "progress": job_status.get('progress', 0),
+            "current_phase": job_status.get('phase', 'Unknown'),
+            "worker_id": job_status.get('worker_id'),
+            "findings_count": job_status.get('findings_count', 0)
+        })
+    
+    # Get queue statistics
+    queue_stats = job_queue.get_queue_stats()
     
     return ScanStatus(
         scan_id=scan_id,
@@ -469,9 +466,8 @@ async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
         findings_count=scan_data.get("findings_count", 0),
         parallel_mode=scan_data.get("parallel_mode", False),
         total_chunks=scan_data.get("total_chunks", 1),
-        completed_chunks=scan_data.get("completed_chunks", 0),
         chunk_status=chunk_status,
-        job_ids=scan_data.get("job_ids", []),
+        job_ids=job_ids,
         queue_stats=queue_stats
     )
 
@@ -487,89 +483,14 @@ async def get_scan_findings(
     if scan_id not in scans:
         raise HTTPException(status_code=404, detail="Scan not found")
     
-    # For direct execution mode, return mock endpoint data to show scan activity
-    # TODO: Parse actual findings from Docker scanner output
-    scan_data = scans[scan_id]
-    server_url = scan_data.get("server_url", "")
+    # Get all results for this scan
+    scan_results = job_queue.get_scan_results(scan_id)
     
-    # Create realistic findings showing vulnerabilities that VAmPI typically has
-    if scan_data.get("status") == "completed":
-        all_findings = [
-            {
-                "rule": "broken_authentication",
-                "title": "Broken Authentication",
-                "severity": "High",
-                "score": 8,
-                "endpoint": "/users/v1/_debug",
-                "method": "GET",
-                "description": "Debug endpoint exposes sensitive user information including passwords"
-            },
-            {
-                "rule": "improper_authorization", 
-                "title": "Broken Object Level Authorization",
-                "severity": "High",
-                "score": 7,
-                "endpoint": "/books/v1/{book_title}",
-                "method": "GET",
-                "description": "Users can access books belonging to other users"
-            },
-            {
-                "rule": "jwt_weak_secret",
-                "title": "JWT Weak Secret",
-                "severity": "Medium",
-                "score": 6,
-                "endpoint": "/users/v1/login",
-                "method": "POST",
-                "description": "JWT tokens use a weak secret that can be cracked"
-            },
-            {
-                "rule": "sql_injection",
-                "title": "SQL Injection",
-                "severity": "Critical", 
-                "score": 9,
-                "endpoint": "/users/v1/{username}",
-                "method": "GET",
-                "description": "Username parameter is vulnerable to SQL injection attacks"
-            },
-            {
-                "rule": "mass_assignment",
-                "title": "Mass Assignment",
-                "severity": "Medium",
-                "score": 5,
-                "endpoint": "/users/v1/register",
-                "method": "POST",
-                "description": "Users can register as admin by adding admin field"
-            },
-            {
-                "rule": "bola_user_deletion",
-                "title": "Broken Object Level Authorization in User Deletion",
-                "severity": "High",
-                "score": 8,
-                "endpoint": "/users/v1/{username}",
-                "method": "DELETE", 
-                "description": "Non-admin users can delete other users' accounts"
-            },
-            {
-                "rule": "information_disclosure",
-                "title": "Information Disclosure",
-                "severity": "Medium",
-                "score": 4,
-                "endpoint": "/users/v1",
-                "method": "GET",
-                "description": "Endpoint reveals user email addresses and usernames"
-            },
-            {
-                "rule": "improper_auth_flow",
-                "title": "Improper Authentication Flow",
-                "severity": "Medium",
-                "score": 5,
-                "endpoint": "/books/v1",
-                "method": "POST",
-                "description": "Endpoint accepts requests with invalid or expired tokens"
-            }
-        ]
-    else:
-        all_findings = []
+    # Aggregate all findings
+    all_findings = []
+    for result in scan_results:
+        findings = result.get('findings', [])
+        all_findings.extend(findings)
     
     # Apply pagination
     total_findings = len(all_findings)
@@ -618,159 +539,13 @@ async def delete_scan(scan_id: str, user: Dict = Depends(verify_token)):
 @app.get("/api/queue/stats")
 async def get_queue_stats(user: Dict = Depends(require_admin)):
     """Get queue statistics (admin only)"""
-    return {"queue_length": 0, "active_workers": 0, "processing_workers": 0, "waiting_workers": 0}
+    return job_queue.get_queue_stats()
 
 @app.post("/api/queue/cleanup")
 async def cleanup_old_jobs(user: Dict = Depends(require_admin)):
     """Cleanup old job data (admin only)"""
-    return {"message": "Job queue disabled - using direct execution mode"}
-
-async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
-    """Execute scan using direct Docker execution (fallback)"""
-    try:
-        scan_data = scans[scan_id]
-        scan_data["status"] = "running"
-        scan_data["current_phase"] = "Starting scan"
-        scan_data["progress"] = 10
-        
-        # Get scan parameters
-        server_url = scan_data["server_url"]
-        spec_location = scan_data["spec_location"]
-        
-        # Build Docker command
-        try:
-            # Use OpenAPI endpoint if no spec file provided
-            spec_to_use = spec_location or f"{server_url}/openapi.json"
-            
-            docker_cmd = get_secure_docker_command(
-                image="ventiapi-scanner",
-                scan_id=scan_id,
-                spec_path=spec_to_use,
-                server_url=server_url,
-                dangerous=dangerous,
-                fuzz_auth=fuzz_auth,
-                is_admin=user.get('is_admin', False)
-            )
-            
-            # Add rate limiting parameters
-            docker_cmd.extend(['--rps', str(rps)])
-            docker_cmd.extend(['--max-requests', str(max_requests)])
-            
-            scan_data["current_phase"] = "Executing security scan"
-            scan_data["progress"] = 20
-            
-            # Execute scan asynchronously
-            import subprocess
-            import asyncio
-            process = await asyncio.create_subprocess_exec(
-                *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-            
-            # Convert to the expected format for compatibility
-            class ProcessResult:
-                def __init__(self, returncode, stdout, stderr):
-                    self.returncode = returncode
-                    self.stdout = stdout.decode() if isinstance(stdout, bytes) else stdout
-                    self.stderr = stderr.decode() if isinstance(stderr, bytes) else stderr
-            
-            process = ProcessResult(process.returncode, stdout, stderr)
-            
-            if process.returncode == 0:
-                scan_data["status"] = "completed"
-                scan_data["current_phase"] = "Scan completed"
-                scan_data["progress"] = 100
-                scan_data["findings_count"] = 8  # VAmPI typical vulnerability count
-                scan_data["completed_chunks"] = 3
-                # Mark all chunks as completed
-                for chunk in scan_data["chunk_status"]:
-                    chunk["status"] = "completed"
-                    chunk["progress"] = 100
-                print(f"✅ Scan {scan_id} completed successfully")
-            elif "request budget exhausted" in process.stderr:
-                # Request budget exhausted is a successful completion, not a failure
-                scan_data["status"] = "completed"
-                scan_data["current_phase"] = "Scan completed (request budget reached)"
-                scan_data["progress"] = 100
-                scan_data["findings_count"] = 8  # VAmPI typical vulnerability count
-                scan_data["completed_chunks"] = 3
-                # Mark all chunks as completed
-                for chunk in scan_data["chunk_status"]:
-                    chunk["status"] = "completed"
-                    chunk["progress"] = 100
-                print(f"✅ Scan {scan_id} completed - request budget reached")
-            else:
-                scan_data["status"] = "failed"
-                scan_data["current_phase"] = "Scan failed"
-                scan_data["progress"] = 100
-                print(f"❌ Scan {scan_id} failed: {process.stderr}")
-                
-        except subprocess.TimeoutExpired:
-            scan_data["status"] = "failed"
-            scan_data["current_phase"] = "Scan timeout"
-            scan_data["progress"] = 100
-            print(f"⏰ Scan {scan_id} timed out")
-            
-        except Exception as e:
-            scan_data["status"] = "failed"
-            scan_data["current_phase"] = "Scan failed"
-            scan_data["progress"] = 100
-            print(f"❌ Scan {scan_id} execution error: {e}")
-            
-    except Exception as e:
-        print(f"❌ Scan {scan_id} setup error: {e}")
-        if scan_id in scans:
-            scans[scan_id]["status"] = "failed"
-            scans[scan_id]["current_phase"] = "Scan failed"
-            scans[scan_id]["progress"] = 100
-
-async def monitor_scan_progress(scan_id: str):
-    """Monitor scan progress and update status periodically"""
-    try:
-        # Simulate progress across 3 parallel chunks
-        chunk_endpoints = [
-            ["/", "/users/v1", "/users/v1/_debug"],
-            ["/books/v1", "/books/v1/{book_title}", "/createdb"], 
-            ["/me", "/users/v1/login", "/users/v1/register"]
-        ]
-        
-        for step in range(20):  # 20 steps of 3 seconds each = 60 seconds total
-            await asyncio.sleep(3)
-            
-            if scan_id not in scans:
-                break
-                
-            scan_data = scans[scan_id]
-            if scan_data.get("status") in ["completed", "failed"]:
-                break
-            
-            # Update chunk progress simulation
-            for chunk_idx in range(3):
-                chunk = scan_data["chunk_status"][chunk_idx]
-                chunk_progress = min(95, (step * 5) + (chunk_idx * 2))  # Staggered progress
-                
-                if chunk_progress < 95:
-                    chunk["status"] = "running"
-                    chunk["progress"] = chunk_progress
-                    endpoint_idx = min(len(chunk_endpoints[chunk_idx]) - 1, step // 3)
-                    if endpoint_idx < len(chunk_endpoints[chunk_idx]):
-                        chunk["current_endpoint"] = chunk_endpoints[chunk_idx][endpoint_idx]
-                        chunk["endpoints"] = chunk_endpoints[chunk_idx][:endpoint_idx + 1]
-                        chunk["endpoints_count"] = len(chunk["endpoints"])
-            
-            # Calculate overall progress
-            total_chunk_progress = sum(chunk["progress"] for chunk in scan_data["chunk_status"])
-            overall_progress = min(90, total_chunk_progress // 3)
-            
-            scan_data["progress"] = overall_progress
-            scan_data["current_phase"] = f"Processing ({scan_data['completed_chunks']}/3 workers completed)"
-            
-            print(f"📊 Scan {scan_id}: {overall_progress}% - Testing endpoints across 3 workers")
-            
-    except Exception as e:
-        print(f"Progress monitoring error for {scan_id}: {e}")
+    cleaned_count = job_queue.cleanup_old_jobs()
+    return {"message": f"Cleaned up {cleaned_count} old job records"}
 
 if __name__ == "__main__":
     import uvicorn

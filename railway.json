@@ -1,12 +1,25 @@
 {
+  "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "dockerfile",
-    "dockerfilePath": "scanner-service/web-api/Dockerfile"
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "python main.py",
+    "startCommand": "/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "always"
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "REDIS_URL": "${{Redis.REDIS_URL}}",
+        "JWT_SECRET": "${{JWT_SECRET}}",
+        "DEFAULT_ADMIN_USERNAME": "${{DEFAULT_ADMIN_USERNAME}}",
+        "DEFAULT_ADMIN_PASSWORD": "${{DEFAULT_ADMIN_PASSWORD}}",
+        "SCANNER_MAX_PARALLEL_CONTAINERS": "5",
+        "SCANNER_CONTAINER_MEMORY_LIMIT": "512m"
+      }
+    }
   }
 }
