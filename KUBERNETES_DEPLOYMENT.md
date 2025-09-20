@@ -3,17 +3,44 @@
 
 This guide will help you deploy the VentiAPI Scanner to Kubernetes with proper container orchestration, auto-scaling, and job-based scanning.
 
-## Quick Start (5 minutes)
+## Quick Start (2 minutes)
+
+```bash
+# 1. One-command deployment
+./kubernetes_deploy.sh
+
+# 2. Access application
+# Frontend: http://localhost:3000
+# API: http://localhost:8000
+# Credentials: MICS295 / MaryMcHale
+```
+
+**That's it!** The script automatically:
+- ✅ Checks prerequisites (Docker, kubectl, k3d)
+- ✅ Creates k3d cluster with proper port mappings
+- ✅ Builds and imports Docker images
+- ✅ Creates Kubernetes manifests
+- ✅ Deploys to cluster
+- ✅ Verifies health checks
+- ✅ Shows access information
+
+## Manual Setup (if you prefer step-by-step)
 
 ```bash
 # 1. Setup local Kubernetes
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-k3d cluster create ventiapi --port "3000:80@loadbalancer"
+k3d cluster create ventiapi-local --port "3000:30000@agent:0" --port "8000:30001@agent:0" --agents 2
 
-# 2. Deploy everything
-kubectl apply -f kubernetes/
+# 2. Build and import images
+docker build -t ventiapi-frontend:latest ./frontend
+docker build -t ventiapi-web-api:latest ./scanner-service/web-api
+docker build -t ventiapi-scanner:latest -f scanner.Dockerfile .
+k3d image import ventiapi-frontend:latest ventiapi-web-api:latest ventiapi-scanner:latest --cluster ventiapi-local
 
-# 3. Access application
+# 3. Deploy everything
+kubectl apply -f kubernetes/base/
+
+# 4. Access application
 echo "Application ready at: http://localhost:3000"
 ```
 

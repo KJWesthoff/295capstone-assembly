@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: ventiapi
+  name: scanner-job-manager
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scanner-job-manager-binding
+  namespace: ventiapi
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: ventiapi
+roleRef:
+  kind: Role
+  name: scanner-job-manager
+  apiGroup: rbac.authorization.k8s.io

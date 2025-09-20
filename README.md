@@ -1,46 +1,42 @@
 # VentiAPI Scanner - Microservice API Security Testing Platform
 
-A modern full-stack application for scanning APIs for security vulnerabilities using microservice architecture and real-time progress tracking.
+A modern full-stack application for scanning APIs for security vulnerabilities using microservice architecture and real-time progress tracking. **Now with Kubernetes orchestration support!**
 
-## Architecture
+## Architecture Overview
 
 ```
-                                                 ┌─────────────────────┐
-                                                 │   Scanner           │
-                                                 │   Microservices     │
-                           ┌─────────────────┐   │   (Docker           │
-                           │   Web API       │◄─►│   Containers)       │
-                           │   (FastAPI +    │   │   Parallel Chunks   │
-                           │   Auth +        │   │                     │
-┌─────────────────┐        │   Orchestration)│   └─────────────────────┘
-│   Users/Clients │        │   Port: 8000    │
-│                 │        └─────────────────┘
-└─────────────────┘                 │
-          │                         │
-          ▼                         ▼
-┌─────────────────┐        ┌─────────────────┐
-│  Nginx Reverse  │        │     Redis       │
-│     Proxy       │        │   (Rate Limit   │
-│                 │        │   & Caching)    │
-│ • Static Files  │        │   Port: 6379    │
-│ • /api routing  │        └─────────────────┘
-│ • Port: 3000    │
-└─────────────────┘
-          │
-          ▼
-┌─────────────────┐
-│   Frontend      │
-│   (React +      │
-│   TypeScript)   │
-│   Static Build  │
-└─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                     Production-Ready Deployment Options                            │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+Docker Compose (Development)     │    Kubernetes (Production/Local)
+                                │
+┌─────────────────┐              │    ┌─────────────────────────────────┐
+│   nginx:3000    │              │    │      k3d/EKS Cluster           │
+│   ├─ static     │              │    │  ┌─────────────────────────────┐ │
+│   └─ /api proxy │              │    │  │       Frontend Pod          │ │
+├─────────────────┤              │    │  │   nginx + React build       │ │
+│   web-api:8000  │              │    │  └─────────────────────────────┘ │
+│   ├─ FastAPI    │              │    │  ┌─────────────────────────────┐ │
+│   └─ Scanner    │              │    │  │       Web-API Pod           │ │
+├─────────────────┤              │    │  │   FastAPI + Auth            │ │
+│   redis:6379    │              │    │  └─────────────────────────────┘ │
+│   ├─ Cache      │              │    │  ┌─────────────────────────────┐ │
+│   └─ Jobs       │              │    │  │       Redis Pod             │ │
+├─────────────────┤              │    │  │   Rate Limit + Cache        │ │
+│  scanner:latest │              │    │  └─────────────────────────────┘ │
+│   ├─ VentiAPI   │              │    │  ┌─────────────────────────────┐ │
+│   └─ On-demand  │              │    │  │    Scanner Jobs (Dynamic)   │ │
+└─────────────────┘              │    │  │   Kubernetes Jobs           │ │
+                                │    │  │   Auto-scaling              │ │
+                                │    │  └─────────────────────────────┘ │
+                                │    └─────────────────────────────────┘
 ```
 
-### **Railway-Ready Deployment Architecture**
-- **Single Port Entry**: Nginx serves everything on port 3000
-- **API Routing**: `/api/*` requests proxied to backend
-- **Static Assets**: Frontend served directly by nginx
-- **Internal Communication**: Services communicate via Docker network
+### **Deployment Architecture Options**
+- **Docker Compose**: Perfect for local development and simple deployments
+- **Kubernetes**: Production-ready with auto-scaling, high availability, and job orchestration
+- **Hybrid**: Use Docker Compose locally, Kubernetes for production
 
 ## Key Features
 
@@ -64,40 +60,75 @@ A modern full-stack application for scanning APIs for security vulnerabilities u
 
 ## Quick Start
 
-### Prerequisites
-- Docker & Docker Compose
-- Git with submodule support
+Choose your deployment method:
 
-### 1. Clone and Setup
+### 🚀 Option 1: Kubernetes (Recommended for Production)
+
+**Prerequisites:**
+- Docker installed and running
+- kubectl installed
+- k3d installed (for local) or access to AWS EKS (for production)
+
+**One-Command Deployment:**
 ```bash
+# First-time setup (creates cluster and deploys)
+./kubernetes_deploy.sh
+
+# Quick start/stop (manages existing deployment)
+./start-kubernetes.sh        # Start the app
+./start-kubernetes.sh stop   # Stop the app
+./start-kubernetes.sh status # Check status
+```
+
+**Manual Deployment:**
+```bash
+# 1. Setup and deploy
 git clone <your-repo-url>
 cd ScannerApp
 git submodule update --init --recursive
+
+# 2. Deploy to Kubernetes
+./kubernetes_deploy.sh
+
+# 3. Access your application
+# Frontend: http://localhost:3000
+# API: http://localhost:8000
+# Credentials: MICS295 / MaryMcHale
 ```
 
-### 2. Configure Local Environment
+**Features:**
+- ✅ **Auto-scaling** based on CPU/memory usage
+- ✅ **High availability** with multiple replicas  
+- ✅ **Job orchestration** for dynamic scanner containers
+- ✅ **Health checks** and automatic restarts
+- ✅ **Local/production parity** with k3d and EKS
+
+### 🐳 Option 2: Docker Compose (Simple Development)
+
+**Prerequisites:**
+- Docker & Docker Compose
+- Git with submodule support
+
+**Setup:**
 ```bash
-# Copy the example environment file
+# 1. Clone and setup
+git clone <your-repo-url>
+cd ScannerApp
+git submodule update --init --recursive
+
+# 2. Configure environment
 cp .env.local.example .env.local
+# Edit .env.local with your credentials
 
-# Edit .env.local with your preferred credentials
-# At minimum, update these values:
-# - JWT_SECRET (use a secure random string)
-# - DEFAULT_ADMIN_USERNAME (your preferred admin username)
-# - DEFAULT_ADMIN_PASSWORD (your preferred admin password)
-```
-
-### 3. Start the Development Environment
-```bash
+# 3. Start development environment
 ./start-dev.sh
 ```
 
-This script will:
-- Load environment variables from `.env.local`
-- Clean up any Docker networking issues
-- Build the scanner image and tag it properly
-- Build and start all containers (frontend, backend, redis)
-- Display login credentials and access points
+**Features:**
+- ✅ **Simple setup** for local development
+- ✅ **Hot reload** for rapid development
+- ✅ **All services** in one command
+- ✅ **Volume mounting** for development
 
 ### 4. Access the Application
 - **Application:** http://localhost:3000 (nginx serves frontend + proxies API)
@@ -232,6 +263,84 @@ curl -H "Authorization: Bearer $TOKEN" \
 # Get detailed findings
 curl -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8000/api/scan/{scan_id}/findings"
+```
+
+## 🚀 Deployment Options
+
+### Local Development
+
+#### Kubernetes (k3d)
+```bash
+# Quick start
+./kubernetes_deploy.sh
+
+# Manual commands
+k3d cluster create ventiapi-local --port "3000:30000@agent:0" --port "8000:30001@agent:0" --agents 2
+kubectl apply -f kubernetes/base/
+```
+
+#### Docker Compose
+```bash
+# Quick start
+./start-dev.sh
+
+# Manual commands  
+docker compose up --build
+```
+
+### Production Deployment
+
+#### AWS EKS (Kubernetes)
+```bash
+# Create EKS cluster
+eksctl create cluster --name ventiapi-prod --region us-west-2 --nodegroup-name workers --node-type t3.medium --nodes 2
+
+# Deploy application
+kubectl apply -k kubernetes/overlays/production/
+```
+
+#### AWS Lightsail (Docker Compose)
+```bash
+# Simple VPS deployment with full Docker support
+# See LIGHTSAIL_DEPLOYMENT.md for complete guide
+aws lightsail create-instances --instance-names ventiapi-scanner --blueprint-id ubuntu_20_04 --bundle-id medium_2_0
+```
+
+#### Railway/Render (Simplified)
+- **Note**: These platforms don't support Docker-in-Docker, so scanner functionality would need to be embedded
+- See platform-specific deployment guides
+
+### Management Commands
+
+#### Kubernetes
+```bash
+# Quick management
+./start-kubernetes.sh start    # Start application
+./start-kubernetes.sh stop     # Stop application  
+./start-kubernetes.sh status   # Show status
+./start-kubernetes.sh logs web-api  # Show logs
+./start-kubernetes.sh delete   # Delete cluster
+
+# Advanced kubectl commands
+kubectl get all -n ventiapi                           # View all resources
+kubectl scale deployment web-api --replicas=5 -n ventiapi  # Scale services
+kubectl logs deployment/web-api -n ventiapi -f        # View logs
+k3d cluster delete ventiapi-local                     # Delete cluster
+```
+
+#### Docker Compose
+```bash
+# View status
+docker compose ps
+
+# Scale services
+docker compose up --scale web-api=3
+
+# View logs
+docker compose logs -f web-api
+
+# Clean up
+docker compose down
 ```
 
 

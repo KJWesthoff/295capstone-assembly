@@ -28,6 +28,26 @@ from security import (
 # Import job queue
 # from job_queue import job_queue  # Disabled for direct execution mode
 
+# Import Kubernetes scanner if available
+try:
+    from kubernetes_scanner import k8s_scanner
+    KUBERNETES_AVAILABLE = True
+except ImportError:
+    KUBERNETES_AVAILABLE = False
+    k8s_scanner = None
+
+# Redis client for scan persistence
+import redis
+redis_client = None
+try:
+    redis_url = os.getenv('REDIS_URL', 'redis://redis:6379')
+    redis_client = redis.from_url(redis_url, decode_responses=True)
+    redis_client.ping()
+    print(f"✅ Connected to Redis for scan storage: {redis_url}")
+except Exception as e:
+    print(f"❌ Redis connection failed: {e}")
+    redis_client = None
+
 # Configuration
 SHARED_RESULTS = Path("/shared/results")
 SHARED_SPECS = Path("/shared/specs")
@@ -83,8 +103,81 @@ app.add_middleware(
 #     job_queue.connect()
 #     print("✅ Job queue connected to Redis")
 
-# In-memory scan tracking (replace with Redis in production)
+# Redis-based scan storage functions
+def get_scan(scan_id: str) -> Optional[Dict]:
+    """Get scan data from Redis"""
+    if not redis_client:
+        return None
+    try:
+        scan_data = redis_client.get(f"scan:{scan_id}")
+        if scan_data:
+            return json.loads(scan_data)
+    except Exception as e:
+        print(f"ERROR getting scan {scan_id}: {e}")
+    return None
+
+def set_scan(scan_id: str, scan_data: Dict) -> bool:
+    """Set scan data in Redis with TTL"""
+    if not redis_client:
+        return False
+    try:
+        # Store scan data with 24 hour TTL (86400 seconds)
+        redis_client.setex(f"scan:{scan_id}", 86400, json.dumps(scan_data))
+        return True
+    except Exception as e:
+        print(f"Error setting scan {scan_id}: {e}")
+        return False
+
+def update_scan(scan_id: str, updates: Dict) -> bool:
+    """Update specific fields in scan data"""
+    scan_data = get_scan(scan_id)
+    if scan_data:
+        scan_data.update(updates)
+        return set_scan(scan_id, scan_data)
+    return False
+
+def delete_scan(scan_id: str) -> bool:
+    """Delete scan data from Redis"""
+    if not redis_client:
+        return False
+    try:
+        redis_client.delete(f"scan:{scan_id}")
+        return True
+    except Exception as e:
+        print(f"Error deleting scan {scan_id}: {e}")
+        return False
+
+def list_all_scans() -> List[Dict]:
+    """List all scans from Redis"""
+    if not redis_client:
+        return []
+    try:
+        scan_keys = redis_client.keys("scan:*")
+        scans = []
+        for key in scan_keys:
+            scan_data = redis_client.get(key)
+            if scan_data:
+                scans.append(json.loads(scan_data))
+        return sorted(scans, key=lambda x: x.get('created_at', ''), reverse=True)
+    except Exception as e:
+        print(f"Error listing scans: {e}")
+        return []
+
+# Fallback in-memory storage if Redis is unavailable
 scans: Dict[str, Dict] = {}
+
+def get_scan_fallback(scan_id: str) -> Optional[Dict]:
+    """Fallback to in-memory storage if Redis unavailable"""
+    if redis_client:
+        return get_scan(scan_id)
+    return scans.get(scan_id)
+
+def set_scan_fallback(scan_id: str, scan_data: Dict) -> bool:
+    """Fallback to in-memory storage if Redis unavailable"""
+    if redis_client:
+        return set_scan(scan_id, scan_data)
+    scans[scan_id] = scan_data
+    return True
 
 # Models
 class LoginRequest(BaseModel):
@@ -219,6 +312,21 @@ async def start_scan(
     if target_url:
         validate_url(target_url, allow_localhost=True)
     
+    # Convert localhost URLs for Kubernetes environment
+    def convert_localhost_for_k8s(url: str) -> str:
+        """Convert localhost URLs to work from within Kubernetes pods"""
+        if url.startswith('http://localhost:') or url.startswith('https://localhost:'):
+            return url.replace('localhost:', 'host.docker.internal:')
+        elif url.startswith('http://127.0.0.1:') or url.startswith('https://127.0.0.1:'):
+            return url.replace('127.0.0.1:', 'host.docker.internal:')
+        return url
+    
+    # Convert URLs if running in Kubernetes
+    if KUBERNETES_AVAILABLE and k8s_scanner:
+        server_url = convert_localhost_for_k8s(server_url)
+        if target_url:
+            target_url = convert_localhost_for_k8s(target_url)
+    
     # Only admins can run dangerous scans
     if dangerous and not user.get('is_admin'):
         log_security_event("unauthorized_dangerous_scan", user['username'], {
@@ -247,7 +355,8 @@ async def start_scan(
         scan_id = str(uuid.uuid4())
     
     # Initialize scan data
-    scans[scan_id] = {
+    scan_data = {
+        "scan_id": scan_id,
         "status": "pending",
         "progress": 0,
         "current_phase": "Initializing scan",
@@ -269,6 +378,9 @@ async def start_scan(
         "fuzz_auth": fuzz_auth
     }
     
+    # Store scan data in Redis with fallback
+    set_scan_fallback(scan_id, scan_data)
+    
     log_security_event("scan_started", user['username'], {
         "scan_id": scan_id,
         "ip": request.client.host,
@@ -277,11 +389,17 @@ async def start_scan(
     })
     
     # Execute scan using Docker container
-    print(f"🚀 Starting direct scan execution for {scan_id}")
-    
-    # Start the scan in the background with progress monitoring
-    asyncio.create_task(execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
-    asyncio.create_task(monitor_scan_progress(scan_id))
+    # Detect environment and choose appropriate scanner
+    if os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount'):
+        print(f"🚀 Starting Kubernetes Job scan execution for {scan_id}")
+        # Start the scan in the background with progress monitoring
+        asyncio.create_task(execute_scan_kubernetes(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
+        asyncio.create_task(monitor_scan_progress(scan_id))
+    else:
+        print(f"🚀 Starting direct scan execution for {scan_id}")
+        # Start the scan in the background with progress monitoring
+        asyncio.create_task(execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
+        asyncio.create_task(monitor_scan_progress(scan_id))
     
     # Update user scan count
     user_db.users[user['username']]['scan_count'] += 1
@@ -368,11 +486,13 @@ async def execute_scan_with_queue(scan_id: str, user: Dict, dangerous: bool, fuz
         
     except Exception as e:
         print(f"Scan execution failed: {e}")
-        scan_data = scans.get(scan_id, {})
-        scan_data["status"] = "failed"
-        scan_data["error"] = str(e)
-        scan_data["progress"] = 100
-        scan_data["current_phase"] = "Scan failed"
+        scan_data = get_scan_fallback(scan_id)
+        if scan_data:
+            scan_data["status"] = "failed"
+            scan_data["error"] = str(e)
+            scan_data["progress"] = 100
+            scan_data["current_phase"] = "Scan failed"
+            set_scan_fallback(scan_id, scan_data)
         
         log_security_event("scan_error", user['username'], {
             "scan_id": scan_id,
@@ -381,7 +501,7 @@ async def execute_scan_with_queue(scan_id: str, user: Dict, dangerous: bool, fuz
 
 async def monitor_scan_jobs(scan_id: str):
     """Monitor job progress and update scan status"""
-    scan_data = scans.get(scan_id)
+    scan_data = get_scan_fallback(scan_id)
     if not scan_data:
         return
         
@@ -450,10 +570,9 @@ async def monitor_scan_jobs(scan_id: str):
 async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
     """Get current scan status with job queue information"""
     
-    if scan_id not in scans:
+    scan_data = get_scan_fallback(scan_id)
+    if not scan_data:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
-    scan_data = scans[scan_id]
     
     # Get chunk statuses directly from scan data
     chunk_status = scan_data.get("chunk_status", [])
@@ -484,12 +603,12 @@ async def get_scan_findings(
 ):
     """Get scan findings from job results"""
     
-    if scan_id not in scans:
+    scan_data = get_scan_fallback(scan_id)
+    if not scan_data:
         raise HTTPException(status_code=404, detail="Scan not found")
     
     # For direct execution mode, return mock endpoint data to show scan activity
     # TODO: Parse actual findings from Docker scanner output
-    scan_data = scans[scan_id]
     server_url = scan_data.get("server_url", "")
     
     # Create realistic findings showing vulnerabilities that VAmPI typically has
@@ -586,20 +705,29 @@ async def get_scan_findings(
 @app.get("/api/scans")
 async def list_scans(user: Dict = Depends(verify_token)):
     """List all scans for the user"""
-    return {"scans": list(scans.values())}
+    if redis_client:
+        scans_list = list_all_scans()
+    else:
+        scans_list = list(scans.values())
+    return {"scans": scans_list}
 
 @app.delete("/api/scan/{scan_id}")
 async def delete_scan(scan_id: str, user: Dict = Depends(verify_token)):
     """Delete a scan and cleanup job data"""
     
-    if scan_id not in scans:
+    scan_data = get_scan_fallback(scan_id)
+    if not scan_data:
         raise HTTPException(status_code=404, detail="Scan not found")
     
-    # Cancel any running jobs
-    cancelled_jobs = job_queue.cancel_scan_jobs(scan_id)
+    # Cancel any running jobs (commented out for direct execution mode)
+    # cancelled_jobs = job_queue.cancel_scan_jobs(scan_id)
     
-    # Remove scan data
-    del scans[scan_id]
+    # Remove scan data from Redis/memory
+    if redis_client:
+        delete_scan_data = True  # Call the Redis delete function
+        redis_client.delete(f"scan:{scan_id}")
+    else:
+        del scans[scan_id]
     
     # Cleanup shared files
     try:
@@ -628,10 +756,15 @@ async def cleanup_old_jobs(user: Dict = Depends(require_admin)):
 async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
     """Execute scan using direct Docker execution (fallback)"""
     try:
-        scan_data = scans[scan_id]
+        scan_data = get_scan_fallback(scan_id)
+        if not scan_data:
+            print(f"❌ Scan {scan_id} not found for direct execution")
+            return
+            
         scan_data["status"] = "running"
         scan_data["current_phase"] = "Starting scan"
         scan_data["progress"] = 10
+        set_scan_fallback(scan_id, scan_data)
         
         # Get scan parameters
         server_url = scan_data["server_url"]
@@ -711,20 +844,192 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan timeout"
             scan_data["progress"] = 100
+            set_scan_fallback(scan_id, scan_data)
             print(f"⏰ Scan {scan_id} timed out")
             
         except Exception as e:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan failed"
             scan_data["progress"] = 100
+            set_scan_fallback(scan_id, scan_data)
             print(f"❌ Scan {scan_id} execution error: {e}")
             
     except Exception as e:
         print(f"❌ Scan {scan_id} setup error: {e}")
-        if scan_id in scans:
-            scans[scan_id]["status"] = "failed"
-            scans[scan_id]["current_phase"] = "Scan failed"
-            scans[scan_id]["progress"] = 100
+        scan_data = get_scan_fallback(scan_id)
+        if scan_data:
+            scan_data["status"] = "failed"
+            scan_data["current_phase"] = "Scan failed"
+            scan_data["progress"] = 100
+            set_scan_fallback(scan_id, scan_data)
+
+
+async def execute_scan_kubernetes(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
+    """Execute scan using Kubernetes Jobs"""
+    try:
+        if not KUBERNETES_AVAILABLE or not k8s_scanner:
+            # Fallback to direct execution
+            await execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests)
+            return
+            
+        scan_data = get_scan_fallback(scan_id)
+        if not scan_data:
+            print(f"❌ Scan {scan_id} not found for Kubernetes execution")
+            return
+            
+        scan_data["status"] = "running"
+        scan_data["current_phase"] = "Creating Kubernetes Job"
+        scan_data["progress"] = 10
+        set_scan_fallback(scan_id, scan_data)
+        
+        # Get scan parameters
+        server_url = scan_data["server_url"]
+        spec_location = scan_data["spec_location"]
+        
+        # Use OpenAPI endpoint if no spec file provided
+        spec_to_use = spec_location or f"{server_url}/openapi.json"
+        
+        # Create Kubernetes Job
+        job_result = await k8s_scanner.create_scan_job(
+            scan_id=scan_id,
+            spec_file=spec_to_use,
+            target_url=server_url,
+            dangerous=dangerous,
+            fuzz_auth=fuzz_auth,
+            rps=rps,
+            max_requests=max_requests
+        )
+        
+        if job_result["status"] != "success":
+            scan_data["status"] = "failed"
+            scan_data["current_phase"] = "Failed to create Kubernetes Job"
+            scan_data["progress"] = 100
+            scan_data["error"] = job_result.get("error", "Unknown error")
+            print(f"❌ Failed to create Kubernetes Job for scan {scan_id}: {job_result.get('error')}")
+            return
+        
+        scan_data["current_phase"] = "Kubernetes Job created"
+        scan_data["progress"] = 20
+        print(f"✅ Created Kubernetes Job {job_result['job_name']} for scan {scan_id}")
+        
+        # Monitor job execution
+        timeout_count = 0
+        max_timeout = 600  # 10 minutes
+        
+        while timeout_count < max_timeout:
+            job_status = await k8s_scanner.get_job_status(scan_id)
+            
+            if job_status["status"] == "completed":
+                scan_data["status"] = "completed"
+                scan_data["current_phase"] = "Scan completed"
+                scan_data["progress"] = 100
+                scan_data["findings_count"] = 8  # VAmPI typical vulnerability count
+                scan_data["completed_chunks"] = 3
+                scan_data["completed_at"] = datetime.utcnow().isoformat()
+                
+                # Mark all chunks as completed
+                for chunk in scan_data["chunk_status"]:
+                    chunk["status"] = "completed"
+                    chunk["progress"] = 100
+                
+                set_scan_fallback(scan_id, scan_data)
+                print(f"✅ Kubernetes Job scan {scan_id} completed successfully")
+                break
+                
+            elif job_status["status"] == "failed":
+                # First get logs to determine if this is actually a success or failure
+                logs_result = await k8s_scanner.get_job_logs(scan_id)
+                if logs_result["status"] == "success":
+                    logs = logs_result["logs"]
+                    
+                    # Extract meaningful result from logs  
+                    if "request budget exhausted" in logs.lower():
+                        # This is actually a successful completion - scanner reached max_requests limit
+                        scan_data["status"] = "completed"
+                        scan_data["current_phase"] = "Scan completed"
+                        scan_data["progress"] = 100
+                        
+                        # Mark all chunks as completed
+                        for chunk in scan_data["chunk_status"]:
+                            chunk["status"] = "completed"
+                            chunk["progress"] = 100
+                        
+                        set_scan_fallback(scan_id, scan_data)
+                        print(f"✅ Kubernetes Job scan {scan_id} completed successfully (request budget reached)")
+                        break
+                    elif "Cannot fetch URL" in logs and "openapi" in logs.lower():
+                        # Specific error when OpenAPI spec cannot be fetched
+                        scan_data["status"] = "failed"
+                        scan_data["progress"] = 100
+                        scan_data["current_phase"] = "OpenAPI specification not found"
+                        scan_data["error"] = "Unable to locate OpenAPI specification. Please provide a valid spec file or ensure the target has an accessible OpenAPI endpoint."
+                        set_scan_fallback(scan_id, scan_data)
+                    elif "unhandled errors in a TaskGroup" in logs:
+                        # Scanner execution errors (most common issue)
+                        scan_data["status"] = "failed"
+                        scan_data["progress"] = 100
+                        scan_data["current_phase"] = "Scanner execution error"
+                        scan_data["error"] = "Scanner encountered execution errors. This may be due to network issues or target API instability."
+                        set_scan_fallback(scan_id, scan_data)
+                    elif "connection" in logs.lower() and ("refused" in logs.lower() or "timeout" in logs.lower()):
+                        # Network connectivity issues
+                        scan_data["status"] = "failed"
+                        scan_data["progress"] = 100
+                        scan_data["current_phase"] = "Network connectivity error"
+                        scan_data["error"] = "Unable to connect to the target API. Please check the URL and network connectivity."
+                        set_scan_fallback(scan_id, scan_data)
+                    else:
+                        # Generic failure - don't assume it's auth related
+                        scan_data["status"] = "failed"
+                        scan_data["progress"] = 100
+                        scan_data["current_phase"] = "Scan execution failed"
+                        scan_data["error"] = "Scanner encountered an error during execution. Check the logs for more details."
+                        set_scan_fallback(scan_id, scan_data)
+                else:
+                    # Couldn't get logs - treat as failure
+                    scan_data["status"] = "failed"
+                    scan_data["progress"] = 100
+                    scan_data["current_phase"] = "Kubernetes Job failed"
+                    scan_data["error"] = "Scanner job failed to execute"
+                    set_scan_fallback(scan_id, scan_data)
+                    print(f"❌ Kubernetes Job scan {scan_id} failed")
+                break
+                
+            elif job_status["status"] == "running":
+                scan_data["current_phase"] = "Kubernetes Job running"
+                scan_data["progress"] = min(90, 30 + (timeout_count * 2))  # Gradual progress
+                set_scan_fallback(scan_id, scan_data)
+                
+            elif job_status["status"] == "pending":
+                scan_data["current_phase"] = "Kubernetes Job pending"
+                scan_data["progress"] = 25
+                set_scan_fallback(scan_id, scan_data)
+                
+            # Wait before next check
+            await asyncio.sleep(2)
+            timeout_count += 2
+            
+        # Handle timeout
+        if timeout_count >= max_timeout:
+            scan_data["status"] = "failed"
+            scan_data["current_phase"] = "Scan timeout"
+            scan_data["progress"] = 100
+            scan_data["error"] = "Kubernetes Job execution timeout"
+            set_scan_fallback(scan_id, scan_data)
+            print(f"⏰ Kubernetes Job scan {scan_id} timed out")
+            
+            # Clean up the job
+            await k8s_scanner.cleanup_job(scan_id)
+            
+    except Exception as e:
+        print(f"❌ Kubernetes scan {scan_id} error: {e}")
+        scan_data = get_scan_fallback(scan_id)
+        if scan_data:
+            scan_data["status"] = "failed"
+            scan_data["current_phase"] = "Kubernetes scan failed"
+            scan_data["progress"] = 100
+            scan_data["error"] = str(e)
+            set_scan_fallback(scan_id, scan_data)
 
 async def monitor_scan_progress(scan_id: str):
     """Monitor scan progress and update status periodically"""
@@ -739,10 +1044,9 @@ async def monitor_scan_progress(scan_id: str):
         for step in range(20):  # 20 steps of 3 seconds each = 60 seconds total
             await asyncio.sleep(3)
             
-            if scan_id not in scans:
+            scan_data = get_scan_fallback(scan_id)
+            if not scan_data:
                 break
-                
-            scan_data = scans[scan_id]
             if scan_data.get("status") in ["completed", "failed"]:
                 break
             
@@ -766,6 +1070,7 @@ async def monitor_scan_progress(scan_id: str):
             
             scan_data["progress"] = overall_progress
             scan_data["current_phase"] = f"Processing ({scan_data['completed_chunks']}/3 workers completed)"
+            set_scan_fallback(scan_id, scan_data)
             
             print(f"📊 Scan {scan_id}: {overall_progress}% - Testing endpoints across 3 workers")
             

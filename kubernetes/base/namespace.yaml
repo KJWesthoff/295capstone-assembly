@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ventiapi
+  labels:
+    name: ventiapi
+    app.kubernetes.io/name: ventiapi-scanner

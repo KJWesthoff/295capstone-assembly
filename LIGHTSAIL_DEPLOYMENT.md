@@ -1,6 +1,8 @@
 # AWS Lightsail Deployment Guide
 ## VentiAPI Scanner - Simple Docker Compose Deployment
 
+**⚠️ Note**: For production deployments, consider using [Kubernetes](KUBERNETES_DEPLOYMENT.md) for better orchestration and scaling capabilities.
+
 This guide will help you deploy the VentiAPI Scanner application to AWS Lightsail using your existing `docker-compose.yml` file with full scanner functionality.
 
 ## Prerequisites

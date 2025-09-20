@@ -49,7 +49,7 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
     return (
       <div className="report error">
         <h3>Scan Failed</h3>
-        <p>{scanStatus.error || 'Unknown error occurred'}</p>
+        <p>{scanStatus.error || scanStatus.current_phase || 'Scan failed with unknown error'}</p>
       </div>
     );
   }

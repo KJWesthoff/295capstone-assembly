@@ -401,10 +401,75 @@ Scanner Engine (Git Submodule)
 
 ## Deployment Architecture
 
+### Kubernetes Deployment (Recommended)
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              Railway Deployment                                    │
+│                              Kubernetes Cluster                                    │
+│                              (Local k3d / AWS EKS)                                 │
 └─────────────────────────────────────────────────────────────────────────────────────┘
+
+Production Environment:
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                                Kubernetes Pods                                     │
+│ ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│ │                         Pod Orchestration Layer                                │ │
+│ │                                                                                 │ │
+│ │  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐              │ │
+│ │  │   Frontend Pod  │   │   Web-API Pod   │   │    Redis Pod    │              │ │
+│ │  │                 │   │                 │   │                 │              │ │
+│ │  │ - nginx:alpine  │   │ - FastAPI app   │   │ - redis:7-alpine│              │ │
+│ │  │ - React build   │   │ - Auth & scan   │   │ - Rate limiting │              │ │
+│ │  │ - Port 80       │   │ - Port 8000     │   │ - Port 6379     │              │ │
+│ │  │ - Replicas: 2   │   │ - Replicas: 2   │   │ - Replicas: 1   │              │ │
+│ │  │ - Auto-scale    │   │ - Auto-scale    │   │ - Persistent    │              │ │
+│ │  └─────────────────┘   └─────────────────┘   └─────────────────┘              │ │
+│ │           │                      │                      │                     │ │
+│ │           └──────────────────────┼──────────────────────┘                     │ │
+│ │                                  │                                            │ │
+│ │  ┌─────────────────────────────────────────────────────────────┐              │ │
+│ │  │               Dynamic Scanner Jobs                          │              │ │
+│ │  │                  (Kubernetes Jobs)                         │              │ │
+│ │  │                                                             │              │ │
+│ │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │              │ │
+│ │  │  │Scanner Job 1│  │Scanner Job 2│  │Scanner Job N│  ...   │              │ │
+│ │  │  │             │  │             │  │             │        │              │ │
+│ │  │  │- OWASP API  │  │- Custom SQL │  │- JWT Fuzzer │        │              │ │
+│ │  │  │  Top 10     │  │  Injection  │  │  Specialist │        │              │ │
+│ │  │  │- Auto-spawn │  │- Database   │  │- Token      │        │              │ │
+│ │  │  │- Auto-clean │  │  Testing    │  │  Testing    │        │              │ │
+│ │  │  └─────────────┘  └─────────────┘  └─────────────┘        │              │ │
+│ │  └─────────────────────────────────────────────────────────────┘              │ │
+│ └─────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                     │
+│ Features:                                                                           │
+│ - Horizontal Pod Autoscaler (HPA)                                                  │
+│ - Resource limits and requests                                                     │
+│ - Health checks and readiness probes                                               │
+│ - Rolling updates with zero downtime                                               │
+│ - Service discovery and load balancing                                             │
+│ - Persistent volumes for data                                                      │
+│ - Secrets management for credentials                                               │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+Local Development (k3d):
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              k3d Cluster (Local)                                   │
+│ ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│ │  Port Mappings:                                                                 │ │
+│ │  - Frontend: localhost:3000 → NodePort 30000                                   │ │
+│ │  - API: localhost:8000 → NodePort 30001                                        │ │
+│ │                                                                                 │ │
+│ │  Quick Start:                                                                   │ │
+│ │  ./kubernetes_deploy.sh                                                         │ │
+│ │                                                                                 │ │
+│ │  Management:                                                                    │ │
+│ │  kubectl get all -n ventiapi                                                   │ │
+│ │  k3d cluster delete ventiapi-local                                             │ │
+│ └─────────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+### Docker Compose Deployment (Development)
 
 Production Environment:
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
@@ -488,14 +553,31 @@ Backend Technology:
 ├── Pydantic (Data Validation & Serialization)
 ├── JWT (JSON Web Tokens for Authentication)
 ├── Redis (Rate Limiting & Session Storage)
-└── Docker SDK (Container Management)
+└── Python Subprocess Management (Container Orchestration)
 
-Infrastructure:
+Infrastructure & Orchestration:
+├── Kubernetes (Container Orchestration)
+│   ├── k3d (Local Development Clusters)
+│   ├── AWS EKS (Production Clusters)
+│   ├── Horizontal Pod Autoscaler (Auto-scaling)
+│   ├── Jobs API (Dynamic Scanner Execution)
+│   └── Service Discovery & Load Balancing
 ├── Docker & Docker Compose (Containerization)
+│   ├── Multi-stage Builds
+│   ├── Image Optimization
+│   └── Development Environment
 ├── nginx (Reverse Proxy & Static File Serving)
 ├── Alpine Linux (Minimal Container Images)
-├── Railway Platform (Production Deployment)
 └── Git Submodules (External Scanner Integration)
+
+Deployment Platforms:
+├── Local Development
+│   ├── k3d (Kubernetes)
+│   └── Docker Compose
+├── Cloud Production
+│   ├── AWS EKS (Kubernetes)
+│   ├── AWS Lightsail (VPS + Docker)
+│   └── Railway/Render (Simplified PaaS)
 
 Security Engine:
 ├── Python 3.9+ (Core Scanner Language)

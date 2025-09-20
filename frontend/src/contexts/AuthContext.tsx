@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const savedToken = localStorage.getItem('jwt_token');
     const savedUser = localStorage.getItem('user');
 
-    if (savedToken && savedUser) {
+    if (savedToken && savedUser && savedUser !== 'undefined') {
       try {
         const parsedUser = JSON.parse(savedUser);
         
