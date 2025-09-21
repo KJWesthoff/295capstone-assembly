@@ -1,0 +1,113 @@
+# Docker Compose configuration for multi-scanner deployment
+version: '3.8'
+
+services:
+  # Your existing services
+  web-api:
+    build: ./web-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Scanner configuration
+      - NUCLEI_ENABLED=true
+      - ZAP_ENABLED=true
+      - NIKTO_ENABLED=true
+      - NIKTO_MICROSERVICE_ENABLED=false
+      
+      # Microservice URLs
+      - NUCLEI_SERVICE_URL=http://nuclei-scanner:8001
+      - ZAP_SERVICE_URL=http://zap-scanner:8002
+      - NIKTO_SERVICE_URL=http://nikto-scanner:8003
+      
+      # Your existing environment variables
+      - JWT_SECRET=${JWT_SECRET}
+      - DEFAULT_ADMIN_USERNAME=${DEFAULT_ADMIN_USERNAME}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
+    depends_on:
+      - redis
+      - nuclei-scanner
+      - zap-scanner
+    volumes:
+      - shared-results:/shared/results
+      - shared-specs:/shared/specs
+
+  # Nuclei Scanner Microservice
+  nuclei-scanner:
+    image: nuclei-scanner:latest
+    build:
+      context: ./scanners/nuclei
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - NUCLEI_TEMPLATES_DIR=/nuclei-templates
+      - NUCLEI_UPDATE_TEMPLATES=true
+    volumes:
+      - nuclei-templates:/nuclei-templates
+      - scan-results:/results
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # OWASP ZAP Scanner Microservice  
+  zap-scanner:
+    image: zap-scanner:latest
+    build:
+      context: ./scanners/zap
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      - ZAP_PORT=8080
+      - ZAP_PROXY_PORT=8081
+    volumes:
+      - scan-results:/results
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nikto Scanner Microservice (optional - you can use direct integration)
+  nikto-scanner:
+    image: nikto-scanner:latest
+    build:
+      context: ./scanners/nikto
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      - NIKTO_CONFIG_DIR=/etc/nikto
+    volumes:
+      - scan-results:/results
+      - nikto-config:/etc/nikto
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Your existing services
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - web-api
+
+volumes:
+  shared-results:
+  shared-specs:
+  scan-results:
+  nuclei-templates:
+  nikto-config:
+  redis-data:
