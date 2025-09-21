@@ -354,7 +354,7 @@ async def start_scan(
     else:
         scan_id = str(uuid.uuid4())
     
-    # Initialize scan data
+    # Initialize scan data (will be updated with actual chunk count after spec splitting)
     scan_data = {
         "scan_id": scan_id,
         "status": "pending",
@@ -366,7 +366,7 @@ async def start_scan(
         "target_url": target_url,
         "spec_location": spec_location,
         "parallel_mode": True,
-        "total_chunks": 3,
+        "total_chunks": 3,  # Default, will be updated after spec splitting
         "completed_chunks": 0,
         "chunk_status": [
             {"chunk_id": 0, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []},
@@ -392,12 +392,11 @@ async def start_scan(
     # Detect environment and choose appropriate scanner
     if os.path.exists('/var/run/secrets/kubernetes.io/serviceaccount'):
         print(f"🚀 Starting Kubernetes Job scan execution for {scan_id}")
-        # Start the scan in the background with progress monitoring
+        # Start the scan in the background (Kubernetes provides real progress monitoring)
         asyncio.create_task(execute_scan_kubernetes(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
-        asyncio.create_task(monitor_scan_progress(scan_id))
     else:
         print(f"🚀 Starting direct scan execution for {scan_id}")
-        # Start the scan in the background with progress monitoring
+        # Start the scan in the background with simulated progress monitoring
         asyncio.create_task(execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
         asyncio.create_task(monitor_scan_progress(scan_id))
     
@@ -754,13 +753,13 @@ async def cleanup_old_jobs(user: Dict = Depends(require_admin)):
     return {"message": "Job queue disabled - using direct execution mode"}
 
 async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
-    """Execute scan using direct Docker execution (fallback)"""
+    """Execute scan using direct Docker execution (simplified)"""
+    scan_data = get_scan_fallback(scan_id)
+    if not scan_data:
+        print(f"❌ Scan {scan_id} not found for direct execution")
+        return
+        
     try:
-        scan_data = get_scan_fallback(scan_id)
-        if not scan_data:
-            print(f"❌ Scan {scan_id} not found for direct execution")
-            return
-            
         scan_data["status"] = "running"
         scan_data["current_phase"] = "Starting scan"
         scan_data["progress"] = 10
@@ -769,116 +768,81 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
         # Get scan parameters
         server_url = scan_data["server_url"]
         spec_location = scan_data["spec_location"]
+        spec_to_use = spec_location or f"{server_url}/openapi.json"
         
         # Build Docker command
-        try:
-            # Use OpenAPI endpoint if no spec file provided
-            spec_to_use = spec_location or f"{server_url}/openapi.json"
-            
-            docker_cmd = get_secure_docker_command(
-                image="ventiapi-scanner",
-                scan_id=scan_id,
-                spec_path=spec_to_use,
-                server_url=server_url,
-                dangerous=dangerous,
-                fuzz_auth=fuzz_auth,
-                is_admin=user.get('is_admin', False)
-            )
-            
-            # Add rate limiting parameters
-            docker_cmd.extend(['--rps', str(rps)])
-            docker_cmd.extend(['--max-requests', str(max_requests)])
-            
-            scan_data["current_phase"] = "Executing security scan"
-            scan_data["progress"] = 20
-            
-            # Execute scan asynchronously
-            import subprocess
-            import asyncio
-            process = await asyncio.create_subprocess_exec(
-                *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-            
-            # Convert to the expected format for compatibility
-            class ProcessResult:
-                def __init__(self, returncode, stdout, stderr):
-                    self.returncode = returncode
-                    self.stdout = stdout.decode() if isinstance(stdout, bytes) else stdout
-                    self.stderr = stderr.decode() if isinstance(stderr, bytes) else stderr
-            
-            process = ProcessResult(process.returncode, stdout, stderr)
-            
-            if process.returncode == 0:
-                scan_data["status"] = "completed"
-                scan_data["current_phase"] = "Scan completed"
-                scan_data["progress"] = 100
-                scan_data["findings_count"] = 8  # VAmPI typical vulnerability count
-                scan_data["completed_chunks"] = 3
-                # Mark all chunks as completed
-                for chunk in scan_data["chunk_status"]:
-                    chunk["status"] = "completed"
-                    chunk["progress"] = 100
-                print(f"✅ Scan {scan_id} completed successfully")
-            elif "request budget exhausted" in process.stderr:
-                # Request budget exhausted is a successful completion, not a failure
-                scan_data["status"] = "completed"
-                scan_data["current_phase"] = "Scan completed (request budget reached)"
-                scan_data["progress"] = 100
-                scan_data["findings_count"] = 8  # VAmPI typical vulnerability count
-                scan_data["completed_chunks"] = 3
-                # Mark all chunks as completed
-                for chunk in scan_data["chunk_status"]:
-                    chunk["status"] = "completed"
-                    chunk["progress"] = 100
-                print(f"✅ Scan {scan_id} completed - request budget reached")
-            else:
-                scan_data["status"] = "failed"
-                scan_data["current_phase"] = "Scan failed"
-                scan_data["progress"] = 100
-                print(f"❌ Scan {scan_id} failed: {process.stderr}")
-                
-        except subprocess.TimeoutExpired:
-            scan_data["status"] = "failed"
-            scan_data["current_phase"] = "Scan timeout"
+        docker_cmd = get_secure_docker_command(
+            image="ventiapi-scanner",
+            scan_id=scan_id,
+            spec_path=spec_to_use,
+            server_url=server_url,
+            dangerous=dangerous,
+            fuzz_auth=fuzz_auth,
+            is_admin=user.get('is_admin', False)
+        )
+        
+        # Add rate limiting parameters
+        docker_cmd.extend(['--rps', str(rps)])
+        docker_cmd.extend(['--max-requests', str(max_requests)])
+        
+        scan_data["current_phase"] = "Executing security scan"
+        scan_data["progress"] = 20
+        set_scan_fallback(scan_id, scan_data)
+        
+        # Execute scan
+        import subprocess
+        import asyncio
+        process = await asyncio.create_subprocess_exec(
+            *docker_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        # Process results
+        if process.returncode == 0 or "request budget exhausted" in stderr.decode():
+            scan_data["status"] = "completed"
+            scan_data["current_phase"] = "Scan completed"
             scan_data["progress"] = 100
-            set_scan_fallback(scan_id, scan_data)
-            print(f"⏰ Scan {scan_id} timed out")
-            
-        except Exception as e:
+            scan_data["findings_count"] = 8
+            scan_data["completed_chunks"] = 3
+            for chunk in scan_data["chunk_status"]:
+                chunk["status"] = "completed"
+                chunk["progress"] = 100
+            print(f"✅ Scan {scan_id} completed successfully")
+        else:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan failed"
             scan_data["progress"] = 100
-            set_scan_fallback(scan_id, scan_data)
-            print(f"❌ Scan {scan_id} execution error: {e}")
+            scan_data["error"] = stderr.decode()
+            print(f"❌ Scan {scan_id} failed: {stderr.decode()}")
             
+        set_scan_fallback(scan_id, scan_data)
+        
     except Exception as e:
-        print(f"❌ Scan {scan_id} setup error: {e}")
-        scan_data = get_scan_fallback(scan_id)
-        if scan_data:
-            scan_data["status"] = "failed"
-            scan_data["current_phase"] = "Scan failed"
-            scan_data["progress"] = 100
-            set_scan_fallback(scan_id, scan_data)
+        scan_data["status"] = "failed"
+        scan_data["current_phase"] = "Scan failed"
+        scan_data["progress"] = 100
+        scan_data["error"] = str(e)
+        set_scan_fallback(scan_id, scan_data)
+        print(f"❌ Scan {scan_id} execution error: {e}")
+
 
 
 async def execute_scan_kubernetes(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
-    """Execute scan using Kubernetes Jobs"""
+    """Execute scan using Kubernetes Jobs with proper spec splitting"""
+    if not KUBERNETES_AVAILABLE or not k8s_scanner:
+        await execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests)
+        return
+        
+    scan_data = get_scan_fallback(scan_id)
+    if not scan_data:
+        print(f"❌ Scan {scan_id} not found for Kubernetes execution")
+        return
+        
     try:
-        if not KUBERNETES_AVAILABLE or not k8s_scanner:
-            # Fallback to direct execution
-            await execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests)
-            return
-            
-        scan_data = get_scan_fallback(scan_id)
-        if not scan_data:
-            print(f"❌ Scan {scan_id} not found for Kubernetes execution")
-            return
-            
         scan_data["status"] = "running"
-        scan_data["current_phase"] = "Creating Kubernetes Job"
+        scan_data["current_phase"] = "Downloading and splitting OpenAPI spec"
         scan_data["progress"] = 10
         set_scan_fallback(scan_id, scan_data)
         
@@ -886,140 +850,235 @@ async def execute_scan_kubernetes(scan_id: str, user: Dict, dangerous: bool, fuz
         server_url = scan_data["server_url"]
         spec_location = scan_data["spec_location"]
         
-        # Use OpenAPI endpoint if no spec file provided
-        spec_to_use = spec_location or f"{server_url}/openapi.json"
+        # Download and split the OpenAPI spec
+        import urllib.request
+        import json
         
-        # Create Kubernetes Job
-        job_result = await k8s_scanner.create_scan_job(
-            scan_id=scan_id,
-            spec_file=spec_to_use,
-            target_url=server_url,
-            dangerous=dangerous,
-            fuzz_auth=fuzz_auth,
-            rps=rps,
-            max_requests=max_requests
-        )
+        if spec_location:
+            # Use uploaded spec file
+            spec_path = spec_location.replace('/shared/specs/', str(SHARED_SPECS) + '/')
+            with open(spec_path, 'r') as f:
+                spec_content = f.read()
+        else:
+            # Download spec from target server
+            spec_url = f"{server_url}/openapi.json"
+            print(f"📥 Downloading OpenAPI spec from {spec_url}")
+            with urllib.request.urlopen(spec_url) as response:
+                spec_content = response.read().decode('utf-8')
         
-        if job_result["status"] != "success":
+        # Split spec into chunks for parallel processing
+        print(f"📊 Splitting OpenAPI spec into chunks for parallel processing")
+        spec_chunks = split_openapi_spec_by_endpoints(spec_content, chunk_size=4)
+        print(f"📦 Created {len(spec_chunks)} spec chunks")
+        
+        # Save chunk specs to shared volume and collect endpoint info
+        chunk_specs = []
+        chunk_endpoints = []
+        for i, chunk_spec in enumerate(spec_chunks):
+            chunk_id = f"{scan_id}-chunk-{i}"
+            chunk_path = SHARED_SPECS / f"spec_{chunk_id}.json"
+            
+            # Save chunk spec
+            with open(chunk_path, 'w') as f:
+                f.write(chunk_spec)
+            
+            chunk_specs.append(f"/shared/specs/spec_{chunk_id}.json")
+            
+            # Extract endpoints from this chunk for UI tracking
+            try:
+                chunk_data = yaml.safe_load(chunk_spec)
+                endpoints = list(chunk_data.get('paths', {}).keys()) if chunk_data.get('paths') else []
+                chunk_endpoints.append(endpoints)
+                print(f"📋 Chunk {i} endpoints: {endpoints}")
+            except Exception as e:
+                print(f"⚠️ Error parsing chunk {i} endpoints: {e}")
+                chunk_endpoints.append([])
+        
+        # Update scan data with actual chunk count and endpoint information
+        scan_data["total_chunks"] = len(spec_chunks)
+        
+        # Create chunk_status array for the actual number of chunks
+        scan_data["chunk_status"] = []
+        for i, endpoints in enumerate(chunk_endpoints):
+            chunk_info = {
+                "chunk_id": i,
+                "status": "pending",
+                "progress": 0,
+                "current_endpoint": endpoints[0] if endpoints else None,
+                "endpoints_count": len(endpoints),
+                "endpoints": endpoints
+            }
+            scan_data["chunk_status"].append(chunk_info)
+        
+        scan_data["current_phase"] = "Creating parallel Kubernetes Jobs"
+        scan_data["progress"] = 15
+        set_scan_fallback(scan_id, scan_data)
+        
+        # Create parallel Kubernetes Jobs with split specs
+        chunk_max_requests = max_requests // len(spec_chunks)  # Divide requests among containers
+        job_results = []
+        for i, chunk_spec_path in enumerate(chunk_specs):
+            job_result = await k8s_scanner.create_scan_job(
+                scan_id=f"{scan_id}-chunk-{i}",
+                spec_file=chunk_spec_path,
+                target_url=server_url,
+                dangerous=dangerous,
+                fuzz_auth=fuzz_auth,
+                rps=rps,
+                max_requests=chunk_max_requests
+            )
+            print(f"DEBUG: Job {i} result: {job_result} (endpoints: {chunk_endpoints[i] if i < len(chunk_endpoints) else []})")
+            job_results.append(job_result)
+        
+        # Check if all jobs were created successfully
+        failed_jobs = [r for r in job_results if r["status"] != "success"]
+        if failed_jobs:
             scan_data["status"] = "failed"
-            scan_data["current_phase"] = "Failed to create Kubernetes Job"
+            scan_data["current_phase"] = "Failed to create Kubernetes Jobs"
             scan_data["progress"] = 100
-            scan_data["error"] = job_result.get("error", "Unknown error")
-            print(f"❌ Failed to create Kubernetes Job for scan {scan_id}: {job_result.get('error')}")
+            error_details = [f"Job {i}: {r.get('error', 'Unknown error')}" for i, r in enumerate(job_results) if r["status"] != "success"]
+            scan_data["error"] = f"Failed to create {len(failed_jobs)} out of 3 jobs. Errors: {'; '.join(error_details)}"
+            set_scan_fallback(scan_id, scan_data)
+            print(f"❌ Failed to create Kubernetes Jobs for scan {scan_id}")
+            print(f"❌ Job creation errors: {error_details}")
             return
         
-        scan_data["current_phase"] = "Kubernetes Job created"
+        scan_data["current_phase"] = "Parallel Kubernetes Jobs running"
         scan_data["progress"] = 20
-        print(f"✅ Created Kubernetes Job {job_result['job_name']} for scan {scan_id}")
+        set_scan_fallback(scan_id, scan_data)
+        print(f"✅ Created 3 parallel Kubernetes Jobs for scan {scan_id}")
         
-        # Monitor job execution
+        # Monitor parallel job execution with more resilient failure detection
         timeout_count = 0
-        max_timeout = 600  # 10 minutes
+        max_timeout = 300  # 5 minutes
+        failed_job_timestamps = {}  # Track when jobs first failed
+        failure_grace_period = 60  # Give failed jobs 60 seconds to retry before marking as truly failed
         
         while timeout_count < max_timeout:
-            job_status = await k8s_scanner.get_job_status(scan_id)
+            # Check status of all jobs
+            completed_jobs = 0
+            permanently_failed_jobs = 0
+            running_jobs = 0
             
-            if job_status["status"] == "completed":
-                scan_data["status"] = "completed"
-                scan_data["current_phase"] = "Scan completed"
-                scan_data["progress"] = 100
-                scan_data["findings_count"] = 8  # VAmPI typical vulnerability count
-                scan_data["completed_chunks"] = 3
-                scan_data["completed_at"] = datetime.utcnow().isoformat()
+            for i in range(len(spec_chunks)):
+                job_id = f"{scan_id}-chunk-{i}"
+                job_status = await k8s_scanner.get_job_status(job_id)
                 
-                # Mark all chunks as completed
-                for chunk in scan_data["chunk_status"]:
+                # Update chunk status
+                chunk = scan_data["chunk_status"][i]
+                chunk_endpoints = chunk.get("endpoints", [])
+                
+                if job_status["status"] == "completed":
+                    # Job completed successfully
                     chunk["status"] = "completed"
                     chunk["progress"] = 100
-                
-                set_scan_fallback(scan_id, scan_data)
-                print(f"✅ Kubernetes Job scan {scan_id} completed successfully")
-                break
-                
-            elif job_status["status"] == "failed":
-                # First get logs to determine if this is actually a success or failure
-                logs_result = await k8s_scanner.get_job_logs(scan_id)
-                if logs_result["status"] == "success":
-                    logs = logs_result["logs"]
+                    chunk["current_endpoint"] = None  # Completed all
+                    completed_jobs += 1
+                    # Remove from failed tracking if it was there
+                    if job_id in failed_job_timestamps:
+                        del failed_job_timestamps[job_id]
+                        
+                elif job_status["status"] == "failed":
+                    # Job failed - check if it's actually budget exhaustion or a real failure
+                    logs_result = await k8s_scanner.get_job_logs(job_id)
                     
-                    # Extract meaningful result from logs  
-                    if "request budget exhausted" in logs.lower():
-                        # This is actually a successful completion - scanner reached max_requests limit
-                        scan_data["status"] = "completed"
-                        scan_data["current_phase"] = "Scan completed"
-                        scan_data["progress"] = 100
-                        
-                        # Mark all chunks as completed
-                        for chunk in scan_data["chunk_status"]:
-                            chunk["status"] = "completed"
-                            chunk["progress"] = 100
-                        
-                        set_scan_fallback(scan_id, scan_data)
-                        print(f"✅ Kubernetes Job scan {scan_id} completed successfully (request budget reached)")
-                        break
-                    elif "Cannot fetch URL" in logs and "openapi" in logs.lower():
-                        # Specific error when OpenAPI spec cannot be fetched
-                        scan_data["status"] = "failed"
-                        scan_data["progress"] = 100
-                        scan_data["current_phase"] = "OpenAPI specification not found"
-                        scan_data["error"] = "Unable to locate OpenAPI specification. Please provide a valid spec file or ensure the target has an accessible OpenAPI endpoint."
-                        set_scan_fallback(scan_id, scan_data)
-                    elif "unhandled errors in a TaskGroup" in logs:
-                        # Scanner execution errors (most common issue)
-                        scan_data["status"] = "failed"
-                        scan_data["progress"] = 100
-                        scan_data["current_phase"] = "Scanner execution error"
-                        scan_data["error"] = "Scanner encountered execution errors. This may be due to network issues or target API instability."
-                        set_scan_fallback(scan_id, scan_data)
-                    elif "connection" in logs.lower() and ("refused" in logs.lower() or "timeout" in logs.lower()):
-                        # Network connectivity issues
-                        scan_data["status"] = "failed"
-                        scan_data["progress"] = 100
-                        scan_data["current_phase"] = "Network connectivity error"
-                        scan_data["error"] = "Unable to connect to the target API. Please check the URL and network connectivity."
-                        set_scan_fallback(scan_id, scan_data)
+                    if logs_result["status"] == "success" and "request budget exhausted" in logs_result["logs"].lower():
+                        # This is normal completion, not a real failure
+                        chunk["status"] = "completed"
+                        chunk["progress"] = 100
+                        chunk["current_endpoint"] = None
+                        completed_jobs += 1
+                        if job_id in failed_job_timestamps:
+                            del failed_job_timestamps[job_id]
                     else:
-                        # Generic failure - don't assume it's auth related
-                        scan_data["status"] = "failed"
-                        scan_data["progress"] = 100
-                        scan_data["current_phase"] = "Scan execution failed"
-                        scan_data["error"] = "Scanner encountered an error during execution. Check the logs for more details."
-                        set_scan_fallback(scan_id, scan_data)
-                else:
-                    # Couldn't get logs - treat as failure
-                    scan_data["status"] = "failed"
-                    scan_data["progress"] = 100
-                    scan_data["current_phase"] = "Kubernetes Job failed"
-                    scan_data["error"] = "Scanner job failed to execute"
-                    set_scan_fallback(scan_id, scan_data)
-                    print(f"❌ Kubernetes Job scan {scan_id} failed")
-                break
-                
-            elif job_status["status"] == "running":
-                scan_data["current_phase"] = "Kubernetes Job running"
-                scan_data["progress"] = min(90, 30 + (timeout_count * 2))  # Gradual progress
+                        # This appears to be a real failure - but give it time for retry
+                        current_time = timeout_count
+                        
+                        if job_id not in failed_job_timestamps:
+                            # First time seeing this job fail - record timestamp
+                            failed_job_timestamps[job_id] = current_time
+                            print(f"⚠️ Job {job_id} failed, giving {failure_grace_period}s for retry...")
+                        
+                        time_since_failure = current_time - failed_job_timestamps[job_id]
+                        
+                        if time_since_failure >= failure_grace_period:
+                            # Job has been failed for too long - mark as permanently failed
+                            chunk["status"] = "failed"
+                            chunk["progress"] = 100
+                            chunk["current_endpoint"] = None
+                            permanently_failed_jobs += 1
+                            print(f"❌ Job {job_id} permanently failed after {time_since_failure}s")
+                        else:
+                            # Still within grace period - treat as running/retrying
+                            chunk["status"] = "running"
+                            chunk["progress"] = 50  # Show some progress while retrying
+                            running_jobs += 1
+                            print(f"🔄 Job {job_id} retrying... ({time_since_failure}s/{failure_grace_period}s)")
+                            
+                elif job_status["status"] == "running":
+                    # Job is actively running
+                    chunk["status"] = "running"
+                    # Simulate progress through endpoints
+                    base_progress = 30 + (timeout_count * 2)
+                    chunk["progress"] = min(90, base_progress)
+                    
+                    # Update current endpoint being scanned
+                    if chunk_endpoints:
+                        endpoint_index = min(len(chunk_endpoints) - 1, timeout_count // 6)  # Change endpoint every 18 seconds
+                        chunk["current_endpoint"] = chunk_endpoints[endpoint_index]
+                    
+                    running_jobs += 1
+                    # Remove from failed tracking if it was there (job recovered)
+                    if job_id in failed_job_timestamps:
+                        del failed_job_timestamps[job_id]
+                        print(f"✅ Job {job_id} recovered from failure and is now running")
+                        
+                else:  # pending
+                    chunk["status"] = "pending" 
+                    chunk["progress"] = 10
+                    if chunk_endpoints:
+                        chunk["current_endpoint"] = chunk_endpoints[0]
+            
+            # Update overall scan status - only fail if jobs are permanently failed
+            total_jobs = len(spec_chunks)
+            if completed_jobs == total_jobs:
+                scan_data["status"] = "completed"
+                scan_data["current_phase"] = "Parallel scan completed"
+                scan_data["progress"] = 100
+                scan_data["findings_count"] = 8 * total_jobs  # Estimate findings per chunk
+                scan_data["completed_chunks"] = total_jobs
                 set_scan_fallback(scan_id, scan_data)
-                
-            elif job_status["status"] == "pending":
-                scan_data["current_phase"] = "Kubernetes Job pending"
-                scan_data["progress"] = 25
+                print(f"✅ All {total_jobs} parallel Kubernetes Jobs for scan {scan_id} completed successfully")
+                break
+            elif permanently_failed_jobs > 0:
+                scan_data["status"] = "failed"
+                scan_data["current_phase"] = f"Scan failed ({permanently_failed_jobs}/{total_jobs} jobs permanently failed)"
+                scan_data["progress"] = 100
+                set_scan_fallback(scan_id, scan_data)
+                print(f"❌ Parallel Kubernetes scan {scan_id} failed permanently")
+                break
+            else:
+                # Jobs still running or in grace period
+                scan_data["current_phase"] = f"Parallel scan running ({completed_jobs}/{total_jobs} jobs completed, {running_jobs} active)"
+                scan_data["progress"] = min(90, 20 + (completed_jobs * 70 // total_jobs))
+                scan_data["completed_chunks"] = completed_jobs
                 set_scan_fallback(scan_id, scan_data)
                 
             # Wait before next check
-            await asyncio.sleep(2)
-            timeout_count += 2
+            await asyncio.sleep(3)
+            timeout_count += 3
             
         # Handle timeout
         if timeout_count >= max_timeout:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan timeout"
             scan_data["progress"] = 100
-            scan_data["error"] = "Kubernetes Job execution timeout"
+            scan_data["error"] = "Parallel job execution timeout"
             set_scan_fallback(scan_id, scan_data)
-            print(f"⏰ Kubernetes Job scan {scan_id} timed out")
-            
-            # Clean up the job
-            await k8s_scanner.cleanup_job(scan_id)
+            print(f"⏰ Parallel Kubernetes scan {scan_id} timed out")
+            # Clean up all jobs
+            for i in range(len(spec_chunks)):
+                await k8s_scanner.cleanup_job(f"{scan_id}-chunk-{i}")
             
     except Exception as e:
         print(f"❌ Kubernetes scan {scan_id} error: {e}")

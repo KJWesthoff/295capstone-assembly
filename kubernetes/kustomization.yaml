@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ventiapi
+
+resources:
+- namespace.yaml
+- redis.yaml
+- web-api.yaml
+- frontend.yaml
+
+# Add common labels to all resources
+commonLabels:
+  app.kubernetes.io/name: ventiapi-scanner
+  app.kubernetes.io/version: "1.0.0"
+  app.kubernetes.io/managed-by: kustomize
+
+# Add common annotations
+commonAnnotations:
+  app.kubernetes.io/description: "VentiAPI Security Scanner"

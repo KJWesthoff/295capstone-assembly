@@ -17,3 +17,6 @@ cryptography>=42.0.0
 celery==5.3.0
 uuid==1.30
 
+# Kubernetes dependencies
+kubernetes==28.1.0
+

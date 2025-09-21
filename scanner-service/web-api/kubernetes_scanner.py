@@ -19,10 +19,10 @@ class KubernetesScanner:
                            rps: float = 1.0, max_requests: int = 100) -> Dict[str, Any]:
         """Create a Kubernetes Job manifest for scanning"""
         
-        job_name = f"scanner-job-{scan_id[:8]}"
+        job_name = f"scanner-job-{scan_id}"
         
         # Build scanner command with conditional spec download
-        local_spec_path = f"/shared/specs/spec_{scan_id[:8]}.json"
+        local_spec_path = f"/shared/specs/spec_{scan_id}.json"
         
         # Determine if we need to download the spec or use existing file
         if spec_file and spec_file.startswith('/'):
@@ -66,7 +66,8 @@ class KubernetesScanner:
             },
             "spec": {
                 "ttlSecondsAfterFinished": 300,  # Clean up after 5 minutes
-                "backoffLimit": 2,  # Only retry failed pods 2 times
+                "backoffLimit": 3,  # Allow multiple retries for resilience
+                "activeDeadlineSeconds": 300,  # Allow up to 5 minutes for job completion
                 "template": {
                     "metadata": {
                         "labels": {
@@ -121,7 +122,7 @@ class KubernetesScanner:
             )
             
             # Write manifest to temp file
-            manifest_path = f"/tmp/scanner-job-{scan_id[:8]}.yaml"
+            manifest_path = f"/tmp/scanner-job-{scan_id}.yaml"
             with open(manifest_path, "w") as f:
                 yaml.dump(job_manifest, f)
             
@@ -155,7 +156,7 @@ class KubernetesScanner:
             return {"status": "not_found"}
             
         try:
-            job_name = f"scanner-job-{scan_id[:8]}"
+            job_name = f"scanner-job-{scan_id}"
             
             # Get job status
             process = await asyncio.create_subprocess_exec(
@@ -212,7 +213,7 @@ class KubernetesScanner:
             return {"status": "error", "error": "Not running in Kubernetes"}
             
         try:
-            job_name = f"scanner-job-{scan_id[:8]}"
+            job_name = f"scanner-job-{scan_id}"
             
             # Get pod name for the job
             process = await asyncio.create_subprocess_exec(
@@ -256,7 +257,7 @@ class KubernetesScanner:
             return {"status": "error", "error": "Not running in Kubernetes"}
             
         try:
-            job_name = f"scanner-job-{scan_id[:8]}"
+            job_name = f"scanner-job-{scan_id}"
             
             process = await asyncio.create_subprocess_exec(
                 "kubectl", "delete", "job", job_name,

@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-api
+  namespace: ventiapi
+  labels:
+    app: web-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-api
+  template:
+    metadata:
+      labels:
+        app: web-api
+    spec:
+      serviceAccountName: scanner-service-account
+      containers:
+      - name: web-api
+        image: ventiapi-web-api:latest
+        imagePullPolicy: Never  # For local k3d development
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: JWT_SECRET
+          value: "H6KaXFDmL0C+qWzrzl5y4sDH2wbVSwrifZ16dHZZKAA="
+        - name: DEFAULT_ADMIN_USERNAME
+          value: "MICS295"
+        - name: DEFAULT_ADMIN_PASSWORD
+          value: "MaryMcHale"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: shared-results
+          mountPath: /shared/results
+        - name: shared-specs
+          mountPath: /shared/specs
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+      volumes:
+      - name: shared-results
+        emptyDir: {}
+      - name: shared-specs
+        emptyDir: {}
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-api
+  namespace: ventiapi
+  labels:
+    app: web-api
+spec:
+  selector:
+    app: web-api
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30001
+  type: NodePort
