@@ -37,6 +37,11 @@ async def run_scan(spec_path: str, server: str, out_dir: str, rps: float,
                   max_requests: int, dangerous: bool, fuzz_auth: bool):
     """Run scan with dangerous and fuzz_auth options"""
     
+    # Initialize variables
+    spec = None
+    client = None
+    findings = []
+    
     try:
         # Load spec
         logger.info(f"Loading spec: {spec_path}")
@@ -49,7 +54,6 @@ async def run_scan(spec_path: str, server: str, out_dir: str, rps: float,
         
         # Run security probes
         logger.info("Starting security scanning...")
-        findings = []
         
         # Core OWASP API Security Top 10 probes (API1-API6)
         findings += await p_auth.run(spec, client, authctx, server, fuzz_auth=fuzz_auth)
@@ -66,7 +70,8 @@ async def run_scan(spec_path: str, server: str, out_dir: str, rps: float,
         findings += await p_log.check_logging(client, spec, server)
         
         # Close HTTP client
-        await client.aclose()
+        if client:
+            await client.aclose()
         
         # Generate report
         logger.info(f"Generating report with {len(findings)} findings...")
@@ -75,8 +80,27 @@ async def run_scan(spec_path: str, server: str, out_dir: str, rps: float,
         logger.info(f"Scan completed successfully. Results saved to: {out_dir}")
         return findings
         
+    except RuntimeError as e:
+        if "request budget exhausted" in str(e):
+            logger.info(f"Scan completed successfully - {e}")
+            # Close HTTP client if it exists
+            if client:
+                await client.aclose()
+            # Generate report with findings collected so far
+            if spec:
+                logger.info(f"Generating report with {len(findings)} findings...")
+                render(findings, spec, out_dir)
+                logger.info(f"Scan completed successfully. Results saved to: {out_dir}")
+            return findings
+        else:
+            logger.error(f"Scan failed: {e}")
+            if client:
+                await client.aclose()
+            raise
     except Exception as e:
         logger.error(f"Scan failed: {e}")
+        if client:
+            await client.aclose()
         raise
 
 

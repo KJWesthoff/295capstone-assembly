@@ -8,19 +8,20 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the external scanner source from submodule
-COPY external-scanner/ventiapi-scanner/ ./
+# Copy the scanner source code and requirements
+COPY scanner-service/scanner/ ./scanner/
+COPY scanner-service/requirements.txt ./requirements.txt
+COPY scanner-service/pyproject.toml ./pyproject.toml
+COPY scanner-service/templates/ ./templates/
 
-# Install Python dependencies from the original requirements.txt
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install additional dependency needed for the scanner
-RUN pip install boto3>=1.34.0
+# Install additional dependencies
+RUN pip install --no-cache-dir \
+    boto3>=1.34.0
 
-# Install the scanner package in editable mode
-RUN pip install -e .
-
-# Copy simple wrapper script
+# Copy wrapper script
 COPY venti_wrapper.py /app/venti_wrapper.py
 
 # Create wrapper script that adds dangerous and fuzz-auth options

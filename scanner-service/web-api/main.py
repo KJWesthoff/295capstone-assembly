@@ -657,6 +657,23 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
             docker_cmd.extend(['--rps', str(rps)])
             docker_cmd.extend(['--max-requests', str(max_requests)])
             
+            # Log the exact command being executed for debugging
+            print(f"🐳 Docker command: {' '.join(docker_cmd)}")
+            
+            # Check if spec file exists before executing
+            if spec_location:
+                spec_file_path = Path(spec_location.replace('/shared/specs/', '/shared/specs/'))
+                if spec_file_path.exists():
+                    print(f"✅ Spec file exists: {spec_file_path}")
+                else:
+                    print(f"❌ Spec file NOT found: {spec_file_path}")
+                    # Try to list directory contents for debugging
+                    try:
+                        spec_dir = SHARED_SPECS
+                        print(f"📁 Contents of {spec_dir}: {list(spec_dir.glob('*'))}")
+                    except Exception as e:
+                        print(f"❌ Error listing directory: {e}")
+            
             scan_data["current_phase"] = "Executing security scan"
             scan_data["progress"] = 20
             
