@@ -20,6 +20,11 @@ dist/
 .env.production.local
 .env.production
 
+# Deploy directory credential files
+deploy/.env.production
+deploy/.env.local
+deploy/.env.deploy
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
@@ -76,5 +81,8 @@ deploy-to-aws.sh
 deploy-to-ecr.sh
 **/secrets_manager.py
 **/fetch-secrets.sh
-AWS_*.md
-DEPLOYMENT_STATUS.md
+
+# Deploy directory AWS files
+deploy/*.pem
+deploy/aws-credentials
+deploy/.aws/

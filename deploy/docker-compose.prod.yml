@@ -1,0 +1,130 @@
+# Production Docker Compose configuration for AWS EC2
+# This extends the base docker-compose.yml with production-specific settings
+
+version: '3.8'
+
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"  # For future SSL setup
+    environment:
+      - NGINX_WORKER_PROCESSES=auto
+      - NGINX_WORKER_CONNECTIONS=1024
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Frontend React App
+  frontend:
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Web API Backend
+  web-api:
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - WORKERS=2
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for job queue and caching
+  redis:
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Scanner service
+  scanner:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Scanner Worker (for job queue mode)
+  scanner-worker:
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Production-specific volumes
+volumes:
+  shared-results:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /opt/ventiapi/data/results
+  shared-specs:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /opt/ventiapi/data/specs
+  redis-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /opt/ventiapi/data/redis

@@ -51,8 +51,20 @@ class UserDB:
     def __init__(self):
         self.users: Dict[str, Dict] = {}
         # Create default admin user from environment variables
-        admin_username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
-        admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+        admin_username = os.getenv("ADMIN_USERNAME") or os.getenv("DEFAULT_ADMIN_USERNAME")
+        admin_password = os.getenv("ADMIN_PASSWORD") or os.getenv("DEFAULT_ADMIN_PASSWORD")
+        
+        # REQUIRE secure credentials - NO insecure defaults!
+        if not admin_username or not admin_password:
+            raise ValueError("ADMIN_USERNAME and ADMIN_PASSWORD environment variables must be set!")
+        
+        # Prevent common insecure credentials
+        insecure_combos = [
+            ("admin", "admin123"), ("admin", "password"), ("admin", "admin"),
+            ("test", "test"), ("user", "user"), ("root", "root")
+        ]
+        if (admin_username.lower(), admin_password.lower()) in insecure_combos:
+            raise ValueError(f"Insecure credentials detected: {admin_username}. Please use secure credentials!")
         self.create_user(admin_username, admin_password, is_admin=True)
     
     def create_user(self, username: str, password: str, is_admin: bool = False) -> bool:
