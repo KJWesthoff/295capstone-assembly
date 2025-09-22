@@ -445,6 +445,11 @@ newgrp docker << 'DOCKEREOF'
 cd /opt/ventiapi
 docker-compose down || true
 docker-compose build
+
+# Build scanner image explicitly (required for scans to work)
+echo "Building scanner image..."
+docker-compose --profile build-only build scanner
+
 docker-compose up -d
 DOCKEREOF
 
