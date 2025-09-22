@@ -274,8 +274,8 @@ def get_secure_docker_command(image: str, scan_id: str, spec_path: str, server_u
         # TODO: Fix volume ownership properly for production
         # '--user', '1000:1000',  # Run as non-root user
         # Note: host network mode bypasses most container isolation
-        '-v', 'ventiapi_shared-results:/shared/results',  # Mount results volume
-        '-v', 'ventiapi_shared-specs:/shared/specs',      # Mount specs volume
+        '-v', 'scannerapp_shared-results:/shared/results',  # Mount results volume
+        '-v', 'scannerapp_shared-specs:/shared/specs',      # Mount specs volume
         f'--name', f'scanner-{scan_id}',
         f'--label', f'scan_id={scan_id}',
         f'--label', 'app=ventiapi-scanner',

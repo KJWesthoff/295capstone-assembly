@@ -51,8 +51,22 @@ coverage/
 *.swo
 *~
 
-# Claude Code configuration
+# Development tools
 .claude/
+.vscode/settings.json
+.vscode/launch.json
+
+# Local development files  
+test.sh
+docker-entrypoint.sh
+supervisor.conf
+
+# Deployment artifacts
+scanner-worker/
+external-scanner/
+kubernetes/
+railway.json
+railway-scanner.json
 
 # OS generated files
 .DS_Store
