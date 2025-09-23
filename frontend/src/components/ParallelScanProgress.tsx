@@ -40,6 +40,22 @@ const ParallelScanProgress: React.FC<ParallelScanProgressProps> = ({ scanStatus 
     }
   };
 
+  const getScannerIcon = (scanner?: string) => {
+    switch (scanner?.toLowerCase()) {
+      case 'ventiapi': return '🔍';
+      case 'zap': return '🕷️';
+      default: return '🛡️';
+    }
+  };
+
+  const getScannerDisplayName = (scanner?: string) => {
+    switch (scanner?.toLowerCase()) {
+      case 'ventiapi': return 'VentiAPI';
+      case 'zap': return 'OWASP ZAP';
+      default: return scanner || 'Unknown';
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return 'success';
@@ -90,14 +106,52 @@ const ParallelScanProgress: React.FC<ParallelScanProgressProps> = ({ scanStatus 
             {scanStatus.chunk_status.map((chunk: ChunkStatus, index: number) => (
               <div key={chunk.chunk_id} className={`chunk-item ${getStatusColor(chunk.status)}`}>
                 <div className="chunk-header">
-                  <span className="chunk-icon">{getStatusIcon(chunk.status)}</span>
-                  <span className="chunk-name">Container {index + 1}</span>
-                  <span className="chunk-endpoints">{chunk.endpoints_count} endpoints</span>
+                  <div className="scanner-info">
+                    <span className="scanner-icon">{getScannerIcon(chunk.scanner)}</span>
+                    <span className="scanner-name">{getScannerDisplayName(chunk.scanner)}</span>
+                    <span className="chunk-id">#{chunk.chunk_id}</span>
+                  </div>
+                  <span className="status-icon">{getStatusIcon(chunk.status)}</span>
+                </div>
+
+                <div className="scanner-details">
+                  <div className="detail-item">
+                    <span className="detail-label">Scanner Engine:</span>
+                    <span className="detail-value">{getScannerDisplayName(chunk.scanner)}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">Scan Type:</span>
+                    <span className="detail-value">{chunk.scan_type || 'endpoint_based'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <span className="detail-label">Total Endpoints:</span>
+                    <span className="detail-value">{chunk.total_endpoints || chunk.endpoints_count} endpoint{(chunk.total_endpoints || chunk.endpoints_count) !== 1 ? 's' : ''}</span>
+                  </div>
+                  {chunk.scanned_endpoints && chunk.scanned_endpoints.length > 0 && (
+                    <div className="endpoints-list">
+                      <span className="detail-label">Scanned Endpoints ({chunk.scanned_endpoints.length}/{chunk.total_endpoints || chunk.endpoints_count}):</span>
+                      <div className="endpoint-tags">
+                        {chunk.scanned_endpoints.map((endpoint, idx) => (
+                          <span key={idx} className="endpoint-tag">{endpoint}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(!chunk.scanned_endpoints || chunk.scanned_endpoints.length === 0) && chunk.endpoints && chunk.endpoints.length > 0 && (
+                    <div className="endpoints-list">
+                      <span className="detail-label">Target Endpoints:</span>
+                      <div className="endpoint-tags">
+                        {chunk.endpoints.map((endpoint, idx) => (
+                          <span key={idx} className="endpoint-tag">{endpoint}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 {chunk.current_endpoint && (
                   <div className="current-endpoint">
-                    <span className="endpoint-label">Scanning:</span>
+                    <span className="endpoint-label">Currently scanning:</span>
                     <span className="endpoint-path">{chunk.current_endpoint}</span>
                   </div>
                 )}

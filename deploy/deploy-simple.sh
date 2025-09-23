@@ -446,9 +446,29 @@ cd /opt/ventiapi
 docker-compose down || true
 docker-compose build
 
-# Build scanner image explicitly (required for scans to work)
-echo "Building scanner image..."
-docker-compose --profile build-only build scanner
+# Build scanner images explicitly (required for scans to work)
+echo "Building scanner images..."
+docker-compose --profile build-only build scanner || echo "Profile build failed, trying manual build..."
+docker-compose --profile build-only build zap || echo "Profile build failed, trying manual build..."
+
+# Fallback: build scanner images manually if profile approach failed
+echo "Verifying scanner images..."
+if ! docker images | grep -q "ventiapi-scanner"; then
+    echo "VentiAPI scanner image missing, building manually..."
+    docker build -t ventiapi-scanner -f scanner.Dockerfile .
+fi
+
+if ! docker images | grep -q "ventiapi-zap"; then
+    echo "ZAP scanner image missing, building manually..."
+    docker build -t ventiapi-zap -f zap.Dockerfile .
+fi
+
+docker images | grep -E "ventiapi-scanner|ventiapi-zap" || echo "WARNING: Scanner images may not have built correctly"
+
+# Test that scanner images can be launched
+echo "Testing scanner images..."
+timeout 10s docker run --rm ventiapi-scanner --help >/dev/null 2>&1 && echo "✅ VentiAPI scanner working" || echo "❌ VentiAPI scanner failed"
+timeout 10s docker run --rm ventiapi-zap --help >/dev/null 2>&1 && echo "✅ ZAP scanner working" || echo "❌ ZAP scanner failed"
 
 docker-compose up -d
 DOCKEREOF

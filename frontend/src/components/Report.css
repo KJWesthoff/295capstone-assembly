@@ -325,6 +325,151 @@
   font-weight: 600;
 }
 
+/* Scanner summary section */
+.scanner-summary {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  border: 1px solid #dee2e6;
+}
+
+.scanner-summary h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.scanner-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.scanner-summary-item {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scanner-summary-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scanner-summary-item.scanner-ventiapi {
+  border-color: #1976d2;
+}
+
+.scanner-summary-item.scanner-zap {
+  border-color: #7b1fa2;
+}
+
+.scanner-summary-item.scanner-unknown {
+  border-color: #666;
+}
+
+.scanner-icon {
+  font-size: 2rem;
+  margin-right: 1rem;
+  flex-shrink: 0;
+}
+
+.scanner-info {
+  flex: 1;
+}
+
+.scanner-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.25rem;
+}
+
+.scanner-findings {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+.scanner-description {
+  font-size: 0.8rem;
+  color: #888;
+  line-height: 1.3;
+}
+
+/* Scanner attribution styling */
+.scanner-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+  border: 1px solid;
+}
+
+.scanner-badge.scanner-ventiapi {
+  background: #e3f2fd;
+  color: #1976d2;
+  border-color: #bbdefb;
+}
+
+.scanner-badge.scanner-zap {
+  background: #f3e5f5;
+  color: #7b1fa2;
+  border-color: #ce93d8;
+}
+
+.scanner-badge.scanner-unknown {
+  background: #f5f5f5;
+  color: #666;
+  border-color: #ddd;
+}
+
+.scanner-attribution {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 3px solid #2196f3;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.scanner-attribution strong {
+  color: #1976d2;
+}
+
+/* Update vulnerability header to accommodate scanner badge */
+.vulnerability-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 0.75rem;
+}
+
+.vulnerability-header h4 {
+  flex: 1;
+  margin: 0;
+  min-width: 200px;
+}
+
+.vulnerability-header .endpoint {
+  flex-shrink: 0;
+}
+
 @media (max-width: 480px) {
   .scan-info p {
     font-size: 0.85em;
@@ -332,5 +477,21 @@
   
   .findings-preview {
     padding: 12px;
+  }
+
+  .vulnerability-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .vulnerability-header h4 {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .scanner-badge {
+    margin-left: 0;
+    align-self: flex-start;
   }
 }

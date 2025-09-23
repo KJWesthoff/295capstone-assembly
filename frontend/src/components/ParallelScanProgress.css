@@ -158,7 +158,95 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.scanner-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.scanner-icon {
+  font-size: 1.3em;
+}
+
+.scanner-name {
+  font-weight: 600;
+  color: #2e7d32;
+  font-size: 0.95em;
+}
+
+.chunk-id {
+  font-size: 0.75em;
+  color: #666;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-family: monospace;
+}
+
+.status-icon {
+  font-size: 1.2em;
+}
+
+.scanner-details {
+  background: rgba(245, 245, 245, 0.5);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e0e0e0;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.detail-item:last-child {
+  margin-bottom: 0;
+}
+
+.detail-label {
+  font-size: 0.8em;
+  color: #666;
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 0.85em;
+  color: #333;
+  font-weight: 500;
+}
+
+.endpoints-list {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.endpoints-list .detail-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.endpoint-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.endpoint-tag {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  border: 1px solid #bbdefb;
 }
 
 .current-endpoint {
