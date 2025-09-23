@@ -120,12 +120,26 @@ const ParallelScanProgress: React.FC<ParallelScanProgressProps> = ({ scanStatus 
                     <span className="detail-value">{getScannerDisplayName(chunk.scanner)}</span>
                   </div>
                   <div className="detail-item">
-                    <span className="detail-label">Target Endpoints:</span>
-                    <span className="detail-value">{chunk.endpoints_count} endpoint{chunk.endpoints_count !== 1 ? 's' : ''}</span>
+                    <span className="detail-label">Scan Type:</span>
+                    <span className="detail-value">{chunk.scan_type || 'endpoint_based'}</span>
                   </div>
-                  {chunk.endpoints && chunk.endpoints.length > 0 && (
+                  <div className="detail-item">
+                    <span className="detail-label">Total Endpoints:</span>
+                    <span className="detail-value">{chunk.total_endpoints || chunk.endpoints_count} endpoint{(chunk.total_endpoints || chunk.endpoints_count) !== 1 ? 's' : ''}</span>
+                  </div>
+                  {chunk.scanned_endpoints && chunk.scanned_endpoints.length > 0 && (
                     <div className="endpoints-list">
-                      <span className="detail-label">Endpoints:</span>
+                      <span className="detail-label">Scanned Endpoints ({chunk.scanned_endpoints.length}/{chunk.total_endpoints || chunk.endpoints_count}):</span>
+                      <div className="endpoint-tags">
+                        {chunk.scanned_endpoints.map((endpoint, idx) => (
+                          <span key={idx} className="endpoint-tag">{endpoint}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(!chunk.scanned_endpoints || chunk.scanned_endpoints.length === 0) && chunk.endpoints && chunk.endpoints.length > 0 && (
+                    <div className="endpoints-list">
+                      <span className="detail-label">Target Endpoints:</span>
                       <div className="endpoint-tags">
                         {chunk.endpoints.map((endpoint, idx) => (
                           <span key={idx} className="endpoint-tag">{endpoint}</span>

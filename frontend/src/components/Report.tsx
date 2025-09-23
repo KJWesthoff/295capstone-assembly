@@ -92,6 +92,25 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
     return findingsData.findings.filter((f: Finding) => f.severity === severity).length;
   };
 
+  const getScannerSummary = () => {
+    if (!findingsData?.findings) return {};
+    
+    const scannerCounts: Record<string, { count: number; description: string }> = {};
+    
+    findingsData.findings.forEach((finding: Finding) => {
+      const scanner = finding.scanner || 'unknown';
+      if (!scannerCounts[scanner]) {
+        scannerCounts[scanner] = {
+          count: 0,
+          description: finding.scanner_description || 'Unknown Scanner'
+        };
+      }
+      scannerCounts[scanner].count++;
+    });
+    
+    return scannerCounts;
+  };
+
   const summary = {
     total: findingsData?.total || 0,
     critical: getSeverityCount('Critical'),
@@ -172,6 +191,28 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
         </div>
       </div>
 
+      {Object.keys(getScannerSummary()).length > 0 && (
+        <div className="scanner-summary">
+          <h3>Findings by Scanner</h3>
+          <div className="scanner-summary-grid">
+            {Object.entries(getScannerSummary()).map(([scanner, data]) => (
+              <div key={scanner} className={`scanner-summary-item scanner-${scanner}`}>
+                <div className="scanner-icon">
+                  {scanner === 'ventiapi' ? '🔍' : scanner === 'zap' ? '🕷️' : '🛡️'}
+                </div>
+                <div className="scanner-info">
+                  <div className="scanner-name">
+                    {scanner === 'ventiapi' ? 'VentiAPI' : scanner === 'zap' ? 'OWASP ZAP' : scanner.toUpperCase()}
+                  </div>
+                  <div className="scanner-findings">{data.count} finding{data.count !== 1 ? 's' : ''}</div>
+                  <div className="scanner-description">{data.description}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="vulnerabilities">
         <h3>Vulnerabilities Details</h3>
         {!findingsData?.findings || findingsData.findings.length === 0 ? (
@@ -189,8 +230,18 @@ const Report: React.FC<ReportProps> = ({ scanId }) => {
                   </span>
                   <h4>{vuln.title}</h4>
                   <span className="endpoint">{vuln.method} {vuln.endpoint}</span>
+                  {vuln.scanner && (
+                    <span className={`scanner-badge scanner-${vuln.scanner}`}>
+                      {vuln.scanner === 'ventiapi' ? '🔍 VentiAPI' : vuln.scanner === 'zap' ? '🕷️ ZAP' : `🛡️ ${vuln.scanner}`}
+                    </span>
+                  )}
                 </div>
                 <p className="vulnerability-description">{vuln.description}</p>
+                {vuln.scanner_description && (
+                  <div className="scanner-attribution">
+                    <strong>Identified by:</strong> {vuln.scanner_description}
+                  </div>
+                )}
                 {vuln.rule && (
                   <div className="vulnerability-rule">
                     <strong>Rule:</strong> {vuln.rule} | <strong>Score:</strong> {vuln.score}

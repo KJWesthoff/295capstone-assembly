@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request, status
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -662,6 +662,219 @@ async def get_scan_findings(
         "findings": paginated_findings
     }
 
+@app.get("/api/scan/{scan_id}/report")
+async def get_scan_report(
+    scan_id: str,
+    user: Dict = Depends(verify_token)
+):
+    """Get comprehensive scan report with scanner attribution"""
+    
+    if scan_id not in scans:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    scan_data = scans[scan_id]
+    
+    # Get all findings with scanner attribution
+    findings_response = await get_scan_findings(scan_id, 0, 1000, user)
+    findings = findings_response["findings"]
+    
+    # Organize findings by scanner
+    scanner_reports = {}
+    scanner_stats = {}
+    
+    for finding in findings:
+        scanner = finding.get("scanner", "unknown")
+        if scanner not in scanner_reports:
+            scanner_reports[scanner] = []
+            scanner_stats[scanner] = {
+                "total_findings": 0,
+                "critical": 0,
+                "high": 0, 
+                "medium": 0,
+                "low": 0,
+                "scanner_description": finding.get("scanner_description", "Unknown Scanner")
+            }
+        
+        scanner_reports[scanner].append(finding)
+        scanner_stats[scanner]["total_findings"] += 1
+        severity = finding["severity"].lower()
+        if severity in scanner_stats[scanner]:
+            scanner_stats[scanner][severity] += 1
+    
+    # Get scanner configuration and endpoints scanned
+    scanner_configs = {}
+    chunk_status = scan_data.get("chunk_status", [])
+    
+    for chunk in chunk_status:
+        scanner = chunk.get("scanner", "unknown")
+        if scanner not in scanner_configs:
+            scanner_configs[scanner] = {
+                "scanner_name": scanner,
+                "scanner_description": chunk.get("scanner_description", "Unknown Scanner"),
+                "scan_type": chunk.get("scan_type", "unknown"),
+                "endpoints_scanned": chunk.get("scanned_endpoints", []),
+                "total_endpoints": chunk.get("total_endpoints", 0),
+                "current_endpoint": chunk.get("current_endpoint"),
+                "status": chunk.get("status", "unknown"),
+                "progress": chunk.get("progress", 0)
+            }
+    
+    # Create comprehensive report
+    report = {
+        "scan_id": scan_id,
+        "scan_status": scan_data.get("status", "unknown"),
+        "created_at": scan_data.get("created_at", ""),
+        "completed_at": scan_data.get("completed_at", ""),
+        "server_url": scan_data.get("server_url", ""),
+        "target_url": scan_data.get("target_url", ""),
+        "scanners_used": scan_data.get("scanners", []),
+        "total_findings": len(findings),
+        "summary": {
+            "total_scanners": len(scanner_stats),
+            "total_findings": len(findings),
+            "severity_breakdown": {
+                "critical": sum(stats["critical"] for stats in scanner_stats.values()),
+                "high": sum(stats["high"] for stats in scanner_stats.values()),
+                "medium": sum(stats["medium"] for stats in scanner_stats.values()),
+                "low": sum(stats["low"] for stats in scanner_stats.values())
+            }
+        },
+        "scanner_configurations": scanner_configs,
+        "scanner_reports": scanner_reports,
+        "scanner_statistics": scanner_stats,
+        "findings_by_scanner": {
+            scanner: {
+                "scanner_info": {
+                    "name": scanner,
+                    "description": scanner_stats[scanner]["scanner_description"],
+                    "endpoints_scanned": scanner_configs.get(scanner, {}).get("endpoints_scanned", []),
+                    "scan_type": scanner_configs.get(scanner, {}).get("scan_type", "unknown")
+                },
+                "findings": findings_list,
+                "statistics": scanner_stats[scanner]
+            }
+            for scanner, findings_list in scanner_reports.items()
+        }
+    }
+    
+    return report
+
+@app.get("/api/scan/{scan_id}/report/html")
+async def get_scan_report_html(
+    scan_id: str,
+    user: Dict = Depends(verify_token)
+):
+    """Get HTML formatted scan report for download"""
+    
+    # Get the JSON report first
+    report = await get_scan_report(scan_id, user)
+    
+    # Generate HTML report
+    html_template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Security Scan Report - {scan_id}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            .header {{ background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; }}
+            .scanner-section {{ margin-bottom: 40px; border: 1px solid #ddd; border-radius: 8px; }}
+            .scanner-header {{ background: #e3f2fd; padding: 15px; font-weight: bold; }}
+            .finding {{ margin: 10px 0; padding: 15px; border-left: 4px solid #ccc; }}
+            .critical {{ border-color: #d32f2f; background: #ffebee; }}
+            .high {{ border-color: #f57c00; background: #fff3e0; }}
+            .medium {{ border-color: #fbc02d; background: #fffde7; }}
+            .low {{ border-color: #388e3c; background: #e8f5e9; }}
+            .endpoint-list {{ margin: 10px 0; }}
+            .endpoint {{ display: inline-block; background: #e3f2fd; padding: 2px 8px; margin: 2px; border-radius: 4px; font-family: monospace; }}
+            .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }}
+            .stat-box {{ text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>API Security Scan Report</h1>
+            <p><strong>Scan ID:</strong> {report['scan_id']}</p>
+            <p><strong>Target:</strong> {report['server_url']}</p>
+            <p><strong>Status:</strong> {report['scan_status']}</p>
+            <p><strong>Scanners Used:</strong> {', '.join(report['scanners_used'])}</p>
+            <p><strong>Total Findings:</strong> {report['total_findings']}</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <h3>Critical</h3>
+                <div style="font-size: 2em; color: #d32f2f;">{report['summary']['severity_breakdown']['critical']}</div>
+            </div>
+            <div class="stat-box">
+                <h3>High</h3>
+                <div style="font-size: 2em; color: #f57c00;">{report['summary']['severity_breakdown']['high']}</div>
+            </div>
+            <div class="stat-box">
+                <h3>Medium</h3>
+                <div style="font-size: 2em; color: #fbc02d;">{report['summary']['severity_breakdown']['medium']}</div>
+            </div>
+            <div class="stat-box">
+                <h3>Low</h3>
+                <div style="font-size: 2em; color: #388e3c;">{report['summary']['severity_breakdown']['low']}</div>
+            </div>
+        </div>
+    """
+    
+    # Add findings by scanner
+    for scanner_name, scanner_data in report['findings_by_scanner'].items():
+        scanner_info = scanner_data['scanner_info']
+        findings = scanner_data['findings']
+        stats = scanner_data['statistics']
+        
+        html_template += f"""
+        <div class="scanner-section">
+            <div class="scanner-header">
+                <h2>{scanner_info['name'].upper()} Scanner Results</h2>
+                <p>{scanner_info['description']} ({scanner_info['scan_type']})</p>
+                <p>Findings: {stats['total_findings']} | Endpoints Scanned: {len(scanner_info['endpoints_scanned'])}</p>
+            </div>
+            
+            <div style="padding: 15px;">
+                <h3>Endpoints Scanned:</h3>
+                <div class="endpoint-list">
+        """
+        
+        for endpoint in scanner_info['endpoints_scanned']:
+            html_template += f'<span class="endpoint">{endpoint}</span>'
+            
+        html_template += """
+                </div>
+                
+                <h3>Vulnerabilities Found:</h3>
+        """
+        
+        for finding in findings:
+            severity_class = finding['severity'].lower()
+            html_template += f"""
+                <div class="finding {severity_class}">
+                    <h4>{finding['title']}</h4>
+                    <p><strong>Severity:</strong> {finding['severity']} (Score: {finding['score']})</p>
+                    <p><strong>Endpoint:</strong> {finding['method']} {finding['endpoint']}</p>
+                    <p><strong>Description:</strong> {finding['description']}</p>
+                </div>
+            """
+        
+        html_template += """
+            </div>
+        </div>
+        """
+    
+    html_template += f"""
+        <div style="margin-top: 40px; padding: 20px; background: #f5f5f5; border-radius: 8px;">
+            <p><small>Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC</small></p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return Response(content=html_template, media_type="text/html")
+
 @app.get("/api/scans")
 async def list_scans(user: Dict = Depends(verify_token)):
     """List all scans for the user"""
@@ -917,6 +1130,68 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
             scans[scan_id]["current_phase"] = "Scan failed"
             scans[scan_id]["progress"] = 100
 
+async def get_real_endpoints_from_spec(scan_data):
+    """Parse OpenAPI spec to get actual endpoints for VentiAPI scanner"""
+    try:
+        import yaml
+        import json
+        from urllib.parse import urlparse
+        
+        spec_location = scan_data.get("spec_location")
+        server_url = scan_data.get("server_url", "")
+        
+        endpoints = []
+        
+        # Try to get spec from file first
+        if spec_location:
+            try:
+                if spec_location.startswith("http"):
+                    # Remote spec - try to fetch it
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(spec_location) as response:
+                            if response.status == 200:
+                                spec_content = await response.text()
+                                spec_data = yaml.safe_load(spec_content) if spec_location.endswith('.yml') or spec_location.endswith('.yaml') else json.loads(spec_content)
+                else:
+                    # Local file
+                    spec_file_path = Path(spec_location.replace('/shared/specs/', '/shared/specs/'))
+                    if spec_file_path.exists():
+                        with open(spec_file_path, 'r') as f:
+                            spec_content = f.read()
+                            spec_data = yaml.safe_load(spec_content) if spec_file_path.suffix in ['.yml', '.yaml'] else json.loads(spec_content)
+                    else:
+                        spec_data = None
+                        
+                if spec_data and 'paths' in spec_data:
+                    endpoints = list(spec_data['paths'].keys())
+                    print(f"📋 Parsed {len(endpoints)} endpoints from spec: {endpoints[:5]}...")
+                    return endpoints[:10]  # Limit for display
+            except Exception as e:
+                print(f"Error parsing spec file: {e}")
+        
+        # Fallback: try to get from server's OpenAPI endpoint
+        if not endpoints and server_url:
+            try:
+                import aiohttp
+                openapi_url = f"{server_url}/openapi.json"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(openapi_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                        if response.status == 200:
+                            spec_data = await response.json()
+                            if 'paths' in spec_data:
+                                endpoints = list(spec_data['paths'].keys())
+                                print(f"📋 Fetched {len(endpoints)} endpoints from {openapi_url}: {endpoints[:5]}...")
+                                return endpoints[:10]  # Limit for display
+            except Exception as e:
+                print(f"Could not fetch OpenAPI spec from {server_url}: {e}")
+        
+        return endpoints if endpoints else None
+        
+    except Exception as e:
+        print(f"Error getting endpoints from spec: {e}")
+        return None
+
 async def monitor_scan_progress(scan_id: str):
     """Monitor scan progress and update status periodically for multi-scanner execution"""
     try:
@@ -926,15 +1201,20 @@ async def monitor_scan_progress(scan_id: str):
         scan_data = scans[scan_id]
         scanner_list = scan_data.get("scanners", ["ventiapi"])
         
+        # Parse actual endpoints from OpenAPI spec for VentiAPI
+        ventiapi_endpoints = await get_real_endpoints_from_spec(scan_data)
+        
         # Define scanner-specific endpoints and behavior
         scanner_endpoints = {
             "ventiapi": {
-                "endpoints": ["/get", "/post"],  # From OpenAPI spec
-                "description": "API Security Testing"
+                "endpoints": ventiapi_endpoints if ventiapi_endpoints else ["/api/endpoints", "/api/users", "/api/books"],
+                "description": "API Security Testing",
+                "scan_type": "endpoint_based"
             },
             "zap": {
-                "endpoints": [scan_data.get("target_url", "https://httpbin.org")],  # Baseline URL scan
-                "description": "Baseline Security Scan"
+                "endpoints": [scan_data.get("target_url", "https://httpbin.org")],
+                "description": "Baseline Security Scan",
+                "scan_type": "baseline_url"
             }
         }
         
@@ -980,8 +1260,11 @@ async def monitor_scan_progress(scan_id: str):
                         chunk["endpoints"] = endpoints[:endpoint_idx + 1]
                         chunk["endpoints_count"] = len(chunk["endpoints"])
                     
-                    # Add scanner-specific metadata
+                    # Add comprehensive scanner-specific metadata
                     chunk["scanner_description"] = scanner_info["description"]
+                    chunk["scan_type"] = scanner_info["scan_type"]
+                    chunk["total_endpoints"] = len(endpoints)
+                    chunk["scanned_endpoints"] = endpoints[:endpoint_idx + 1] if endpoint_idx < len(endpoints) else endpoints
             
             # Calculate overall progress
             if scan_data["chunk_status"]:
