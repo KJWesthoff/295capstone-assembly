@@ -88,6 +88,21 @@ services:
     profiles: ["jobqueue"]  # Only runs in job queue mode
     scale: 2  # Run 2 workers by default
 
+  # ZAP Scanner (builds the image for web-api to use)
+  zap:
+    build:
+      context: .
+      dockerfile: zap.Dockerfile
+    image: ventiapi-zap
+    container_name: ventiapi-zap-builder
+    volumes:
+      - shared-results:/zap/wrk:rw
+      - shared-specs:/zap/specs:ro
+    networks:
+      - scanner-network
+    command: ["echo", "ZAP scanner image built"]
+    profiles: ["build-only"]  # Only runs when explicitly requested
+
 volumes:
   shared-results:
   shared-specs:

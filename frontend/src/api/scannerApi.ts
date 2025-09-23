@@ -23,10 +23,12 @@ export interface ScanRequest {
   max_requests?: number;
   dangerous?: boolean;
   fuzz_auth?: boolean;
+  scanners?: string[];
 }
 
 export interface ChunkStatus {
   chunk_id: string;
+  scanner?: string;
   status: 'preparing' | 'starting' | 'running' | 'completed' | 'failed';
   endpoints_count: number;
   endpoints: string[];
@@ -61,6 +63,8 @@ export interface Finding {
   method: string;
   description: string;
   evidence?: any;
+  scanner?: string;
+  scanner_description?: string;
 }
 
 export interface FindingsResponse {
@@ -86,6 +90,9 @@ export const scannerApi = {
     if (request.max_requests) formData.append('max_requests', request.max_requests.toString());
     if (request.dangerous) formData.append('dangerous', 'true');
     if (request.fuzz_auth) formData.append('fuzz_auth', 'true');
+    if (request.scanners && request.scanners.length > 0) {
+      formData.append('scanners', request.scanners.join(','));
+    }
 
     const response = await fetch(`${API_BASE_URL}/api/scan/start`, {
       method: 'POST',
@@ -157,5 +164,17 @@ export const scannerApi = {
     if (!response.ok) {
       throw new Error(`Failed to delete scan: ${response.statusText}`);
     }
+  },
+
+  async getAvailableScanners(): Promise<{available_scanners: string[], descriptions: Record<string, string>}> {
+    const response = await fetch(`${API_BASE_URL}/api/scanners`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get scanners: ${response.statusText}`);
+    }
+
+    return response.json();
   }
 };

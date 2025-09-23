@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { scannerApi } from '../api/scannerApi';
 import './ApiScanner.css';
 
@@ -14,6 +14,14 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
   const [useFile, setUseFile] = useState(false);
   const [dangerous, setDangerous] = useState(false);
   const [fuzzAuth, setFuzzAuth] = useState(false);
+  const [selectedScanners, setSelectedScanners] = useState<string[]>(['ventiapi']);
+
+  // Fetch available scanners
+  const { data: scannersData } = useQuery({
+    queryKey: ['scanners'],
+    queryFn: () => scannerApi.getAvailableScanners(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const startScanMutation = useMutation({
     mutationFn: ({ request, file }: { request: any; file?: File }) => 
@@ -42,6 +50,15 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
     setApiSpec('');
     setSpecFile(null);
     setUseFile(false);
+    setSelectedScanners(['ventiapi']);
+  };
+
+  const handleScannerToggle = (scanner: string) => {
+    setSelectedScanners(prev => 
+      prev.includes(scanner) 
+        ? prev.filter(s => s !== scanner)
+        : [...prev, scanner]
+    );
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -62,13 +79,19 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
       return;
     }
 
+    if (selectedScanners.length === 0) {
+      alert('Please select at least one scanner engine');
+      return;
+    }
+
     const request = {
       server_url: url,
       ...(useFile ? {} : { spec_url: apiSpec }),
       rps: 1.0,
       max_requests: 100,
       dangerous: dangerous,
-      fuzz_auth: fuzzAuth
+      fuzz_auth: fuzzAuth,
+      scanners: selectedScanners
     };
 
     startScanMutation.mutate({ 
@@ -146,6 +169,28 @@ const ApiScanner: React.FC<ApiScannerProps> = ({ onScanStarted }) => {
               />
             </div>
           )}
+
+          <div className="form-group">
+            <label>Scanner Engines</label>
+            <div className="checkbox-group">
+              {scannersData?.available_scanners?.map((scanner) => (
+                <label key={scanner} className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedScanners.includes(scanner)}
+                    onChange={() => handleScannerToggle(scanner)}
+                    disabled={startScanMutation.isPending}
+                  />
+                  <span className="checkbox-text">
+                    <strong>{scanner.toUpperCase()}</strong>
+                    <span className="checkbox-description">
+                      {scannersData.descriptions[scanner] || `${scanner} scanner engine`}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
 
           <div className="form-group">
             <label>Advanced Security Testing Options</label>

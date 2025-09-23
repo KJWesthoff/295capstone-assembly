@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py security.py job_queue.py hybrid_queue.py .
+COPY main.py security.py job_queue.py hybrid_queue.py scanner_engines.py .
 
 # Create shared directories
 RUN mkdir -p /shared/results /shared/specs

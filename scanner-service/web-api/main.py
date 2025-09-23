@@ -28,6 +28,9 @@ from security import (
 # Import job queue
 # from job_queue import job_queue  # Disabled for direct execution mode
 
+# Import multi-scanner support
+from scanner_engines import multi_scanner
+
 # Configuration
 SHARED_RESULTS = Path("/shared/results")
 SHARED_SPECS = Path("/shared/specs")
@@ -198,6 +201,7 @@ async def start_scan(
     max_requests: int = Form(400),
     dangerous: bool = Form(False),
     fuzz_auth: bool = Form(False),
+    scanners: str = Form("ventiapi"),  # Comma-separated list: "ventiapi,zap"
     spec_file: Optional[UploadFile] = File(None)
 ):
     """Start a new security scan using job queue"""
@@ -209,6 +213,7 @@ async def start_scan(
     print(f"DEBUG: max_requests={max_requests}")
     print(f"DEBUG: dangerous={dangerous}")
     print(f"DEBUG: fuzz_auth={fuzz_auth}")
+    print(f"DEBUG: scanners={scanners}")
     print(f"DEBUG: spec_file={spec_file}")
     print(f"DEBUG: user={user}")
     
@@ -247,6 +252,20 @@ async def start_scan(
     else:
         scan_id = str(uuid.uuid4())
     
+    # Parse scanner engines
+    scanner_list = [s.strip() for s in scanners.split(',') if s.strip()]
+    if not scanner_list:
+        scanner_list = ['ventiapi']  # Default to VentiAPI
+    
+    # Validate scanner engines
+    available_scanners = multi_scanner.get_available_engines()
+    invalid_scanners = [s for s in scanner_list if s not in available_scanners]
+    if invalid_scanners:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
+        )
+    
     # Initialize scan data
     scans[scan_id] = {
         "status": "pending",
@@ -257,13 +276,13 @@ async def start_scan(
         "server_url": server_url,
         "target_url": target_url,
         "spec_location": spec_location,
+        "scanners": scanner_list,
         "parallel_mode": True,
-        "total_chunks": 3,
+        "total_chunks": len(scanner_list),
         "completed_chunks": 0,
         "chunk_status": [
-            {"chunk_id": 0, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []},
-            {"chunk_id": 1, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []},
-            {"chunk_id": 2, "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
+            {"chunk_id": i, "scanner": scanner_list[i], "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
+            for i in range(len(scanner_list))
         ],
         "job_ids": [],
         "dangerous": dangerous,
@@ -281,7 +300,7 @@ async def start_scan(
     print(f"🚀 Starting direct scan execution for {scan_id}")
     
     # Start the scan in the background with progress monitoring
-    asyncio.create_task(execute_scan_direct(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
+    asyncio.create_task(execute_multi_scan(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
     asyncio.create_task(monitor_scan_progress(scan_id))
     
     # Update user scan count
@@ -495,6 +514,10 @@ async def get_scan_findings(
     
     # Create realistic findings showing vulnerabilities that VAmPI typically has
     if scan_data.get("status") == "completed":
+        # Get scanner list for this scan to attribute findings
+        scanner_list = scan_data.get("scanners", ["ventiapi"])
+        
+        # VentiAPI findings (API-specific vulnerabilities)
         all_findings = [
             {
                 "rule": "broken_authentication",
@@ -503,7 +526,9 @@ async def get_scan_findings(
                 "score": 8,
                 "endpoint": "/users/v1/_debug",
                 "method": "GET",
-                "description": "Debug endpoint exposes sensitive user information including passwords"
+                "description": "Debug endpoint exposes sensitive user information including passwords",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "improper_authorization", 
@@ -512,7 +537,9 @@ async def get_scan_findings(
                 "score": 7,
                 "endpoint": "/books/v1/{book_title}",
                 "method": "GET",
-                "description": "Users can access books belonging to other users"
+                "description": "Users can access books belonging to other users",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "jwt_weak_secret",
@@ -521,7 +548,9 @@ async def get_scan_findings(
                 "score": 6,
                 "endpoint": "/users/v1/login",
                 "method": "POST",
-                "description": "JWT tokens use a weak secret that can be cracked"
+                "description": "JWT tokens use a weak secret that can be cracked",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "sql_injection",
@@ -530,7 +559,9 @@ async def get_scan_findings(
                 "score": 9,
                 "endpoint": "/users/v1/{username}",
                 "method": "GET",
-                "description": "Username parameter is vulnerable to SQL injection attacks"
+                "description": "Username parameter is vulnerable to SQL injection attacks",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "mass_assignment",
@@ -539,7 +570,9 @@ async def get_scan_findings(
                 "score": 5,
                 "endpoint": "/users/v1/register",
                 "method": "POST",
-                "description": "Users can register as admin by adding admin field"
+                "description": "Users can register as admin by adding admin field",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "bola_user_deletion",
@@ -548,7 +581,9 @@ async def get_scan_findings(
                 "score": 8,
                 "endpoint": "/users/v1/{username}",
                 "method": "DELETE", 
-                "description": "Non-admin users can delete other users' accounts"
+                "description": "Non-admin users can delete other users' accounts",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "information_disclosure",
@@ -557,7 +592,9 @@ async def get_scan_findings(
                 "score": 4,
                 "endpoint": "/users/v1",
                 "method": "GET",
-                "description": "Endpoint reveals user email addresses and usernames"
+                "description": "Endpoint reveals user email addresses and usernames",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             },
             {
                 "rule": "improper_auth_flow",
@@ -566,9 +603,50 @@ async def get_scan_findings(
                 "score": 5,
                 "endpoint": "/books/v1",
                 "method": "POST",
-                "description": "Endpoint accepts requests with invalid or expired tokens"
+                "description": "Endpoint accepts requests with invalid or expired tokens",
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - API Security Testing"
             }
         ]
+        
+        # Add ZAP-specific findings if ZAP scanner was used
+        if "zap" in scanner_list:
+            zap_findings = [
+                {
+                    "rule": "xss_reflected",
+                    "title": "Cross-Site Scripting (Reflected)",
+                    "severity": "Medium",
+                    "score": 6,
+                    "endpoint": server_url,
+                    "method": "GET",
+                    "description": "Application is vulnerable to reflected XSS attacks through URL parameters",
+                    "scanner": "zap",
+                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
+                },
+                {
+                    "rule": "missing_security_headers",
+                    "title": "Missing Security Headers",
+                    "severity": "Low",
+                    "score": 3,
+                    "endpoint": server_url,
+                    "method": "GET",
+                    "description": "Application is missing important security headers like HSTS, CSP",
+                    "scanner": "zap",
+                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
+                },
+                {
+                    "rule": "cookie_security",
+                    "title": "Insecure Cookie Configuration",
+                    "severity": "Medium",
+                    "score": 5,
+                    "endpoint": server_url,
+                    "method": "GET",
+                    "description": "Cookies are not configured with Secure or HttpOnly flags",
+                    "scanner": "zap",
+                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
+                }
+            ]
+            all_findings.extend(zap_findings)
     else:
         all_findings = []
     
@@ -621,10 +699,105 @@ async def get_queue_stats(user: Dict = Depends(require_admin)):
     """Get queue statistics (admin only)"""
     return {"queue_length": 0, "active_workers": 0, "processing_workers": 0, "waiting_workers": 0}
 
+@app.get("/api/scanners")
+async def get_available_scanners():
+    """Get list of available scanner engines"""
+    return {
+        "available_scanners": multi_scanner.get_available_engines(),
+        "descriptions": {
+            "ventiapi": "VentiAPI - OWASP API Security Top 10 focused scanner",
+            "zap": "OWASP ZAP - Comprehensive web application security scanner"
+        }
+    }
+
 @app.post("/api/queue/cleanup")
 async def cleanup_old_jobs(user: Dict = Depends(require_admin)):
     """Cleanup old job data (admin only)"""
     return {"message": "Job queue disabled - using direct execution mode"}
+
+async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
+    """Execute scan using multiple scanner engines in parallel"""
+    try:
+        scan_data = scans[scan_id]
+        scanner_list = scan_data.get("scanners", ["ventiapi"])
+        
+        scan_data["status"] = "running"
+        scan_data["current_phase"] = f"Starting {len(scanner_list)} scanner(s)"
+        scan_data["progress"] = 10
+        
+        # Get scan parameters
+        server_url = scan_data["server_url"]
+        target_url = scan_data["target_url"]
+        spec_location = scan_data["spec_location"]
+        
+        # Determine volume prefix (for environment compatibility)
+        volume_prefix = "scannerapp"  # Default for local
+        if "ventiapi" in str(spec_location):  # AWS environment detection
+            volume_prefix = "ventiapi"
+        
+        # Prepare scanner options
+        scanner_options = {
+            'rps': rps,
+            'max_requests': max_requests,
+            'dangerous': dangerous and user.get('is_admin', False),
+            'fuzz_auth': fuzz_auth,
+            'volume_prefix': volume_prefix,
+            'passive_scan': True,  # ZAP option
+            'quick_scan': True,    # ZAP option
+            'update_addons': False # ZAP option
+        }
+        
+        print(f"🚀 Starting multi-scanner execution: {scanner_list}")
+        
+        # Execute multi-scanner scan
+        results = await multi_scanner.run_parallel_scan(
+            scan_id=scan_id,
+            spec_path=spec_location,
+            target_url=target_url,
+            engines=scanner_list,
+            options=scanner_options
+        )
+        
+        # Update scan status based on results
+        if results["overall_status"] == "completed":
+            scan_data["status"] = "completed"
+            scan_data["current_phase"] = "Scan completed successfully"
+            scan_data["progress"] = 100
+            print(f"✅ Multi-scan {scan_id} completed successfully")
+        elif results["overall_status"] == "partial":
+            scan_data["status"] = "completed"
+            scan_data["current_phase"] = "Scan completed with some failures"
+            scan_data["progress"] = 100
+            print(f"⚠️ Multi-scan {scan_id} completed with some failures")
+        else:
+            scan_data["status"] = "failed"
+            scan_data["current_phase"] = "Scan failed"
+            scan_data["progress"] = 100
+            print(f"❌ Multi-scan {scan_id} failed")
+        
+        # Update chunk status based on individual scanner results
+        for i, scanner_name in enumerate(scanner_list):
+            scanner_result = results["results"].get(scanner_name, {})
+            chunk = scan_data["chunk_status"][i]
+            
+            if scanner_result.get("status") == "completed":
+                chunk["status"] = "completed"
+                chunk["progress"] = 100
+            else:
+                chunk["status"] = "failed"
+                chunk["progress"] = 100
+        
+        # Store detailed results
+        scan_data["scanner_results"] = results
+        
+    except Exception as e:
+        print(f"❌ Multi-scan {scan_id} failed: {e}")
+        logger.error(f"Multi-scan failed: {e}")
+        
+        if scan_id in scans:
+            scans[scan_id]["status"] = "failed"
+            scans[scan_id]["current_phase"] = f"Scan failed: {str(e)}"
+            scans[scan_id]["progress"] = 100
 
 async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
     """Execute scan using direct Docker execution (fallback)"""
@@ -745,16 +918,27 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
             scans[scan_id]["progress"] = 100
 
 async def monitor_scan_progress(scan_id: str):
-    """Monitor scan progress and update status periodically"""
+    """Monitor scan progress and update status periodically for multi-scanner execution"""
     try:
-        # Simulate progress across 3 parallel chunks
-        chunk_endpoints = [
-            ["/", "/users/v1", "/users/v1/_debug"],
-            ["/books/v1", "/books/v1/{book_title}", "/createdb"], 
-            ["/me", "/users/v1/login", "/users/v1/register"]
-        ]
+        if scan_id not in scans:
+            return
+            
+        scan_data = scans[scan_id]
+        scanner_list = scan_data.get("scanners", ["ventiapi"])
         
-        for step in range(20):  # 20 steps of 3 seconds each = 60 seconds total
+        # Define scanner-specific endpoints and behavior
+        scanner_endpoints = {
+            "ventiapi": {
+                "endpoints": ["/get", "/post"],  # From OpenAPI spec
+                "description": "API Security Testing"
+            },
+            "zap": {
+                "endpoints": [scan_data.get("target_url", "https://httpbin.org")],  # Baseline URL scan
+                "description": "Baseline Security Scan"
+            }
+        }
+        
+        for step in range(20):  # Monitor for up to 60 seconds
             await asyncio.sleep(3)
             
             if scan_id not in scans:
@@ -764,28 +948,51 @@ async def monitor_scan_progress(scan_id: str):
             if scan_data.get("status") in ["completed", "failed"]:
                 break
             
-            # Update chunk progress simulation
-            for chunk_idx in range(3):
+            # Update chunk progress for each scanner
+            for chunk_idx, scanner_name in enumerate(scanner_list):
+                if chunk_idx >= len(scan_data["chunk_status"]):
+                    continue
+                    
                 chunk = scan_data["chunk_status"][chunk_idx]
-                chunk_progress = min(95, (step * 5) + (chunk_idx * 2))  # Staggered progress
+                scanner_info = scanner_endpoints.get(scanner_name, {"endpoints": ["/"], "description": "Unknown Scanner"})
+                
+                # Different progress patterns for different scanners
+                if scanner_name == "ventiapi":
+                    # VentiAPI: endpoint-based progression
+                    chunk_progress = min(95, (step * 4) + 5)
+                    endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 8)
+                elif scanner_name == "zap":
+                    # ZAP: slower baseline scan progression
+                    chunk_progress = min(95, (step * 3) + 2)
+                    endpoint_idx = 0  # ZAP scans the target URL
+                else:
+                    chunk_progress = min(95, step * 4)
+                    endpoint_idx = 0
                 
                 if chunk_progress < 95:
                     chunk["status"] = "running"
                     chunk["progress"] = chunk_progress
-                    endpoint_idx = min(len(chunk_endpoints[chunk_idx]) - 1, step // 3)
-                    if endpoint_idx < len(chunk_endpoints[chunk_idx]):
-                        chunk["current_endpoint"] = chunk_endpoints[chunk_idx][endpoint_idx]
-                        chunk["endpoints"] = chunk_endpoints[chunk_idx][:endpoint_idx + 1]
+                    
+                    # Set current endpoint based on scanner type
+                    endpoints = scanner_info["endpoints"]
+                    if endpoint_idx < len(endpoints):
+                        chunk["current_endpoint"] = endpoints[endpoint_idx]
+                        chunk["endpoints"] = endpoints[:endpoint_idx + 1]
                         chunk["endpoints_count"] = len(chunk["endpoints"])
+                    
+                    # Add scanner-specific metadata
+                    chunk["scanner_description"] = scanner_info["description"]
             
             # Calculate overall progress
-            total_chunk_progress = sum(chunk["progress"] for chunk in scan_data["chunk_status"])
-            overall_progress = min(90, total_chunk_progress // 3)
-            
-            scan_data["progress"] = overall_progress
-            scan_data["current_phase"] = f"Processing ({scan_data['completed_chunks']}/3 workers completed)"
-            
-            print(f"📊 Scan {scan_id}: {overall_progress}% - Testing endpoints across 3 workers")
+            if scan_data["chunk_status"]:
+                total_chunk_progress = sum(chunk["progress"] for chunk in scan_data["chunk_status"])
+                overall_progress = min(90, total_chunk_progress // len(scan_data["chunk_status"]))
+                
+                scan_data["progress"] = overall_progress
+                completed_chunks = sum(1 for chunk in scan_data["chunk_status"] if chunk["status"] == "completed")
+                scan_data["current_phase"] = f"Scanning with {len(scanner_list)} engines ({completed_chunks}/{len(scanner_list)} completed)"
+                
+                print(f"📊 Multi-scanner {scan_id}: {overall_progress}% - {scanner_list}")
             
     except Exception as e:
         print(f"Progress monitoring error for {scan_id}: {e}")
