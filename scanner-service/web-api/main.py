@@ -206,107 +206,123 @@ async def start_scan(
 ):
     """Start a new security scan using job queue"""
     
-    print("DEBUG: Scan request received")
-    print(f"DEBUG: server_url={server_url}")
-    print(f"DEBUG: target_url={target_url}")
-    print(f"DEBUG: rps={rps}")
-    print(f"DEBUG: max_requests={max_requests}")
-    print(f"DEBUG: dangerous={dangerous}")
-    print(f"DEBUG: fuzz_auth={fuzz_auth}")
-    print(f"DEBUG: scanners={scanners}")
-    print(f"DEBUG: spec_file={spec_file}")
-    print(f"DEBUG: user={user}")
-    
-    # Validate scan parameters
-    validate_scan_params(rps, max_requests)
-    
-    # Validate URLs
-    validate_url(server_url, allow_localhost=True)
-    if target_url:
-        validate_url(target_url, allow_localhost=True)
-    
-    # Only admins can run dangerous scans
-    if dangerous and not user.get('is_admin'):
-        log_security_event("unauthorized_dangerous_scan", user['username'], {
-            "ip": request.client.host
+    try:
+        print("DEBUG: Scan request received")
+        print(f"DEBUG: server_url={server_url}")
+        print(f"DEBUG: target_url={target_url}")
+        print(f"DEBUG: rps={rps}")
+        print(f"DEBUG: max_requests={max_requests}")
+        print(f"DEBUG: dangerous={dangerous}")
+        print(f"DEBUG: fuzz_auth={fuzz_auth}")
+        print(f"DEBUG: scanners={scanners}")
+        print(f"DEBUG: spec_file={spec_file}")
+        print(f"DEBUG: user={user}")
+        
+        # Validate scan parameters
+        validate_scan_params(rps, max_requests)
+        
+        # Validate URLs
+        validate_url(server_url, allow_localhost=True)
+        if target_url:
+            validate_url(target_url, allow_localhost=True)
+        
+        # Only admins can run dangerous scans
+        if dangerous and not user.get('is_admin'):
+            log_security_event("unauthorized_dangerous_scan", user['username'], {
+                "ip": request.client.host
+            })
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin privileges required for dangerous scans"
+            )
+        
+        # Validate and save spec file if provided
+        spec_location = None
+        if spec_file:
+            file_content = await spec_file.read()
+            validate_file_upload(file_content, spec_file.filename)
+            
+            scan_id = str(uuid.uuid4())
+            spec_filename = f"{scan_id}_{spec_file.filename}"
+            spec_path = SHARED_SPECS / spec_filename
+            
+            with open(spec_path, "wb") as f:
+                f.write(file_content)
+            
+            spec_location = f"/shared/specs/{spec_filename}"
+        else:
+            scan_id = str(uuid.uuid4())
+        
+        # Parse scanner engines
+        scanner_list = [s.strip() for s in scanners.split(',') if s.strip()]
+        if not scanner_list:
+            scanner_list = ['ventiapi']  # Default to VentiAPI
+        
+        # Validate scanner engines
+        available_scanners = multi_scanner.get_available_engines()
+        invalid_scanners = [s for s in scanner_list if s not in available_scanners]
+        if invalid_scanners:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
+            )
+        
+        # Initialize scan data
+        scans[scan_id] = {
+            "status": "pending",
+            "progress": 0,
+            "current_phase": "Initializing scan",
+            "findings_count": 0,
+            "created_at": datetime.utcnow().isoformat(),
+            "server_url": server_url,
+            "target_url": target_url,
+            "spec_location": spec_location,
+            "scanners": scanner_list,
+            "parallel_mode": True,
+            "total_chunks": len(scanner_list),
+            "completed_chunks": 0,
+            "chunk_status": [
+                {"chunk_id": i, "scanner": scanner_list[i], "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
+                for i in range(len(scanner_list))
+            ],
+            "job_ids": [],
+            "dangerous": dangerous,
+            "fuzz_auth": fuzz_auth
+        }
+        
+        log_security_event("scan_started", user['username'], {
+            "scan_id": scan_id,
+            "ip": request.client.host,
+            "server_url": server_url,
+            "dangerous": dangerous
         })
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required for dangerous scans"
-        )
-    
-    # Validate and save spec file if provided
-    spec_location = None
-    if spec_file:
-        file_content = await spec_file.read()
-        validate_file_upload(file_content, spec_file.filename)
         
-        scan_id = str(uuid.uuid4())
-        spec_filename = f"{scan_id}_{spec_file.filename}"
-        spec_path = SHARED_SPECS / spec_filename
+        # Execute scan using Docker container
+        print(f"🚀 Starting direct scan execution for {scan_id}")
         
-        with open(spec_path, "wb") as f:
-            f.write(file_content)
+        # Start the scan in the background with progress monitoring
+        asyncio.create_task(execute_multi_scan(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
+        asyncio.create_task(monitor_scan_progress(scan_id))
         
-        spec_location = f"/shared/specs/{spec_filename}"
-    else:
-        scan_id = str(uuid.uuid4())
-    
-    # Parse scanner engines
-    scanner_list = [s.strip() for s in scanners.split(',') if s.strip()]
-    if not scanner_list:
-        scanner_list = ['ventiapi']  # Default to VentiAPI
-    
-    # Validate scanner engines
-    available_scanners = multi_scanner.get_available_engines()
-    invalid_scanners = [s for s in scanner_list if s not in available_scanners]
-    if invalid_scanners:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
-        )
-    
-    # Initialize scan data
-    scans[scan_id] = {
-        "status": "pending",
-        "progress": 0,
-        "current_phase": "Initializing scan",
-        "findings_count": 0,
-        "created_at": datetime.utcnow().isoformat(),
-        "server_url": server_url,
-        "target_url": target_url,
-        "spec_location": spec_location,
-        "scanners": scanner_list,
-        "parallel_mode": True,
-        "total_chunks": len(scanner_list),
-        "completed_chunks": 0,
-        "chunk_status": [
-            {"chunk_id": i, "scanner": scanner_list[i], "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
-            for i in range(len(scanner_list))
-        ],
-        "job_ids": [],
-        "dangerous": dangerous,
-        "fuzz_auth": fuzz_auth
-    }
-    
-    log_security_event("scan_started", user['username'], {
-        "scan_id": scan_id,
-        "ip": request.client.host,
-        "server_url": server_url,
-        "dangerous": dangerous
-    })
-    
-    # Execute scan using Docker container
-    print(f"🚀 Starting direct scan execution for {scan_id}")
-    
-    # Start the scan in the background with progress monitoring
-    asyncio.create_task(execute_multi_scan(scan_id, user, dangerous, fuzz_auth, rps, max_requests))
-    asyncio.create_task(monitor_scan_progress(scan_id))
-    
-    # Update user scan count
-    user_db.users[user['username']]['scan_count'] += 1
-    
-    return {"scan_id": scan_id, "status": "pending"}
+        # Update user scan count
+        user_db.users[user['username']]['scan_count'] += 1
+        
+        return {"scan_id": scan_id, "status": "pending"}
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Scan start failed: {e}")
+        print(f"Full traceback: {error_details}")
+        
+        # If scan was created, mark it as failed
+        if 'scan_id' in locals() and scan_id in scans:
+            scans[scan_id]["status"] = "failed"
+            scans[scan_id]["error"] = str(e)
+            scans[scan_id]["current_phase"] = "Scan failed to start"
+            scans[scan_id]["progress"] = 100
+        
+        raise HTTPException(status_code=500, detail=f"Failed to start scan: {str(e)}")
 
 async def execute_scan_with_queue(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
     """Execute scan using Redis job queue"""
@@ -985,6 +1001,7 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         else:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan failed"
+            scan_data["error"] = "All scanner engines failed"
             scan_data["progress"] = 100
             print(f"❌ Multi-scan {scan_id} failed")
         
@@ -1004,12 +1021,16 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         scan_data["scanner_results"] = results
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         print(f"❌ Multi-scan {scan_id} failed: {e}")
-        logger.error(f"Multi-scan failed: {e}")
+        print(f"Full traceback: {error_details}")
+        logger.error(f"Multi-scan failed: {e} - {error_details}")
         
         if scan_id in scans:
             scans[scan_id]["status"] = "failed"
             scans[scan_id]["current_phase"] = f"Scan failed: {str(e)}"
+            scans[scan_id]["error"] = str(e)
             scans[scan_id]["progress"] = 100
 
 async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_auth: bool, rps: float, max_requests: int):
@@ -1108,18 +1129,21 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
             else:
                 scan_data["status"] = "failed"
                 scan_data["current_phase"] = "Scan failed"
+                scan_data["error"] = process.stderr or "Scanner execution failed"
                 scan_data["progress"] = 100
                 print(f"❌ Scan {scan_id} failed: {process.stderr}")
                 
         except subprocess.TimeoutExpired:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan timeout"
+            scan_data["error"] = "Scan timed out"
             scan_data["progress"] = 100
             print(f"⏰ Scan {scan_id} timed out")
             
         except Exception as e:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan failed"
+            scan_data["error"] = str(e)
             scan_data["progress"] = 100
             print(f"❌ Scan {scan_id} execution error: {e}")
             
@@ -1128,6 +1152,7 @@ async def execute_scan_direct(scan_id: str, user: Dict, dangerous: bool, fuzz_au
         if scan_id in scans:
             scans[scan_id]["status"] = "failed"
             scans[scan_id]["current_phase"] = "Scan failed"
+            scans[scan_id]["error"] = str(e)
             scans[scan_id]["progress"] = 100
 
 async def get_real_endpoints_from_spec(scan_data):
@@ -1147,12 +1172,16 @@ async def get_real_endpoints_from_spec(scan_data):
             try:
                 if spec_location.startswith("http"):
                     # Remote spec - try to fetch it
-                    import aiohttp
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(spec_location) as response:
-                            if response.status == 200:
-                                spec_content = await response.text()
-                                spec_data = yaml.safe_load(spec_content) if spec_location.endswith('.yml') or spec_location.endswith('.yaml') else json.loads(spec_content)
+                    try:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(spec_location) as response:
+                                if response.status == 200:
+                                    spec_content = await response.text()
+                                    spec_data = yaml.safe_load(spec_content) if spec_location.endswith('.yml') or spec_location.endswith('.yaml') else json.loads(spec_content)
+                    except ImportError:
+                        print("aiohttp not available, skipping remote spec fetch")
+                        spec_data = None
                 else:
                     # Local file
                     spec_file_path = Path(spec_location.replace('/shared/specs/', '/shared/specs/'))
@@ -1173,16 +1202,19 @@ async def get_real_endpoints_from_spec(scan_data):
         # Fallback: try to get from server's OpenAPI endpoint
         if not endpoints and server_url:
             try:
-                import aiohttp
-                openapi_url = f"{server_url}/openapi.json"
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(openapi_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                        if response.status == 200:
-                            spec_data = await response.json()
-                            if 'paths' in spec_data:
-                                endpoints = list(spec_data['paths'].keys())
-                                print(f"📋 Fetched {len(endpoints)} endpoints from {openapi_url}: {endpoints[:5]}...")
-                                return endpoints[:10]  # Limit for display
+                try:
+                    import aiohttp
+                    openapi_url = f"{server_url}/openapi.json"
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(openapi_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                            if response.status == 200:
+                                spec_data = await response.json()
+                                if 'paths' in spec_data:
+                                    endpoints = list(spec_data['paths'].keys())
+                                    print(f"📋 Fetched {len(endpoints)} endpoints from {openapi_url}: {endpoints[:5]}...")
+                                    return endpoints[:10]  # Limit for display
+                except ImportError:
+                    print("aiohttp not available, skipping OpenAPI endpoint fetch")
             except Exception as e:
                 print(f"Could not fetch OpenAPI spec from {server_url}: {e}")
         

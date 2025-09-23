@@ -50,6 +50,9 @@ class VentiAPIScanner(ScannerEngine):
         """Generate VentiAPI scanner Docker command"""
         volume_prefix = options.get('volume_prefix', 'scannerapp')
         
+        # Handle None spec_path by using target_url/openapi.json as fallback
+        spec_to_use = spec_path or f"{target_url}/openapi.json"
+        
         cmd = [
             'docker', 'run', '--rm',
             '--network', 'host',
@@ -63,11 +66,11 @@ class VentiAPIScanner(ScannerEngine):
             f'--label', f'scan_id={scan_id}',
             f'--label', 'app=ventiapi-scanner',
             self.image,
-            '--spec', spec_path,
+            '--spec', spec_to_use,
             '--server', target_url,
             '--out', self.get_result_path(scan_id),
-            '--rps', str(options.get('rps', 1.0)),
-            '--max-requests', str(options.get('max_requests', 100))
+            '--rps', str(options.get('rps', 1.0) or 1.0),
+            '--max-requests', str(options.get('max_requests', 100) or 100)
         ]
         
         if options.get('dangerous', False):
@@ -83,6 +86,12 @@ class VentiAPIScanner(ScannerEngine):
         cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
         
         try:
+            # Debug: Print command elements to find None values
+            print(f"Debug VentiAPI command elements: {cmd}")
+            for i, element in enumerate(cmd):
+                if element is None:
+                    print(f"Found None at position {i}")
+            
             logger.info(f"🔍 Starting VentiAPI scan: {' '.join(cmd)}")
             
             process = await asyncio.create_subprocess_exec(
