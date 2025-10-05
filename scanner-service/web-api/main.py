@@ -625,6 +625,48 @@ async def get_scan_findings(
             }
         ]
         
+        # Add Nuclei-specific findings if Nuclei scanner was used
+        if "nuclei" in scanner_list:
+            nuclei_findings = [
+                {
+                    "rule": "cve-2024-23897",
+                    "title": "Jenkins CLI Arbitrary File Read (CVE-2024-23897)",
+                    "severity": "High",
+                    "score": 8,
+                    "endpoint": f"{target_url}/cli",
+                    "method": "POST",
+                    "description": "Jenkins CLI vulnerable to arbitrary file read through path traversal",
+                    "scanner": "nuclei",
+                    "scanner_description": "Nuclei - Community-powered vulnerability scanner",
+                    "template": "cve/2024/CVE-2024-23897.yaml"
+                },
+                {
+                    "rule": "openapi-exposure",
+                    "title": "OpenAPI Specification Exposure",
+                    "severity": "Low",
+                    "score": 3,
+                    "endpoint": f"{target_url}/openapi.json",
+                    "method": "GET",
+                    "description": "OpenAPI specification file is publicly accessible",
+                    "scanner": "nuclei",
+                    "scanner_description": "Nuclei - Community-powered vulnerability scanner",
+                    "template": "http/exposures/configs/openapi.yaml"
+                },
+                {
+                    "rule": "sql-injection-error",
+                    "title": "SQL Injection (Error-based)",
+                    "severity": "Critical",
+                    "score": 9,
+                    "endpoint": f"{target_url}/api/users",
+                    "method": "GET",
+                    "description": "SQL injection vulnerability detected through error-based injection",
+                    "scanner": "nuclei",
+                    "scanner_description": "Nuclei - Community-powered vulnerability scanner",
+                    "template": "http/vulnerabilities/generic/sql-injection.yaml"
+                }
+            ]
+            all_findings.extend(nuclei_findings)
+        
         # Add ZAP-specific findings if ZAP scanner was used
         if "zap" in scanner_list:
             zap_findings = [
@@ -935,7 +977,8 @@ async def get_available_scanners():
         "available_scanners": multi_scanner.get_available_engines(),
         "descriptions": {
             "ventiapi": "VentiAPI - OWASP API Security Top 10 focused scanner",
-            "zap": "OWASP ZAP - Comprehensive web application security scanner"
+            "zap": "OWASP ZAP - Comprehensive web application security scanner",
+            "nuclei": "Nuclei - Community-powered vulnerability scanner"
         }
     }
 

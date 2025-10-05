@@ -209,6 +209,149 @@ class ZAPScanner(ScannerEngine):
                 "error": str(e)
             }
 
+class NucleiScanner(ScannerEngine):
+    """Nuclei Scanner Engine - Community-powered vulnerability scanner"""
+    
+    def __init__(self):
+        super().__init__("nuclei")
+        self.image = "projectdiscovery/nuclei:latest"
+    
+    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str, 
+                          options: Dict[str, Any]) -> List[str]:
+        """Generate Nuclei scanner Docker command"""
+        volume_prefix = options.get('volume_prefix', 'scannerapp')
+        
+        # Nuclei result paths (JSON output)
+        nuclei_json_path = f'/app/results/{scan_id}_nuclei.json'
+        
+        cmd = [
+            'docker', 'run', '--rm',
+            '--network', 'host',
+            '--memory', '512m',
+            '--cpus', '0.5',
+            '--security-opt', 'no-new-privileges',
+            '-v', f'{volume_prefix}_shared-results:/app/results:rw',
+            f'--name', f'nuclei-scanner-{scan_id}',
+            f'--label', f'scan_id={scan_id}',
+            f'--label', 'app=nuclei-scanner',
+            self.image,
+            '-target', target_url,
+            '-json-export', nuclei_json_path,
+            '-silent',  # Reduce output noise
+            '-no-color',
+            '-disable-analytics'
+        ]
+        
+        # Add severity filter
+        severity = options.get('severity', 'critical,high,medium')
+        if severity:
+            cmd.extend(['-severity', severity])
+            
+        # Add template filters for API-specific vulnerabilities
+        api_templates = options.get('api_templates', True)
+        if api_templates:
+            cmd.extend(['-tags', 'api,exposure,disclosure,jwt,sql'])
+            
+        # Rate limiting
+        rate_limit = options.get('rate_limit', 150)
+        if rate_limit:
+            cmd.extend(['-rate-limit', str(rate_limit)])
+            
+        # Concurrency
+        concurrency = options.get('concurrency', 25)
+        if concurrency:
+            cmd.extend(['-c', str(concurrency)])
+            
+        # Update templates before scanning
+        if options.get('update_templates', True):
+            cmd.extend(['-update-templates'])
+            
+        return cmd
+    
+    async def scan(self, scan_id: str, spec_path: str, target_url: str, 
+                   options: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute Nuclei scan using on-demand Docker container"""
+        cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
+        
+        try:
+            logger.info(f"🔍 Starting Nuclei scan: {' '.join(cmd[:10])}...")
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            # Parse results
+            findings = await self._parse_results(scan_id, options.get('volume_prefix', 'scannerapp'))
+            
+            return {
+                "engine": self.name,
+                "scan_id": scan_id,
+                "status": "completed" if process.returncode == 0 else "failed",
+                "return_code": process.returncode,
+                "stdout": stdout.decode() if stdout else "",
+                "stderr": stderr.decode() if stderr else "",
+                "result_path": self.get_result_path(scan_id),
+                "findings": findings,
+                "findings_count": len(findings)
+            }
+            
+        except Exception as e:
+            logger.error(f"Nuclei scan failed: {e}")
+            return {
+                "engine": self.name,
+                "scan_id": scan_id,
+                "status": "failed",
+                "error": str(e)
+            }
+    
+    async def _parse_results(self, scan_id: str, volume_prefix: str) -> List[Dict[str, Any]]:
+        """Parse Nuclei JSON results"""
+        findings = []
+        
+        try:
+            # Path to results file
+            result_file = Path(f"/shared/results/{scan_id}_nuclei.json")
+            
+            if result_file.exists():
+                with open(result_file, 'r') as f:
+                    content = f.read().strip()
+                    if content:
+                        # Nuclei outputs JSONL format (one JSON object per line)
+                        for line in content.split('\n'):
+                            if line.strip():
+                                try:
+                                    finding = json.loads(line)
+                                    # Convert to standard format
+                                    parsed_finding = {
+                                        "rule": finding.get("template-id", "unknown"),
+                                        "title": finding.get("info", {}).get("name", "Unknown Vulnerability"),
+                                        "severity": finding.get("info", {}).get("severity", "info").title(),
+                                        "description": finding.get("info", {}).get("description", ""),
+                                        "url": finding.get("matched-at", ""),
+                                        "template": finding.get("template-id", ""),
+                                        "scanner": "nuclei",
+                                        "scanner_description": "Nuclei - Community-powered vulnerability scanner"
+                                    }
+                                    
+                                    # Map severity to score
+                                    severity_scores = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Info": 1}
+                                    parsed_finding["score"] = severity_scores.get(parsed_finding["severity"], 1)
+                                    
+                                    findings.append(parsed_finding)
+                                except json.JSONDecodeError:
+                                    continue
+                        
+                logger.info(f"📊 Nuclei scan {scan_id}: {len(findings)} findings")
+            
+        except Exception as e:
+            logger.error(f"Error parsing Nuclei results for {scan_id}: {e}")
+        
+        return findings
+
 class MultiScannerManager:
     """Manages multiple scanner engines"""
     
@@ -217,6 +360,13 @@ class MultiScannerManager:
             'ventiapi': VentiAPIScanner(),
             'zap': ZAPScanner()
         }
+        
+        # Add Nuclei scanner if available (conditional)
+        try:
+            self.engines['nuclei'] = NucleiScanner()
+            logger.info("✅ Nuclei scanner enabled")
+        except Exception as e:
+            logger.warning(f"⚠️ Nuclei scanner disabled: {e}")
         
     def get_available_engines(self) -> List[str]:
         """Get list of available scanner engines"""
