@@ -41,7 +41,8 @@ def get_allowed_origins():
     """Get allowed CORS origins based on environment"""
     origins = [
         "http://localhost:3000",
-        "http://localhost:3001"
+        "http://localhost:3001",
+        "http://localhost:3002"
     ]
     
     frontend_url = os.getenv("FRONTEND_URL")
@@ -208,22 +209,27 @@ async def start_scan(
     
     try:
         print("DEBUG: Scan request received")
-        print(f"DEBUG: server_url={server_url}")
-        print(f"DEBUG: target_url={target_url}")
+        print(f"DEBUG: server_url={server_url!r}")
+        print(f"DEBUG: target_url={target_url!r}")
         print(f"DEBUG: rps={rps}")
         print(f"DEBUG: max_requests={max_requests}")
         print(f"DEBUG: dangerous={dangerous}")
         print(f"DEBUG: fuzz_auth={fuzz_auth}")
         print(f"DEBUG: scanners={scanners}")
         print(f"DEBUG: spec_file={spec_file}")
+        if spec_file:
+            print(f"DEBUG: spec_file.filename={spec_file.filename}")
+            print(f"DEBUG: spec_file.content_type={spec_file.content_type}")
         print(f"DEBUG: user={user}")
-        
+
         # Validate scan parameters
         validate_scan_params(rps, max_requests)
-        
+
         # Validate URLs
+        print(f"DEBUG: Validating server_url: {server_url!r}")
         validate_url(server_url, allow_localhost=True)
         if target_url:
+            print(f"DEBUG: Validating target_url: {target_url!r}")
             validate_url(target_url, allow_localhost=True)
         
         # Only admins can run dangerous scans
@@ -960,7 +966,7 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         spec_location = scan_data["spec_location"]
         
         # Determine volume prefix (for environment compatibility)
-        volume_prefix = "scannerapp"  # Default for local
+        volume_prefix = "295capstone-assembly"  # Default for local docker-compose
         if "ventiapi" in str(spec_location):  # AWS environment detection
             volume_prefix = "ventiapi"
         
@@ -988,6 +994,10 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         )
         
         # Update scan status based on results
+        print(f"DEBUG: Scanner results: {results}")
+        print(f"DEBUG: Overall status: {results.get('overall_status')}")
+        print(f"DEBUG: Individual results: {results.get('results')}")
+
         if results["overall_status"] == "completed":
             scan_data["status"] = "completed"
             scan_data["current_phase"] = "Scan completed successfully"
@@ -1003,7 +1013,7 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
             scan_data["current_phase"] = "Scan failed"
             scan_data["error"] = "All scanner engines failed"
             scan_data["progress"] = 100
-            print(f"❌ Multi-scan {scan_id} failed")
+            print(f"❌ Multi-scan {scan_id} failed - overall_status: {results.get('overall_status')}")
         
         # Update chunk status based on individual scanner results
         for i, scanner_name in enumerate(scanner_list):
