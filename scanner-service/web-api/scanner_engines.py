@@ -45,10 +45,10 @@ class VentiAPIScanner(ScannerEngine):
         super().__init__("ventiapi")
         self.image = "ventiapi-scanner"
     
-    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str, 
+    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str,
                           options: Dict[str, Any]) -> List[str]:
         """Generate VentiAPI scanner Docker command"""
-        volume_prefix = options.get('volume_prefix', 'scannerapp')
+        volume_prefix = options.get('volume_prefix', '295capstone-assembly')
         
         # Handle None spec_path by using target_url/openapi.json as fallback
         spec_to_use = spec_path or f"{target_url}/openapi.json"
@@ -128,10 +128,10 @@ class ZAPScanner(ScannerEngine):
         super().__init__("zap")
         self.image = "ventiapi-zap"  # Use locally built image
     
-    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str, 
+    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str,
                           options: Dict[str, Any]) -> List[str]:
         """Generate ZAP scanner Docker command"""
-        volume_prefix = options.get('volume_prefix', 'scannerapp')
+        volume_prefix = options.get('volume_prefix', '295capstone-assembly')
         
         # ZAP result paths (inside container)
         zap_json_path = f'/zap/wrk/{scan_id}_zap.json'
