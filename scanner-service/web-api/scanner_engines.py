@@ -247,8 +247,7 @@ class NucleiScanner(ScannerEngine):
             '-target', target_url,
             '-json-export', nuclei_json_path,
             '-silent',  # Reduce output noise
-            '-no-color',
-            '-disable-analytics'
+            '-no-color'
         ]
         
         # Add severity filter
