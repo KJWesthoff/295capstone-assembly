@@ -253,17 +253,26 @@ async def start_scan(
         else:
             scan_id = str(uuid.uuid4())
         
+        # Cleanup old completed scans (keep only last 5 scans)
+        completed_scans = [sid for sid, data in scans.items() if data.get("status") in ["completed", "failed"]]
+        if len(completed_scans) > 5:
+            # Remove oldest completed scans
+            completed_scans_sorted = sorted(completed_scans, key=lambda sid: scans[sid].get("created_at", ""))
+            for old_scan_id in completed_scans_sorted[:-5]:  # Keep last 5
+                print(f"🧹 Cleaning up old scan: {old_scan_id}")
+                del scans[old_scan_id]
+
         # Parse scanner engines
         scanner_list = [s.strip() for s in scanners.split(',') if s.strip()]
         if not scanner_list:
             scanner_list = ['ventiapi']  # Default to VentiAPI
-        
+
         # Validate scanner engines
         available_scanners = multi_scanner.get_available_engines()
         invalid_scanners = [s for s in scanner_list if s not in available_scanners]
         if invalid_scanners:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
             )
         
@@ -532,9 +541,12 @@ async def get_scan_findings(
     if scan_data.get("status") == "completed":
         # Get scanner list for this scan to attribute findings
         scanner_list = scan_data.get("scanners", ["ventiapi"])
-        
-        # VentiAPI findings (API-specific vulnerabilities)
-        all_findings = [
+
+        all_findings = []
+
+        # VentiAPI findings (API-specific vulnerabilities) - only if VentiAPI scanner was used
+        if "ventiapi" in scanner_list:
+            ventiapi_findings = [
             {
                 "rule": "broken_authentication",
                 "title": "Broken Authentication",
@@ -623,8 +635,9 @@ async def get_scan_findings(
                 "scanner": "ventiapi",
                 "scanner_description": "VentiAPI - API Security Testing"
             }
-        ]
-        
+            ]
+            all_findings.extend(ventiapi_findings)
+
         # Add Nuclei-specific findings if Nuclei scanner was used
         if "nuclei" in scanner_list:
             nuclei_findings = [
@@ -1240,7 +1253,7 @@ async def get_real_endpoints_from_spec(scan_data):
                 if spec_data and 'paths' in spec_data:
                     endpoints = list(spec_data['paths'].keys())
                     print(f"📋 Parsed {len(endpoints)} endpoints from spec: {endpoints[:5]}...")
-                    return endpoints[:10]  # Limit for display
+                    return endpoints  # Return all endpoints
             except Exception as e:
                 print(f"Error parsing spec file: {e}")
         
@@ -1257,7 +1270,7 @@ async def get_real_endpoints_from_spec(scan_data):
                                 if 'paths' in spec_data:
                                     endpoints = list(spec_data['paths'].keys())
                                     print(f"📋 Fetched {len(endpoints)} endpoints from {openapi_url}: {endpoints[:5]}...")
-                                    return endpoints[:10]  # Limit for display
+                                    return endpoints  # Return all endpoints
                 except ImportError:
                     print("aiohttp not available, skipping OpenAPI endpoint fetch")
             except Exception as e:
@@ -1282,6 +1295,9 @@ async def monitor_scan_progress(scan_id: str):
         ventiapi_endpoints = await get_real_endpoints_from_spec(scan_data)
         
         # Define scanner-specific endpoints and behavior
+        # ZAP also scans individual API endpoints when using OpenAPI spec
+        zap_endpoints = ventiapi_endpoints if ventiapi_endpoints else ["/api/endpoints", "/api/users", "/api/books"]
+
         scanner_endpoints = {
             "ventiapi": {
                 "endpoints": ventiapi_endpoints if ventiapi_endpoints else ["/api/endpoints", "/api/users", "/api/books"],
@@ -1289,13 +1305,13 @@ async def monitor_scan_progress(scan_id: str):
                 "scan_type": "endpoint_based"
             },
             "zap": {
-                "endpoints": [scan_data.get("target_url", "https://httpbin.org")],
+                "endpoints": zap_endpoints,
                 "description": "Baseline Security Scan",
-                "scan_type": "baseline_url"
+                "scan_type": "endpoint_based"
             }
         }
         
-        for step in range(20):  # Monitor for up to 60 seconds
+        for step in range(40):  # Monitor for up to 120 seconds
             await asyncio.sleep(3)
             
             if scan_id not in scans:
@@ -1319,12 +1335,13 @@ async def monitor_scan_progress(scan_id: str):
                     chunk_progress = min(95, (step * 4) + 5)
                     endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 8)
                 elif scanner_name == "zap":
-                    # ZAP: slower baseline scan progression
+                    # ZAP: slower baseline scan progression with endpoint tracking
                     chunk_progress = min(95, (step * 3) + 2)
-                    endpoint_idx = 0  # ZAP scans the target URL
+                    # ZAP scans endpoints progressively (every ~9 seconds)
+                    endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 3)
                 else:
                     chunk_progress = min(95, step * 4)
-                    endpoint_idx = 0
+                    endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 8)
                 
                 if chunk_progress < 95:
                     chunk["status"] = "running"
@@ -1336,6 +1353,9 @@ async def monitor_scan_progress(scan_id: str):
                         chunk["current_endpoint"] = endpoints[endpoint_idx]
                         chunk["endpoints"] = endpoints[:endpoint_idx + 1]
                         chunk["endpoints_count"] = len(chunk["endpoints"])
+                        # Debug logging
+                        if step % 5 == 0:  # Log every 15 seconds
+                            print(f"  📍 {scanner_name}: endpoint {endpoint_idx+1}/{len(endpoints)} - {endpoints[endpoint_idx]}")
                     
                     # Add comprehensive scanner-specific metadata
                     chunk["scanner_description"] = scanner_info["description"]

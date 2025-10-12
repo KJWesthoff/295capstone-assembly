@@ -137,15 +137,15 @@ class ZAPScanner(ScannerEngine):
         super().__init__("zap")
         self.image = "ventiapi-zap"  # Use locally built image
     
-    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str, 
+    def get_docker_command(self, scan_id: str, spec_path: str, target_url: str,
                           options: Dict[str, Any]) -> List[str]:
         """Generate ZAP scanner Docker command"""
         volume_prefix = options.get('volume_prefix', 'scannerapp')
-        
+
         # ZAP result paths (inside container)
         zap_json_path = f'/zap/wrk/{scan_id}_zap.json'
         zap_html_path = f'/zap/wrk/{scan_id}_zap.html'
-        
+
         cmd = [
             'docker', 'run', '--rm',
             '--network', 'host',
@@ -153,23 +153,47 @@ class ZAPScanner(ScannerEngine):
             '--cpus', '1.0',
             '--security-opt', 'no-new-privileges',
             '-v', f'{volume_prefix}_shared-results:/zap/wrk/:rw',
+            '-v', f'{volume_prefix}_shared-specs:/zap/specs:ro',
             f'--name', f'zap-scanner-{scan_id}',
             f'--label', f'scan_id={scan_id}',
             f'--label', 'app=zap-scanner',
-            '--entrypoint', 'zap-baseline.py',
-            self.image,
-            '-t', target_url,
+            self.image
+        ]
+
+        # Determine target and format
+        if spec_path:
+            # Use API scan mode with OpenAPI spec
+            # Convert host path to container path
+            container_spec_path = spec_path.replace('/shared/specs', '/zap/specs')
+            cmd.extend([
+                '-t', container_spec_path,
+                '-f', 'openapi'
+            ])
+        else:
+            # Fallback: try to fetch OpenAPI spec from target URL
+            spec_url = f"{target_url}/openapi.json"
+            cmd.extend([
+                '-t', spec_url,
+                '-f', 'openapi'
+            ])
+
+        # Add report outputs
+        cmd.extend([
             '-J', zap_json_path,
             '-r', zap_html_path
-        ]
-        
+        ])
+
         # Add ZAP-specific options
         if options.get('debug', False):
             cmd.extend(['-d'])  # Debug mode
-            
+
         if options.get('timeout', None):
             cmd.extend(['-T', str(options['timeout'])])  # Max time in minutes
-            
+
+        # Safe mode (passive scan only) - recommended for initial testing
+        if options.get('safe_mode', True):
+            cmd.extend(['-S'])
+
         return cmd
     
     async def scan(self, scan_id: str, spec_path: str, target_url: str, 
