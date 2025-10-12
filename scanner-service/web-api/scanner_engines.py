@@ -101,8 +101,8 @@ class VentiAPIScanner(ScannerEngine):
             )
             
             stdout, stderr = await process.communicate()
-            
-            return {
+
+            result = {
                 "engine": self.name,
                 "scan_id": scan_id,
                 "status": "completed" if process.returncode == 0 else "failed",
@@ -111,6 +111,15 @@ class VentiAPIScanner(ScannerEngine):
                 "stderr": stderr.decode() if stderr else "",
                 "result_path": self.get_result_path(scan_id)
             }
+
+            # Log result for debugging
+            if process.returncode != 0:
+                logger.error(f"VentiAPI scan failed with return code {process.returncode}")
+                logger.error(f"stderr: {result['stderr'][:500]}")
+            else:
+                logger.info(f"✅ VentiAPI scan {scan_id} completed successfully")
+
+            return result
             
         except Exception as e:
             logger.error(f"VentiAPI scan failed: {e}")

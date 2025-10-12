@@ -1003,8 +1003,10 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         spec_location = scan_data["spec_location"]
         
         # Determine volume prefix (for environment compatibility)
-        volume_prefix = "scannerapp"  # Default for local
-        if "ventiapi" in str(spec_location):  # AWS environment detection
+        # Use docker-compose project name from environment or default
+        volume_prefix = os.getenv("COMPOSE_PROJECT_NAME", "295capstone-assembly")
+        # AWS/Railway environment detection
+        if os.getenv("RAILWAY_ENVIRONMENT"):
             volume_prefix = "ventiapi"
         
         # Prepare scanner options
