@@ -520,204 +520,140 @@ async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
         queue_stats=queue_stats
     )
 
+async def parse_ventiapi_findings(scan_id: str) -> List[Dict]:
+    """Parse real VentiAPI scanner findings from JSON file"""
+    findings = []
+
+    try:
+        # VentiAPI saves findings to /shared/results/{scan_id}_ventiapi/findings.json
+        result_path = SHARED_RESULTS / f"{scan_id}_ventiapi" / "findings.json"
+
+        if result_path.exists():
+            with open(result_path, 'r') as f:
+                ventiapi_results = json.load(f)
+
+            for finding in ventiapi_results:
+                findings.append({
+                    "rule": finding.get("rule", "unknown"),
+                    "title": finding.get("title", "Unknown Vulnerability"),
+                    "severity": finding.get("severity", "Medium"),
+                    "score": finding.get("score", 5),
+                    "endpoint": finding.get("endpoint", "/"),
+                    "method": finding.get("method", "GET"),
+                    "description": finding.get("description", ""),
+                    "evidence": finding.get("evidence", {}),
+                    "scanner": "ventiapi",
+                    "scanner_description": "VentiAPI - API Security Testing"
+                })
+
+            print(f"📋 Parsed {len(findings)} VentiAPI findings from {result_path}")
+        else:
+            print(f"⚠️  VentiAPI results not found at {result_path}")
+
+    except Exception as e:
+        print(f"❌ Error parsing VentiAPI findings: {e}")
+
+    return findings
+
+async def parse_zap_findings(scan_id: str) -> List[Dict]:
+    """Parse real ZAP scanner findings from JSON file"""
+    findings = []
+
+    try:
+        # ZAP saves results to /shared/results/{scan_id}_zap.json
+        result_path = SHARED_RESULTS / f"{scan_id}_zap.json"
+
+        if result_path.exists():
+            with open(result_path, 'r') as f:
+                zap_results = json.load(f)
+
+            # ZAP JSON format has site -> alerts structure
+            if "site" in zap_results:
+                for site in zap_results["site"]:
+                    for alert in site.get("alerts", []):
+                        # Map ZAP risk levels to severity
+                        risk_map = {"High": "High", "Medium": "Medium", "Low": "Low", "Informational": "Low"}
+                        severity = risk_map.get(alert.get("riskdesc", "Medium").split()[0], "Medium")
+
+                        # Map severity to score
+                        score_map = {"High": 7, "Medium": 5, "Low": 3}
+                        score = score_map.get(severity, 5)
+
+                        # Get all instances (endpoints where vuln was found)
+                        instances = alert.get("instances", [])
+                        if instances:
+                            for instance in instances:
+                                findings.append({
+                                    "rule": alert.get("pluginid", "unknown"),
+                                    "title": alert.get("name", "Unknown Vulnerability"),
+                                    "severity": severity,
+                                    "score": score,
+                                    "endpoint": instance.get("uri", "/"),
+                                    "method": instance.get("method", "GET"),
+                                    "description": alert.get("desc", ""),
+                                    "solution": alert.get("solution", ""),
+                                    "reference": alert.get("reference", ""),
+                                    "scanner": "zap",
+                                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
+                                })
+                        else:
+                            # No specific instances, use alert level
+                            findings.append({
+                                "rule": alert.get("pluginid", "unknown"),
+                                "title": alert.get("name", "Unknown Vulnerability"),
+                                "severity": severity,
+                                "score": score,
+                                "endpoint": "/",
+                                "method": "GET",
+                                "description": alert.get("desc", ""),
+                                "solution": alert.get("solution", ""),
+                                "reference": alert.get("reference", ""),
+                                "scanner": "zap",
+                                "scanner_description": "OWASP ZAP - Baseline Security Scan"
+                            })
+
+            print(f"📋 Parsed {len(findings)} ZAP findings from {result_path}")
+        else:
+            print(f"⚠️  ZAP results not found at {result_path}")
+
+    except Exception as e:
+        print(f"❌ Error parsing ZAP findings: {e}")
+
+    return findings
+
 @app.get("/api/scan/{scan_id}/findings")
 async def get_scan_findings(
-    scan_id: str, 
-    offset: int = 0, 
+    scan_id: str,
+    offset: int = 0,
     limit: int = 50,
     user: Dict = Depends(verify_token)
 ):
-    """Get scan findings from job results"""
-    
+    """Get scan findings from real scanner results"""
+
     if scan_id not in scans:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
-    # For direct execution mode, return mock endpoint data to show scan activity
-    # TODO: Parse actual findings from Docker scanner output
+
     scan_data = scans[scan_id]
-    server_url = scan_data.get("server_url", "")
-    
-    # Create realistic findings showing vulnerabilities that VAmPI typically has
+
+    # Parse real findings from scanner output files
+    all_findings = []
+
     if scan_data.get("status") == "completed":
-        # Get scanner list for this scan to attribute findings
         scanner_list = scan_data.get("scanners", ["ventiapi"])
 
-        all_findings = []
-
-        # VentiAPI findings (API-specific vulnerabilities) - only if VentiAPI scanner was used
+        # Parse real scanner results from files
         if "ventiapi" in scanner_list:
-            ventiapi_findings = [
-            {
-                "rule": "broken_authentication",
-                "title": "Broken Authentication",
-                "severity": "High",
-                "score": 8,
-                "endpoint": "/users/v1/_debug",
-                "method": "GET",
-                "description": "Debug endpoint exposes sensitive user information including passwords",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "improper_authorization", 
-                "title": "Broken Object Level Authorization",
-                "severity": "High",
-                "score": 7,
-                "endpoint": "/books/v1/{book_title}",
-                "method": "GET",
-                "description": "Users can access books belonging to other users",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "jwt_weak_secret",
-                "title": "JWT Weak Secret",
-                "severity": "Medium",
-                "score": 6,
-                "endpoint": "/users/v1/login",
-                "method": "POST",
-                "description": "JWT tokens use a weak secret that can be cracked",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "sql_injection",
-                "title": "SQL Injection",
-                "severity": "Critical", 
-                "score": 9,
-                "endpoint": "/users/v1/{username}",
-                "method": "GET",
-                "description": "Username parameter is vulnerable to SQL injection attacks",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "mass_assignment",
-                "title": "Mass Assignment",
-                "severity": "Medium",
-                "score": 5,
-                "endpoint": "/users/v1/register",
-                "method": "POST",
-                "description": "Users can register as admin by adding admin field",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "bola_user_deletion",
-                "title": "Broken Object Level Authorization in User Deletion",
-                "severity": "High",
-                "score": 8,
-                "endpoint": "/users/v1/{username}",
-                "method": "DELETE", 
-                "description": "Non-admin users can delete other users' accounts",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "information_disclosure",
-                "title": "Information Disclosure",
-                "severity": "Medium",
-                "score": 4,
-                "endpoint": "/users/v1",
-                "method": "GET",
-                "description": "Endpoint reveals user email addresses and usernames",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "improper_auth_flow",
-                "title": "Improper Authentication Flow",
-                "severity": "Medium",
-                "score": 5,
-                "endpoint": "/books/v1",
-                "method": "POST",
-                "description": "Endpoint accepts requests with invalid or expired tokens",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            }
-            ]
+            ventiapi_findings = await parse_ventiapi_findings(scan_id)
             all_findings.extend(ventiapi_findings)
 
-        # Add Nuclei-specific findings if Nuclei scanner was used
-        if "nuclei" in scanner_list:
-            nuclei_findings = [
-                {
-                    "rule": "cve-2024-23897",
-                    "title": "Jenkins CLI Arbitrary File Read (CVE-2024-23897)",
-                    "severity": "High",
-                    "score": 8,
-                    "endpoint": f"{target_url}/cli",
-                    "method": "POST",
-                    "description": "Jenkins CLI vulnerable to arbitrary file read through path traversal",
-                    "scanner": "nuclei",
-                    "scanner_description": "Nuclei - Community-powered vulnerability scanner",
-                    "template": "cve/2024/CVE-2024-23897.yaml"
-                },
-                {
-                    "rule": "openapi-exposure",
-                    "title": "OpenAPI Specification Exposure",
-                    "severity": "Low",
-                    "score": 3,
-                    "endpoint": f"{target_url}/openapi.json",
-                    "method": "GET",
-                    "description": "OpenAPI specification file is publicly accessible",
-                    "scanner": "nuclei",
-                    "scanner_description": "Nuclei - Community-powered vulnerability scanner",
-                    "template": "http/exposures/configs/openapi.yaml"
-                },
-                {
-                    "rule": "sql-injection-error",
-                    "title": "SQL Injection (Error-based)",
-                    "severity": "Critical",
-                    "score": 9,
-                    "endpoint": f"{target_url}/api/users",
-                    "method": "GET",
-                    "description": "SQL injection vulnerability detected through error-based injection",
-                    "scanner": "nuclei",
-                    "scanner_description": "Nuclei - Community-powered vulnerability scanner",
-                    "template": "http/vulnerabilities/generic/sql-injection.yaml"
-                }
-            ]
-            all_findings.extend(nuclei_findings)
-        
-        # Add ZAP-specific findings if ZAP scanner was used
         if "zap" in scanner_list:
-            zap_findings = [
-                {
-                    "rule": "xss_reflected",
-                    "title": "Cross-Site Scripting (Reflected)",
-                    "severity": "Medium",
-                    "score": 6,
-                    "endpoint": server_url,
-                    "method": "GET",
-                    "description": "Application is vulnerable to reflected XSS attacks through URL parameters",
-                    "scanner": "zap",
-                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                },
-                {
-                    "rule": "missing_security_headers",
-                    "title": "Missing Security Headers",
-                    "severity": "Low",
-                    "score": 3,
-                    "endpoint": server_url,
-                    "method": "GET",
-                    "description": "Application is missing important security headers like HSTS, CSP",
-                    "scanner": "zap",
-                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                },
-                {
-                    "rule": "cookie_security",
-                    "title": "Insecure Cookie Configuration",
-                    "severity": "Medium",
-                    "score": 5,
-                    "endpoint": server_url,
-                    "method": "GET",
-                    "description": "Cookies are not configured with Secure or HttpOnly flags",
-                    "scanner": "zap",
-                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                }
-            ]
+            zap_findings = await parse_zap_findings(scan_id)
             all_findings.extend(zap_findings)
+
+        # Note: Nuclei findings would be parsed here if implemented
+        # if "nuclei" in scanner_list:
+        #     nuclei_findings = await parse_nuclei_findings(scan_id)
+        #     all_findings.extend(nuclei_findings)
     else:
         all_findings = []
     
