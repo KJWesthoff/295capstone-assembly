@@ -196,21 +196,25 @@ class ZAPScanner(ScannerEngine):
 
         return cmd
     
-    async def scan(self, scan_id: str, spec_path: str, target_url: str, 
+    async def scan(self, scan_id: str, spec_path: str, target_url: str,
                    options: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ZAP scan"""
         cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
-        
+
         try:
+            print(f"🕷️  Starting ZAP scan: {' '.join(cmd)}")
             logger.info(f"🕷️  Starting ZAP scan: {' '.join(cmd)}")
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             stdout, stderr = await process.communicate()
+            print(f"🕷️  ZAP scan completed with return code: {process.returncode}")
+            print(f"🕷️  ZAP stdout: {stdout.decode()[:500] if stdout else 'No stdout'}")
+            print(f"🕷️  ZAP stderr: {stderr.decode()[:500] if stderr else 'No stderr'}")
             
             # ZAP baseline scanner exit codes:
             # 0: No alerts found
@@ -404,32 +408,37 @@ class MultiScannerManager:
         """Get list of available scanner engines"""
         return list(self.engines.keys())
     
-    async def run_parallel_scan(self, scan_id: str, spec_path: str, target_url: str, 
+    async def run_parallel_scan(self, scan_id: str, spec_path: str, target_url: str,
                                engines: List[str], options: Dict[str, Any]) -> Dict[str, Any]:
         """Run multiple scanners in parallel"""
-        
+
         if not engines:
             engines = self.get_available_engines()
-        
+
         # Validate requested engines
         invalid_engines = [e for e in engines if e not in self.engines]
         if invalid_engines:
             raise ValueError(f"Invalid scanner engines: {invalid_engines}")
-        
+
+        print(f"🚀 Starting parallel scan with engines: {engines}")
+        print(f"🔧 Scan parameters: spec_path={spec_path}, target_url={target_url}")
         logger.info(f"🚀 Starting parallel scan with engines: {engines}")
-        
+
         # Create scan tasks for each engine
         tasks = []
         for engine_name in engines:
             engine = self.engines[engine_name]
+            print(f"📍 Creating scan task for {engine_name}")
             task = asyncio.create_task(
                 engine.scan(scan_id, spec_path, target_url, options),
                 name=f"{engine_name}-{scan_id}"
             )
             tasks.append(task)
-        
+
+        print(f"⏳ Waiting for {len(tasks)} scanner tasks to complete...")
         # Wait for all scans to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        print(f"✅ All {len(results)} scanner tasks completed")
         
         # Process results
         scan_results = {

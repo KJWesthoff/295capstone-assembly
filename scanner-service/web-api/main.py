@@ -241,14 +241,35 @@ async def start_scan(
         if spec_file:
             file_content = await spec_file.read()
             validate_file_upload(file_content, spec_file.filename)
-            
+
             scan_id = str(uuid.uuid4())
             spec_filename = f"{scan_id}_{spec_file.filename}"
             spec_path = SHARED_SPECS / spec_filename
-            
-            with open(spec_path, "wb") as f:
-                f.write(file_content)
-            
+
+            # Parse spec and inject target URL into servers section for ZAP compatibility
+            try:
+                spec_data = json.loads(file_content.decode('utf-8'))
+
+                # Ensure servers section exists and has the target URL
+                if 'servers' not in spec_data or not spec_data['servers']:
+                    spec_data['servers'] = [{"url": target_url or server_url}]
+                else:
+                    # Update existing servers with target URL
+                    if not spec_data['servers'][0].get('url') or spec_data['servers'][0]['url'] == '':
+                        spec_data['servers'][0]['url'] = target_url or server_url
+
+                # Save modified spec
+                with open(spec_path, "w") as f:
+                    json.dump(spec_data, f, indent=2)
+
+                print(f"✅ Saved spec with server URL: {spec_data['servers'][0]['url']}")
+
+            except Exception as e:
+                # If JSON parsing fails, save as-is (might be YAML)
+                print(f"⚠️ Could not parse/modify spec (might be YAML): {e}")
+                with open(spec_path, "wb") as f:
+                    f.write(file_content)
+
             spec_location = f"/shared/specs/{spec_filename}"
         else:
             scan_id = str(uuid.uuid4())
