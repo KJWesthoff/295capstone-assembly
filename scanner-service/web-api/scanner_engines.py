@@ -7,6 +7,7 @@ import asyncio
 import json
 import subprocess
 import uuid
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -14,6 +15,10 @@ from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Shared results directory (mounted from Docker volume)
+SHARED_RESULTS = Path("/shared/results")
+ZAP_RESULTS_DIR = SHARED_RESULTS / "zap"
 
 class ScannerEngine(ABC):
     """Abstract base class for scanner engines"""
@@ -132,27 +137,58 @@ class ZAPScanner(ScannerEngine):
                           options: Dict[str, Any]) -> List[str]:
         """Generate ZAP scanner Docker command"""
         volume_prefix = options.get('volume_prefix', '295capstone-assembly')
-        
-        # ZAP result paths (inside container)
-        zap_json_path = f'/zap/wrk/{scan_id}_zap.json'
-        zap_html_path = f'/zap/wrk/{scan_id}_zap.html'
-        
-        cmd = [
-            'docker', 'run', '--rm',
-            '--network', 'host',
-            '--memory', '1g',
-            '--cpus', '1.0',
-            '--security-opt', 'no-new-privileges',
-            '-v', f'{volume_prefix}_shared-results:/zap/wrk/:rw',
-            f'--name', f'zap-scanner-{scan_id}',
-            f'--label', f'scan_id={scan_id}',
-            f'--label', 'app=zap-scanner',
-            '--entrypoint', 'zap-baseline.py',
-            self.image,
-            '-t', target_url,
-            '-J', zap_json_path,
-            '-r', zap_html_path
-        ]
+
+        # ZAP expects to write to /zap/wrk/ by default
+        # Mount shared-results to /zap/wrk/ and use relative paths
+        # Files will be written to the zap/ subdirectory within the volume
+        zap_json_path = f'zap/{scan_id}_zap.json'
+        zap_html_path = f'zap/{scan_id}_zap.html'
+
+        # Mount shared-results volume to /zap/wrk/ (where ZAP expects to write)
+        zap_volume_mount = f'{volume_prefix}_shared-results:/zap/wrk:rw'
+
+        # For now, always use baseline scan (API scan mode has issues with our OpenAPI specs)
+        # TODO: Fix ZAP API scan mode to work with OpenAPI specs
+        if False:  # Disabled API scan mode
+            # Convert spec path from /shared/specs/... to /zap/specs/... for ZAP container
+            zap_spec_path = spec_path.replace('/shared/specs/', '/zap/specs/')
+
+            cmd = [
+                'docker', 'run', '--rm',
+                '--network', 'host',
+                '--memory', '1g',
+                '--cpus', '1.0',
+                '--security-opt', 'no-new-privileges',
+                '-v', zap_volume_mount,
+                '-v', f'{volume_prefix}_shared-specs:/zap/specs:ro',
+                f'--name', f'zap-scanner-{scan_id}',
+                f'--label', f'scan_id={scan_id}',
+                f'--label', 'app=zap-scanner',
+                '--entrypoint', 'zap-api-scan.py',
+                self.image,
+                '-t', zap_spec_path,
+                '-f', 'openapi',
+                '-O', target_url,  # Override server URL in OpenAPI spec
+                '-J', zap_json_path,
+                '-r', zap_html_path
+            ]
+        else:
+            cmd = [
+                'docker', 'run', '--rm',
+                '--network', 'host',
+                '--memory', '1g',
+                '--cpus', '1.0',
+                '--security-opt', 'no-new-privileges',
+                '-v', zap_volume_mount,
+                f'--name', f'zap-scanner-{scan_id}',
+                f'--label', f'scan_id={scan_id}',
+                f'--label', 'app=zap-scanner',
+                '--entrypoint', 'zap-baseline.py',
+                self.image,
+                '-t', target_url,
+                '-J', zap_json_path,
+                '-r', zap_html_path
+            ]
         
         # Add ZAP-specific options
         if options.get('debug', False):
@@ -163,30 +199,38 @@ class ZAPScanner(ScannerEngine):
             
         return cmd
     
-    async def scan(self, scan_id: str, spec_path: str, target_url: str, 
+    async def scan(self, scan_id: str, spec_path: str, target_url: str,
                    options: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ZAP scan"""
-        cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
-        
         try:
+            # Create dedicated ZAP subdirectory with world-writable permissions
+            # ZAP writes to /zap/wrk/ which is mounted to /shared/results
+            # So we create /shared/results/zap/ for organization
+            ZAP_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+            os.chmod(ZAP_RESULTS_DIR, 0o777)
+            logger.info(f"✓ Created ZAP results directory: {ZAP_RESULTS_DIR}")
+
+            cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
             logger.info(f"🕷️  Starting ZAP scan: {' '.join(cmd)}")
-            
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             stdout, stderr = await process.communicate()
-            
+
             # ZAP baseline scanner exit codes:
             # 0: No alerts found
             # 1: Low risk alerts found
-            # 2: Medium risk alerts found  
+            # 2: Medium risk alerts found
             # 3: High risk alerts found
             # Any other code is a real failure
             zap_success = process.returncode in [0, 1, 2, 3]
-            
+
+            # ZAP reports are written to the zap subdirectory
+            zap_result_dir = "/shared/results/zap"
             return {
                 "engine": self.name,
                 "scan_id": scan_id,
@@ -194,12 +238,12 @@ class ZAPScanner(ScannerEngine):
                 "return_code": process.returncode,
                 "stdout": stdout.decode() if stdout else "",
                 "stderr": stderr.decode() if stderr else "",
-                "result_path": self.get_result_path(scan_id),
-                "json_report": f"{self.get_result_path(scan_id)}.json",
-                "html_report": f"{self.get_result_path(scan_id)}.html",
+                "result_path": f"{zap_result_dir}/{scan_id}_zap",
+                "json_report": f"{zap_result_dir}/{scan_id}_zap.json",
+                "html_report": f"{zap_result_dir}/{scan_id}_zap.html",
                 "risk_level": {0: "none", 1: "low", 2: "medium", 3: "high"}.get(process.returncode, "unknown")
             }
-            
+
         except Exception as e:
             logger.error(f"ZAP scan failed: {e}")
             return {

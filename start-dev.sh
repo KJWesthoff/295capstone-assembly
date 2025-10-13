@@ -25,9 +25,9 @@ fi
 echo "🛑 Stopping existing containers..."
 docker compose down --remove-orphans
 
-# Build scanner image first (required for scans to work)
-echo "🔨 Building scanner image..."
-docker compose --profile build-only build scanner
+# Build scanner images first (required for scans to work)
+echo "🔨 Building scanner images..."
+docker compose --profile build-only build scanner zap
 
 # Build and start all services
 echo "🏗️  Building and starting all services..."
@@ -58,8 +58,16 @@ echo "   📚 API Documentation: http://localhost:3000/api/docs"
 echo ""
 echo "🔑 Check your .env.local file for login credentials"
 echo ""
+echo "💡 First time setup?"
+echo "   If you need the pre-ingested database, run: ./database-restore.sh"
+echo ""
 echo "📝 Useful Commands:"
 echo "   📋 View logs: docker compose logs -f"
 echo "   🛑 Stop services: docker compose down"
 echo "   🔄 Restart backend: docker compose restart web-api"
 echo "   🔨 Rebuild scanner: docker compose --profile build-only build scanner"
+echo "   💾 Backup database: ./database-dump.sh"
+echo "   📥 Restore database: ./database-restore.sh"
+echo ""
+echo "📊 To tail all logs, run:"
+echo "   docker compose logs -f"

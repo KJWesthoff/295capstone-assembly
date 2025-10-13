@@ -27,8 +27,8 @@ services:
   web-api:
     build: ./scanner-service/web-api
     container_name: ventiapi-web-api
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     volumes:
       - shared-results:/shared/results
       - shared-specs:/shared/specs
@@ -52,6 +52,28 @@ services:
       - scanner-network
     volumes:
       - redis-data:/data
+
+  # PostgreSQL Database (for Cedar RAG system)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ventiapi-postgres
+    ports:
+      - "54320:5432"
+    networks:
+      - scanner-network
+    environment:
+      - POSTGRES_USER=rag_user
+      - POSTGRES_PASSWORD=rag_pass
+      - POSTGRES_DB=rag_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/dumps:/dumps
+      - ./database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Scanner service (builds the image for web-api to use)
   scanner:
@@ -103,10 +125,52 @@ services:
     command: ["echo", "ZAP scanner image built"]
     profiles: ["build-only"]  # Only runs when explicitly requested
 
+  # Cedar Frontend (Next.js with Cedar OS)
+  cedar-frontend:
+    build:
+      context: ./cedar-frontend
+      dockerfile: Dockerfile.nextjs
+    container_name: cedar-frontend
+    ports:
+      - "3001:3000"  # Different port to avoid conflict with existing frontend
+    networks:
+      - scanner-network
+    environment:
+      - MASTRA_API_URL=http://cedar-mastra:4111
+      - SCANNER_SERVICE_URL=http://web-api:8000
+      - NODE_ENV=production
+    depends_on:
+      - cedar-mastra
+      - web-api
+
+  # Cedar Mastra Backend (AI Agent Server)
+  cedar-mastra:
+    #platform: linux/amd64  # Use x86_64 for better native module support
+    build:
+      context: ./cedar-frontend
+      dockerfile: Dockerfile.mastra
+    container_name: cedar-mastra
+    ports:
+      - "4111:4111"
+    networks:
+      - scanner-network
+    env_file:
+      - ./cedar-frontend/.env
+    environment:
+      - SCANNER_SERVICE_URL=http://web-api:8000
+      - DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web-api:
+        condition: service_started
+
 volumes:
   shared-results:
   shared-specs:
   redis-data:
+  postgres-data:
   frontend-build:
 
 networks:
