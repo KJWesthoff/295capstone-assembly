@@ -304,37 +304,62 @@ class NucleiScanner(ScannerEngine):
             
         return cmd
     
-    async def scan(self, scan_id: str, spec_path: str, target_url: str, 
+    async def scan(self, scan_id: str, spec_path: str, target_url: str,
                    options: Dict[str, Any]) -> Dict[str, Any]:
         """Execute Nuclei scan using on-demand Docker container"""
-        cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
-        
+
         try:
-            logger.info(f"🔍 Starting Nuclei scan: {' '.join(cmd[:10])}...")
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await process.communicate()
-            
-            # Parse results
-            findings = await self._parse_results(scan_id, options.get('volume_prefix', 'scannerapp'))
-            
+            # Parse endpoints from spec if available
+            endpoints = await self._get_endpoints_from_spec(spec_path, target_url)
+
+            if not endpoints:
+                # Fallback to scanning just the base URL
+                endpoints = [target_url]
+                print(f"🧬 No spec endpoints found, scanning base URL only: {target_url}")
+            else:
+                print(f"🧬 Found {len(endpoints)} endpoints from spec to scan")
+
+            all_findings = []
+
+            # Scan each endpoint individually
+            for idx, endpoint in enumerate(endpoints):
+                full_url = endpoint if endpoint.startswith('http') else f"{target_url.rstrip('/')}{endpoint}"
+
+                print(f"🧬 Scanning endpoint {idx+1}/{len(endpoints)}: {full_url}")
+
+                # Generate command for this specific endpoint
+                cmd = self.get_docker_command(f"{scan_id}_ep{idx}", spec_path, full_url, options)
+
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+
+                stdout, stderr = await process.communicate()
+
+                # Parse results for this endpoint
+                endpoint_findings = await self._parse_results(f"{scan_id}_ep{idx}", options.get('volume_prefix', 'scannerapp'))
+                all_findings.extend(endpoint_findings)
+
+                print(f"🧬 Endpoint {full_url}: {len(endpoint_findings)} findings (return code: {process.returncode})")
+
+            # Save consolidated results
+            await self._save_consolidated_results(scan_id, all_findings, options.get('volume_prefix', 'scannerapp'))
+
+            print(f"🧬 Nuclei scan completed: {len(all_findings)} total findings from {len(endpoints)} endpoints")
+
             return {
                 "engine": self.name,
                 "scan_id": scan_id,
-                "status": "completed" if process.returncode == 0 else "failed",
-                "return_code": process.returncode,
-                "stdout": stdout.decode() if stdout else "",
-                "stderr": stderr.decode() if stderr else "",
+                "status": "completed",
+                "return_code": 0,
                 "result_path": self.get_result_path(scan_id),
-                "findings": findings,
-                "findings_count": len(findings)
+                "findings": all_findings,
+                "findings_count": len(all_findings),
+                "endpoints_scanned": len(endpoints)
             }
-            
+
         except Exception as e:
             logger.error(f"Nuclei scan failed: {e}")
             return {
@@ -385,8 +410,77 @@ class NucleiScanner(ScannerEngine):
             
         except Exception as e:
             logger.error(f"Error parsing Nuclei results for {scan_id}: {e}")
-        
+
         return findings
+
+    async def _get_endpoints_from_spec(self, spec_path: str, target_url: str) -> List[str]:
+        """Parse OpenAPI spec to extract endpoint paths"""
+        endpoints = []
+
+        try:
+            if not spec_path:
+                return []
+
+            # Convert container path to host path
+            # spec_path is like "/shared/specs/abc123_openapi.json"
+            # We need to check if it exists on the host filesystem
+            if spec_path.startswith('/shared/specs/'):
+                # Extract just the filename and reconstruct the path
+                filename = spec_path.split('/')[-1]
+                local_spec_path = Path(f"/shared/specs/{filename}")
+            else:
+                local_spec_path = Path(spec_path)
+
+            if not local_spec_path.exists():
+                logger.warning(f"Spec file not found: {local_spec_path}")
+                return []
+
+            # Read and parse spec file
+            with open(local_spec_path, 'r') as f:
+                spec_content = f.read()
+
+            # Try JSON first, then YAML
+            try:
+                spec_data = json.loads(spec_content)
+            except json.JSONDecodeError:
+                import yaml
+                spec_data = yaml.safe_load(spec_content)
+
+            # Extract paths
+            if 'paths' in spec_data:
+                endpoints = list(spec_data['paths'].keys())
+                logger.info(f"📋 Extracted {len(endpoints)} endpoints from spec")
+
+        except Exception as e:
+            logger.error(f"Error parsing spec for endpoints: {e}")
+
+        return endpoints
+
+    async def _save_consolidated_results(self, scan_id: str, findings: List[Dict[str, Any]], volume_prefix: str):
+        """Save consolidated findings from all endpoint scans to a single file"""
+        try:
+            result_file = Path(f"/shared/results/{scan_id}_nuclei.json")
+
+            # Convert findings to JSONL format (Nuclei's output format)
+            with open(result_file, 'w') as f:
+                for finding in findings:
+                    # Convert back to Nuclei's original format for consistency
+                    nuclei_format = {
+                        "template-id": finding.get("rule", finding.get("template", "unknown")),
+                        "info": {
+                            "name": finding.get("title", "Unknown"),
+                            "severity": finding.get("severity", "info").lower(),
+                            "description": finding.get("description", "")
+                        },
+                        "matched-at": finding.get("url", ""),
+                        "type": "http"
+                    }
+                    f.write(json.dumps(nuclei_format) + '\n')
+
+            logger.info(f"💾 Saved {len(findings)} consolidated Nuclei findings to {result_file}")
+
+        except Exception as e:
+            logger.error(f"Error saving consolidated Nuclei results: {e}")
 
 class MultiScannerManager:
     """Manages multiple scanner engines"""

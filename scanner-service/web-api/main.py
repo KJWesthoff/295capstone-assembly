@@ -642,6 +642,60 @@ async def parse_zap_findings(scan_id: str) -> List[Dict]:
 
     return findings
 
+async def parse_nuclei_findings(scan_id: str) -> List[Dict]:
+    """Parse real Nuclei scanner findings from JSON file"""
+    findings = []
+
+    try:
+        # Nuclei saves results to /shared/results/{scan_id}_nuclei.json (JSONL format)
+        result_path = SHARED_RESULTS / f"{scan_id}_nuclei.json"
+
+        if result_path.exists():
+            with open(result_path, 'r') as f:
+                content = f.read().strip()
+
+                if content:
+                    # Nuclei outputs JSONL format (one JSON object per line)
+                    for line in content.split('\n'):
+                        if line.strip():
+                            try:
+                                nuclei_result = json.loads(line)
+
+                                # Extract info section
+                                info = nuclei_result.get("info", {})
+                                severity = info.get("severity", "info").title()
+
+                                # Map severity to score
+                                score_map = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Info": 1}
+                                score = score_map.get(severity, 1)
+
+                                findings.append({
+                                    "rule": nuclei_result.get("template-id", "unknown"),
+                                    "title": info.get("name", "Unknown Vulnerability"),
+                                    "severity": severity,
+                                    "score": score,
+                                    "endpoint": nuclei_result.get("matched-at", "/"),
+                                    "method": nuclei_result.get("type", "N/A").upper(),
+                                    "description": info.get("description", ""),
+                                    "reference": ", ".join(info.get("reference", [])) if isinstance(info.get("reference"), list) else info.get("reference", ""),
+                                    "tags": ", ".join(info.get("tags", [])) if isinstance(info.get("tags"), list) else "",
+                                    "scanner": "nuclei",
+                                    "scanner_description": "Nuclei - Community-powered vulnerability scanner"
+                                })
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️ Could not parse Nuclei line: {e}")
+                                continue
+
+            print(f"📋 Parsed {len(findings)} Nuclei findings from {result_path}")
+        else:
+            # Nuclei doesn't create a file when finding 0 results - this is expected behavior
+            print(f"✅ Nuclei scan completed with 0 findings (no vulnerabilities detected)")
+
+    except Exception as e:
+        print(f"❌ Error parsing Nuclei findings: {e}")
+
+    return findings
+
 @app.get("/api/scan/{scan_id}/findings")
 async def get_scan_findings(
     scan_id: str,
@@ -671,10 +725,9 @@ async def get_scan_findings(
             zap_findings = await parse_zap_findings(scan_id)
             all_findings.extend(zap_findings)
 
-        # Note: Nuclei findings would be parsed here if implemented
-        # if "nuclei" in scanner_list:
-        #     nuclei_findings = await parse_nuclei_findings(scan_id)
-        #     all_findings.extend(nuclei_findings)
+        if "nuclei" in scanner_list:
+            nuclei_findings = await parse_nuclei_findings(scan_id)
+            all_findings.extend(nuclei_findings)
     else:
         all_findings = []
     
@@ -1254,6 +1307,8 @@ async def monitor_scan_progress(scan_id: str):
         # Define scanner-specific endpoints and behavior
         # ZAP also scans individual API endpoints when using OpenAPI spec
         zap_endpoints = ventiapi_endpoints if ventiapi_endpoints else ["/api/endpoints", "/api/users", "/api/books"]
+        # Nuclei now scans individual endpoints from the spec
+        nuclei_endpoints = ventiapi_endpoints if ventiapi_endpoints else ["/api/endpoints", "/api/users", "/api/books"]
 
         scanner_endpoints = {
             "ventiapi": {
@@ -1264,6 +1319,11 @@ async def monitor_scan_progress(scan_id: str):
             "zap": {
                 "endpoints": zap_endpoints,
                 "description": "Baseline Security Scan",
+                "scan_type": "endpoint_based"
+            },
+            "nuclei": {
+                "endpoints": nuclei_endpoints,
+                "description": "Community-powered vulnerability scanner",
                 "scan_type": "endpoint_based"
             }
         }
