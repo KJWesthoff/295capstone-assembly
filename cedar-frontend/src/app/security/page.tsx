@@ -525,17 +525,40 @@ export default function SecurityDashboardPage() {
         {/* Header */}
         <header className="mb-8">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2">
+            <div className="flex-1">
+              <h1 className="text-4xl font-bold text-white mb-3">
                 🛡️ Security Scan Results
               </h1>
-              <p className="text-gray-400">
-                Scan ID: {scanResults.scanId} • {scanResults.apiBaseUrl}
-              </p>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2">
+                  <div className="text-xs text-gray-400 mb-1">Scan ID</div>
+                  <div className="font-mono text-sm text-blue-400 flex items-center gap-2">
+                    {scanResults.scanId}
+                    <button
+                      onClick={() => navigator.clipboard.writeText(scanResults.scanId)}
+                      className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                      title="Copy Scan ID"
+                    >
+                      📋
+                    </button>
+                  </div>
+                </div>
+                <div className="text-gray-400 text-sm">
+                  <span className="text-gray-500">API:</span> {scanResults.apiBaseUrl}
+                </div>
+                <div className="text-gray-400 text-sm">
+                  <span className="text-gray-500">Date:</span> {new Date(scanResults.scanDate).toLocaleString()}
+                </div>
+              </div>
+              <div className="mt-3 p-3 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg">
+                <p className="text-xs text-blue-300">
+                  💬 <strong>Tip:</strong> Ask the AI assistant to analyze these results by providing the Scan ID above
+                </p>
+              </div>
             </div>
             <button
               onClick={handleRunScan}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors ml-4"
             >
               New Scan
             </button>

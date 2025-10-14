@@ -138,14 +138,12 @@ class ZAPScanner(ScannerEngine):
         """Generate ZAP scanner Docker command"""
         volume_prefix = options.get('volume_prefix', '295capstone-assembly')
 
-        # ZAP expects to write to /zap/wrk/ by default
-        # Mount shared-results to /zap/wrk/ and use relative paths
-        # Files will be written to the zap/ subdirectory within the volume
-        zap_json_path = f'zap/{scan_id}_zap.json'
-        zap_html_path = f'zap/{scan_id}_zap.html'
+        # ZAP result paths - just filenames since we set working directory with -w
+        zap_json_path = f'{scan_id}_zap.json'
+        zap_html_path = f'{scan_id}_zap.html'
 
-        # Mount shared-results volume to /zap/wrk/ (where ZAP expects to write)
-        zap_volume_mount = f'{volume_prefix}_shared-results:/zap/wrk:rw'
+        # Mount shared-results to /shared/results (same as VentiAPI scanner)
+        zap_volume_mount = f'{volume_prefix}_shared-results:/shared/results:rw'
 
         # For now, always use baseline scan (API scan mode has issues with our OpenAPI specs)
         # TODO: Fix ZAP API scan mode to work with OpenAPI specs
@@ -180,6 +178,7 @@ class ZAPScanner(ScannerEngine):
                 '--cpus', '1.0',
                 '--security-opt', 'no-new-privileges',
                 '-v', zap_volume_mount,
+                '-w', '/shared/results/zap',  # Set working directory to ZAP subdirectory
                 f'--name', f'zap-scanner-{scan_id}',
                 f'--label', f'scan_id={scan_id}',
                 f'--label', 'app=zap-scanner',
@@ -203,9 +202,8 @@ class ZAPScanner(ScannerEngine):
                    options: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ZAP scan"""
         try:
-            # Create dedicated ZAP subdirectory with world-writable permissions
-            # ZAP writes to /zap/wrk/ which is mounted to /shared/results
-            # So we create /shared/results/zap/ for organization
+            # Create dedicated ZAP directory with world-writable permissions
+            # This allows ZAP (running as UID 1000) to write results
             ZAP_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
             os.chmod(ZAP_RESULTS_DIR, 0o777)
             logger.info(f"✓ Created ZAP results directory: {ZAP_RESULTS_DIR}")

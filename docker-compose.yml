@@ -130,14 +130,25 @@ services:
     build:
       context: ./cedar-frontend
       dockerfile: Dockerfile.nextjs
+      args:
+        - NEXT_PUBLIC_MASTRA_URL=http://localhost:4111
+        - NEXT_PUBLIC_SCANNER_SERVICE_URL=http://localhost:8000
+        - NEXT_PUBLIC_SCANNER_USERNAME=${ADMIN_USERNAME:-MICS295}
+        - NEXT_PUBLIC_SCANNER_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
     container_name: cedar-frontend
     ports:
       - "3001:3000"  # Different port to avoid conflict with existing frontend
     networks:
       - scanner-network
+    env_file:
+      - .env.local
     environment:
+      - NEXT_PUBLIC_MASTRA_URL=http://localhost:4111
       - MASTRA_API_URL=http://cedar-mastra:4111
       - SCANNER_SERVICE_URL=http://web-api:8000
+      - NEXT_PUBLIC_SCANNER_SERVICE_URL=http://localhost:3000
+      - NEXT_PUBLIC_SCANNER_USERNAME=${ADMIN_USERNAME:-MICS295}
+      - NEXT_PUBLIC_SCANNER_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
       - NODE_ENV=production
     depends_on:
       - cedar-mastra
@@ -145,7 +156,7 @@ services:
 
   # Cedar Mastra Backend (AI Agent Server)
   cedar-mastra:
-    #platform: linux/amd64  # Use x86_64 for better native module support
+    #platform: linux/amd64  # Use x86_64 for LibSQL native module support
     build:
       context: ./cedar-frontend
       dockerfile: Dockerfile.mastra
@@ -156,8 +167,11 @@ services:
       - scanner-network
     env_file:
       - ./cedar-frontend/.env
+      - .env.local
     environment:
       - SCANNER_SERVICE_URL=http://web-api:8000
+      - SCANNER_USERNAME=${ADMIN_USERNAME:-MICS295}
+      - SCANNER_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
       - DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db
       - NODE_ENV=production
     depends_on:

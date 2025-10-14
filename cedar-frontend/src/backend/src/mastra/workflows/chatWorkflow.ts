@@ -173,14 +173,40 @@ const fetchContext = createStep({
   }),
   execute: async ({ inputData }) => {
     console.log('Chat workflow received input data', inputData);
+    console.log('Input data keys:', Object.keys(inputData));
+    console.log('Prompt content:', inputData.prompt);
+
     // [STEP 5] (Backend): If the user adds a node via @mention then sends a message, the agent will receive it here in the user prompt field.
     // [STEP 6] (Backend): If you call the subscribeInputContext hook on the frontend, the agent will receive that state as context, formatted in the way you specified.
+
+    // Check if the prompt mentions a scan ID and we need to provide scan context
+    const scanIdPattern = /\b([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\b/i;
+    const scanIdMatch = inputData.prompt.match(scanIdPattern);
+
+    if (scanIdMatch && inputData.prompt.toLowerCase().includes('workflow')) {
+      const scanId = scanIdMatch[1];
+      console.log(`Detected scan ID in prompt: ${scanId}`);
+
+      // Add instruction to the prompt for the agent to look for scan data in context
+      const enhancedPrompt = `${inputData.prompt}
+
+IMPORTANT: The user is asking about scan ID ${scanId}. The scan results should be available in the Cedar OS context. Look for scan data with a "findings" array in the conversation context and use the scan-analysis-workflow to analyze it.`;
+
+      const result = { ...inputData, prompt: enhancedPrompt, context: inputData };
+      console.log('Workflow enhanced prompt for scan analysis');
+      return result;
+    }
+
+    // Cedar OS embeds context directly in the prompt string with special formatting
     const frontendContext = inputData.prompt;
 
-    // Merge, filter, or modify the frontend context as needed
+    // The prompt from Cedar OS already contains the context embedded
+    // We just need to pass it through to the agent
     const unifiedContext = frontendContext;
 
-    const result = { ...inputData, prompt: unifiedContext };
+    const result = { ...inputData, prompt: unifiedContext, context: inputData };
+
+    console.log('Workflow passing context to agent:', JSON.stringify(result, null, 2));
 
     return result;
   },
