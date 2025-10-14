@@ -1,0 +1,20 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+aiofiles==23.2.1
+redis==5.0.1
+pydantic==2.5.0
+PyYAML==6.0.1
+aiohttp==3.9.0
+
+# Security dependencies
+PyJWT==2.8.0
+bcrypt==4.1.2
+slowapi==0.1.9
+passlib[bcrypt]==1.7.4
+cryptography>=42.0.0
+
+# Job queue dependencies
+celery==5.3.0
+uuid==1.30
+

@@ -1,0 +1,24 @@
+[project]
+name = "ventiapi-scanner"
+version = "0.3.0"
+description = "OpenAPI static + active API security scanner (OWASP API Top 10)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name="Your Name", email="bleu.strong@gmail.com"}]
+dependencies = [
+  "httpx>=0.28.1",
+  "anyio>=4.5.0",
+  "Jinja2>=3.1.4",
+  "pydantic>=2.11.0",
+  "prance>=23.6.21.0",
+  "openapi-spec-validator>=0.7.1",
+  "PyYAML>=6.0.2",
+  "nest_asyncio>=1.6.0"
+]
+
+[project.scripts]
+venti = "scanner.cli:main"
+
+[tool.setuptools]
+packages = ["scanner"]

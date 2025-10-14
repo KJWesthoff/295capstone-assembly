@@ -1,0 +1,244 @@
+// Use relative URLs for API calls (handled by nginx reverse proxy)
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+
+// Helper function to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  const token = localStorage.getItem('jwt_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+};
+
+// Helper function to get auth headers for FormData
+const getAuthHeadersForFormData = (): HeadersInit => {
+  const token = localStorage.getItem('jwt_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+export interface ScanRequest {
+  spec_url?: string;
+  server_url: string;
+  rps?: number;
+  max_requests?: number;
+  dangerous?: boolean;
+  fuzz_auth?: boolean;
+  scanners?: string[];
+}
+
+export interface ChunkStatus {
+  chunk_id: string;
+  scanner?: string;
+  status: 'preparing' | 'starting' | 'running' | 'completed' | 'failed';
+  endpoints_count: number;
+  endpoints: string[];
+  current_endpoint?: string;
+  progress: number;
+  error?: string;
+  scanner_description?: string;
+  scan_type?: string;
+  total_endpoints?: number;
+  scanned_endpoints?: string[];
+}
+
+export interface ScanStatus {
+  scan_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: number;
+  current_probe?: string;
+  findings_count: number;
+  created_at: string;
+  completed_at?: string;
+  error?: string;
+  // Enhanced parallel scanning info
+  total_chunks?: number;
+  completed_chunks?: number;
+  parallel_mode?: boolean;
+  chunk_status?: ChunkStatus[];
+  current_phase?: string;
+}
+
+export interface Finding {
+  rule: string;
+  title: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  score: number;
+  endpoint: string;
+  method: string;
+  description: string;
+  evidence?: any;
+  scanner?: string;
+  scanner_description?: string;
+}
+
+export interface ScanReport {
+  scan_id: string;
+  scan_status: string;
+  created_at: string;
+  completed_at?: string;
+  server_url: string;
+  target_url: string;
+  scanners_used: string[];
+  total_findings: number;
+  summary: {
+    total_scanners: number;
+    total_findings: number;
+    severity_breakdown: {
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+    };
+  };
+  scanner_configurations: Record<string, {
+    scanner_name: string;
+    scanner_description: string;
+    scan_type: string;
+    endpoints_scanned: string[];
+    total_endpoints: number;
+    current_endpoint?: string;
+    status: string;
+    progress: number;
+  }>;
+  findings_by_scanner: Record<string, {
+    scanner_info: {
+      name: string;
+      description: string;
+      endpoints_scanned: string[];
+      scan_type: string;
+    };
+    findings: Finding[];
+    statistics: {
+      total_findings: number;
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+      scanner_description: string;
+    };
+  }>;
+}
+
+export interface FindingsResponse {
+  findings: Finding[];
+  total: number;
+  nextOffset?: number;
+}
+
+export const scannerApi = {
+  async startScan(request: ScanRequest, specFile?: File): Promise<{ scan_id: string; status: string }> {
+    const formData = new FormData();
+    
+    // Only append spec_file if it's actually provided and not empty
+    if (specFile && specFile.size > 0) {
+      formData.append('spec_file', specFile);
+    }
+    
+    // Add other request parameters
+    formData.append('server_url', request.server_url);
+    // If spec_url is provided, use it as target_url, otherwise use server_url
+    formData.append('target_url', request.spec_url || request.server_url);
+    if (request.rps) formData.append('rps', request.rps.toString());
+    if (request.max_requests) formData.append('max_requests', request.max_requests.toString());
+    if (request.dangerous) formData.append('dangerous', 'true');
+    if (request.fuzz_auth) formData.append('fuzz_auth', 'true');
+    if (request.scanners && request.scanners.length > 0) {
+      formData.append('scanners', request.scanners.join(','));
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/scan/start`, {
+      method: 'POST',
+      headers: getAuthHeadersForFormData(),
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to start scan: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  async getScanStatus(scanId: string): Promise<ScanStatus> {
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/status`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get scan status: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  async getFindings(scanId: string, offset: number = 0, limit: number = 50): Promise<FindingsResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/findings?offset=${offset}&limit=${limit}`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get findings: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  async getReport(scanId: string): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/report/html`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get report: ${response.statusText}`);
+    }
+
+    return response.text();
+  },
+
+  async getReportData(scanId: string): Promise<ScanReport> {
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}/report`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get report data: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  async getAllScans(): Promise<Array<{scan_id: string; status: string; created_at: string; server_url: string}>> {
+    const response = await fetch(`${API_BASE_URL}/api/scans`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get scans: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
+  async deleteScan(scanId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete scan: ${response.statusText}`);
+    }
+  },
+
+  async getAvailableScanners(): Promise<{available_scanners: string[], descriptions: Record<string, string>}> {
+    const response = await fetch(`${API_BASE_URL}/api/scanners`, {
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get scanners: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+};

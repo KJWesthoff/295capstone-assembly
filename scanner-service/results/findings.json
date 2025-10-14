@@ -1,0 +1,306 @@
+[
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/createdb",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 36,
+        "excerpt": "{ \"message\": \"Database populated.\" }"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 36,
+        "excerpt": "{ \"message\": \"Database populated.\" }"
+      }
+    }
+  },
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 271,
+        "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b"
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 271,
+        "excerpt": "{ \"message\": \"VAmPI the Vulnerable API\", \"help\": \"VAmPI is a vulnerable on purpose API. It was created in order to evaluate the efficiency of third party tools in identifying vulnerabilities in APIs b"
+      }
+    }
+  },
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/users/v1",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 236,
+        "excerpt": "{\n  \"users\": [\n    {\n      \"email\": \"mail1@mail.com\",\n      \"username\": \"name1\"\n    },\n    {\n      \"email\": \"mail2@mail.com\",\n      \"username\": \"name2\"\n    },\n    {\n      \"email\": \"admin@mail.com\",\n  "
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 236,
+        "excerpt": "{\n  \"users\": [\n    {\n      \"email\": \"mail1@mail.com\",\n      \"username\": \"name1\"\n    },\n    {\n      \"email\": \"mail2@mail.com\",\n      \"username\": \"name2\"\n    },\n    {\n      \"email\": \"admin@mail.com\",\n  "
+      }
+    }
+  },
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/users/v1/_debug",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 382,
+        "excerpt": "{\n  \"users\": [\n    {\n      \"admin\": false,\n      \"email\": \"mail1@mail.com\",\n      \"password\": \"pass1\",\n      \"username\": \"name1\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"mail2@mail.com\",\n   "
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 382,
+        "excerpt": "{\n  \"users\": [\n    {\n      \"admin\": false,\n      \"email\": \"mail1@mail.com\",\n      \"password\": \"pass1\",\n      \"username\": \"name1\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"mail2@mail.com\",\n   "
+      }
+    }
+  },
+  {
+    "rule": "API2",
+    "title": "Broken Authentication",
+    "severity": "High",
+    "score": 7.2,
+    "endpoint": "/books/v1",
+    "method": "GET",
+    "description": "Endpoint returns success for unauthenticated/invalid credentials requests.",
+    "evidence": {
+      "unauth": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 229,
+        "excerpt": "{\n  \"Books\": [\n    {\n      \"book_title\": \"bookTitle46\",\n      \"user\": \"name1\"\n    },\n    {\n      \"book_title\": \"bookTitle5\",\n      \"user\": \"name2\"\n    },\n    {\n      \"book_title\": \"bookTitle45\",\n     "
+      },
+      "bogus": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 229,
+        "excerpt": "{\n  \"Books\": [\n    {\n      \"book_title\": \"bookTitle46\",\n      \"user\": \"name1\"\n    },\n    {\n      \"book_title\": \"bookTitle5\",\n      \"user\": \"name2\"\n    },\n    {\n      \"book_title\": \"bookTitle45\",\n     "
+      }
+    }
+  },
+  {
+    "rule": "API4",
+    "title": "Lack of Rate Limiting",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/createdb",
+    "method": "GET",
+    "description": "Burst of requests did not trigger 429 nor expose rate limit headers; RL likely missing.",
+    "evidence": {
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "headers_sample": [
+        {},
+        {},
+        {}
+      ]
+    }
+  },
+  {
+    "rule": "API3",
+    "title": "Excessive Data Exposure",
+    "severity": "Medium",
+    "score": 4.2,
+    "endpoint": "/users/v1",
+    "method": "GET",
+    "description": "Live response includes sensitive-looking fields.",
+    "evidence": {
+      "fields": [
+        "email"
+      ],
+      "sample": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 236,
+        "excerpt": "{\n  \"users\": [\n    {\n      \"email\": \"mail1@mail.com\",\n      \"username\": \"name1\"\n    },\n    {\n      \"email\": \"mail2@mail.com\",\n      \"username\": \"name2\"\n    },\n    {\n      \"email\": \"admin@mail.com\",\n  "
+      }
+    }
+  },
+  {
+    "rule": "API3",
+    "title": "Excessive Data Exposure",
+    "severity": "Medium",
+    "score": 4.2,
+    "endpoint": "/users/v1/_debug",
+    "method": "GET",
+    "description": "Live response includes sensitive-looking fields.",
+    "evidence": {
+      "fields": [
+        "email",
+        "password"
+      ],
+      "sample": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "len": 382,
+        "excerpt": "{\n  \"users\": [\n    {\n      \"admin\": false,\n      \"email\": \"mail1@mail.com\",\n      \"password\": \"pass1\",\n      \"username\": \"name1\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"mail2@mail.com\",\n   "
+      }
+    }
+  },
+  {
+    "rule": "API7",
+    "title": "Security Misconfiguration",
+    "severity": "Medium",
+    "score": 4.8,
+    "endpoint": "/",
+    "method": "GET",
+    "description": "Server base URL uses plaintext HTTP (no TLS).",
+    "evidence": {
+      "server_base": "http://localhost:5002"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/createdb",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/users/v1",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/users/v1/_debug",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API9",
+    "title": "Improper Assets Management",
+    "severity": "Low",
+    "score": 3.0,
+    "endpoint": "/books/v1",
+    "method": "HEAD",
+    "description": "Endpoint appears to support an undocumented method.",
+    "evidence": {
+      "status": 200,
+      "hint": "alt-method"
+    }
+  },
+  {
+    "rule": "API10",
+    "title": "Insufficient Logging & Monitoring",
+    "severity": "Low",
+    "score": 2.0,
+    "endpoint": "/createdb",
+    "method": "GET",
+    "description": "Invalid-auth requests produced success/inconsistent responses without correlation headers.",
+    "evidence": {
+      "codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "obs_headers_seen": 0
+    }
+  }
+]

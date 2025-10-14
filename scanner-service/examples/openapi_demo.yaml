@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info:
+  title: Demo
+  version: 'v1'
+servers:
+  - url: https://httpbin.org
+paths:
+  /get:
+    get:
+      summary: demo get
+      responses:
+        '200':
+          description: ok
