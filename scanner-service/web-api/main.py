@@ -7,7 +7,6 @@ import json
 import uuid
 import os
 import yaml
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -31,9 +30,6 @@ from security import (
 
 # Import multi-scanner support
 from scanner_engines import multi_scanner
-
-# Initialize logger
-logger = logging.getLogger(__name__)
 
 # Configuration
 SHARED_RESULTS = Path("/shared/results")
@@ -251,59 +247,29 @@ async def start_scan(
         if spec_file:
             file_content = await spec_file.read()
             validate_file_upload(file_content, spec_file.filename)
-
+            
             scan_id = str(uuid.uuid4())
             spec_filename = f"{scan_id}_{spec_file.filename}"
             spec_path = SHARED_SPECS / spec_filename
-
-            # Parse spec and inject target URL into servers section for ZAP compatibility
-            try:
-                spec_data = json.loads(file_content.decode('utf-8'))
-
-                # Ensure servers section exists and has the target URL
-                if 'servers' not in spec_data or not spec_data['servers']:
-                    spec_data['servers'] = [{"url": target_url or server_url}]
-                else:
-                    # Update existing servers with target URL
-                    if not spec_data['servers'][0].get('url') or spec_data['servers'][0]['url'] == '':
-                        spec_data['servers'][0]['url'] = target_url or server_url
-
-                # Save modified spec
-                with open(spec_path, "w") as f:
-                    json.dump(spec_data, f, indent=2)
-
-                print(f"✅ Saved spec with server URL: {spec_data['servers'][0]['url']}")
-
-            except Exception as e:
-                # If JSON parsing fails, save as-is (might be YAML)
-                print(f"⚠️ Could not parse/modify spec (might be YAML): {e}")
-                with open(spec_path, "wb") as f:
-                    f.write(file_content)
-
+            
+            with open(spec_path, "wb") as f:
+                f.write(file_content)
+            
             spec_location = f"/shared/specs/{spec_filename}"
         else:
             scan_id = str(uuid.uuid4())
         
-        # Cleanup old completed scans (keep only last 5 scans)
-        completed_scans = [sid for sid, data in scans.items() if data.get("status") in ["completed", "failed"]]
-        if len(completed_scans) > 5:
-            # Remove oldest completed scans
-            completed_scans_sorted = sorted(completed_scans, key=lambda sid: scans[sid].get("created_at", ""))
-            for old_scan_id in completed_scans_sorted[:-5]:  # Keep last 5
-                print(f"🧹 Cleaning up old scan: {old_scan_id}")
-                del scans[old_scan_id]
-
         # Parse scanner engines
         scanner_list = [s.strip() for s in scanners.split(',') if s.strip()]
         if not scanner_list:
             scanner_list = ['ventiapi']  # Default to VentiAPI
-
+        
         # Validate scanner engines
         available_scanners = multi_scanner.get_available_engines()
         invalid_scanners = [s for s in scanner_list if s not in available_scanners]
         if invalid_scanners:
             raise HTTPException(
-                status_code=400,
+                status_code=400, 
                 detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
             )
         
@@ -551,161 +517,6 @@ async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
         queue_stats=queue_stats
     )
 
-async def parse_ventiapi_findings(scan_id: str) -> List[Dict]:
-    """Parse real VentiAPI scanner findings from JSON file"""
-    findings = []
-
-    try:
-        # VentiAPI saves findings to /shared/results/{scan_id}_ventiapi/findings.json
-        result_path = SHARED_RESULTS / f"{scan_id}_ventiapi" / "findings.json"
-
-        if result_path.exists():
-            with open(result_path, 'r') as f:
-                ventiapi_results = json.load(f)
-
-            for finding in ventiapi_results:
-                findings.append({
-                    "rule": finding.get("rule", "unknown"),
-                    "title": finding.get("title", "Unknown Vulnerability"),
-                    "severity": finding.get("severity", "Medium"),
-                    "score": finding.get("score", 5),
-                    "endpoint": finding.get("endpoint", "/"),
-                    "method": finding.get("method", "GET"),
-                    "description": finding.get("description", ""),
-                    "evidence": finding.get("evidence", {}),
-                    "scanner": "ventiapi",
-                    "scanner_description": "VentiAPI - API Security Testing"
-                })
-
-            print(f"📋 Parsed {len(findings)} VentiAPI findings from {result_path}")
-        else:
-            print(f"⚠️  VentiAPI results not found at {result_path}")
-
-    except Exception as e:
-        print(f"❌ Error parsing VentiAPI findings: {e}")
-
-    return findings
-
-async def parse_zap_findings(scan_id: str) -> List[Dict]:
-    """Parse real ZAP scanner findings from JSON file"""
-    findings = []
-
-    try:
-        # ZAP saves results to /shared/results/{scan_id}_zap.json
-        result_path = SHARED_RESULTS / f"{scan_id}_zap.json"
-
-        if result_path.exists():
-            with open(result_path, 'r') as f:
-                zap_results = json.load(f)
-
-            # ZAP JSON format has site -> alerts structure
-            if "site" in zap_results:
-                for site in zap_results["site"]:
-                    for alert in site.get("alerts", []):
-                        # Map ZAP risk levels to severity
-                        risk_map = {"High": "High", "Medium": "Medium", "Low": "Low", "Informational": "Low"}
-                        severity = risk_map.get(alert.get("riskdesc", "Medium").split()[0], "Medium")
-
-                        # Map severity to score
-                        score_map = {"High": 7, "Medium": 5, "Low": 3}
-                        score = score_map.get(severity, 5)
-
-                        # Get all instances (endpoints where vuln was found)
-                        instances = alert.get("instances", [])
-                        if instances:
-                            for instance in instances:
-                                findings.append({
-                                    "rule": alert.get("pluginid", "unknown"),
-                                    "title": alert.get("name", "Unknown Vulnerability"),
-                                    "severity": severity,
-                                    "score": score,
-                                    "endpoint": instance.get("uri", "/"),
-                                    "method": instance.get("method", "GET"),
-                                    "description": alert.get("desc", ""),
-                                    "solution": alert.get("solution", ""),
-                                    "reference": alert.get("reference", ""),
-                                    "scanner": "zap",
-                                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                                })
-                        else:
-                            # No specific instances, use alert level
-                            findings.append({
-                                "rule": alert.get("pluginid", "unknown"),
-                                "title": alert.get("name", "Unknown Vulnerability"),
-                                "severity": severity,
-                                "score": score,
-                                "endpoint": "/",
-                                "method": "GET",
-                                "description": alert.get("desc", ""),
-                                "solution": alert.get("solution", ""),
-                                "reference": alert.get("reference", ""),
-                                "scanner": "zap",
-                                "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                            })
-
-            print(f"📋 Parsed {len(findings)} ZAP findings from {result_path}")
-        else:
-            print(f"⚠️  ZAP results not found at {result_path}")
-
-    except Exception as e:
-        print(f"❌ Error parsing ZAP findings: {e}")
-
-    return findings
-
-async def parse_nuclei_findings(scan_id: str) -> List[Dict]:
-    """Parse real Nuclei scanner findings from JSON file"""
-    findings = []
-
-    try:
-        # Nuclei saves results to /shared/results/{scan_id}_nuclei.json (JSONL format)
-        result_path = SHARED_RESULTS / f"{scan_id}_nuclei.json"
-
-        if result_path.exists():
-            with open(result_path, 'r') as f:
-                content = f.read().strip()
-
-                if content:
-                    # Nuclei outputs JSONL format (one JSON object per line)
-                    for line in content.split('\n'):
-                        if line.strip():
-                            try:
-                                nuclei_result = json.loads(line)
-
-                                # Extract info section
-                                info = nuclei_result.get("info", {})
-                                severity = info.get("severity", "info").title()
-
-                                # Map severity to score
-                                score_map = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Info": 1}
-                                score = score_map.get(severity, 1)
-
-                                findings.append({
-                                    "rule": nuclei_result.get("template-id", "unknown"),
-                                    "title": info.get("name", "Unknown Vulnerability"),
-                                    "severity": severity,
-                                    "score": score,
-                                    "endpoint": nuclei_result.get("matched-at", "/"),
-                                    "method": nuclei_result.get("type", "N/A").upper(),
-                                    "description": info.get("description", ""),
-                                    "reference": ", ".join(info.get("reference", [])) if isinstance(info.get("reference"), list) else info.get("reference", ""),
-                                    "tags": ", ".join(info.get("tags", [])) if isinstance(info.get("tags"), list) else "",
-                                    "scanner": "nuclei",
-                                    "scanner_description": "Nuclei - Community-powered vulnerability scanner"
-                                })
-                            except json.JSONDecodeError as e:
-                                print(f"⚠️ Could not parse Nuclei line: {e}")
-                                continue
-
-            print(f"📋 Parsed {len(findings)} Nuclei findings from {result_path}")
-        else:
-            # Nuclei doesn't create a file when finding 0 results - this is expected behavior
-            print(f"✅ Nuclei scan completed with 0 findings (no vulnerabilities detected)")
-
-    except Exception as e:
-        print(f"❌ Error parsing Nuclei findings: {e}")
-
-    return findings
-
 @app.get("/api/scan/{scan_id}/findings")
 async def get_scan_findings(
     scan_id: str,
@@ -732,23 +543,18 @@ async def get_scan_findings(
     all_findings = []
     scanner_list = scan_data.get("scanners", ["ventiapi"])
 
-    # Parse VentiAPI results (using explainability branch method)
+    # Parse VentiAPI results
     if "ventiapi" in scanner_list:
         ventiapi_findings = parse_ventiapi_results(scan_id)
         all_findings.extend(ventiapi_findings)
         print(f"✅ Loaded {len(ventiapi_findings)} findings from VentiAPI")
 
-    # Parse ZAP results (using explainability branch method)
+    # Parse ZAP results
     if "zap" in scanner_list:
         zap_findings = parse_zap_results(scan_id, scan_data.get("server_url", ""))
         all_findings.extend(zap_findings)
         print(f"✅ Loaded {len(zap_findings)} findings from ZAP")
 
-    # Parse Nuclei results (from develop branch - async method)
-    if "nuclei" in scanner_list:
-        nuclei_findings = await parse_nuclei_findings(scan_id)
-        all_findings.extend(nuclei_findings)
-        print(f"✅ Loaded {len(nuclei_findings)} findings from Nuclei")
     # Apply pagination
     total_findings = len(all_findings)
     paginated_findings = all_findings[offset:offset + limit]
@@ -1129,7 +935,7 @@ async def get_available_scanners():
         "descriptions": {
             "ventiapi": "VentiAPI - OWASP API Security Top 10 focused scanner",
             "zap": "OWASP ZAP - Comprehensive web application security scanner",
-            "nuclei": "Nuclei - Community-powered vulnerability scanner"
+            "nuclei": "Nuclei - Fast and customizable vulnerability scanner"
         }
     }
 
@@ -1154,10 +960,8 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         spec_location = scan_data["spec_location"]
         
         # Determine volume prefix (for environment compatibility)
-        # Use docker-compose project name from environment or default
-        volume_prefix = os.getenv("COMPOSE_PROJECT_NAME", "scannerapp")
-        # AWS/Railway environment detection
-        if os.getenv("RAILWAY_ENVIRONMENT") or "ventiapi" in str(spec_location):
+        volume_prefix = "295capstone-assembly"  # Default for local docker-compose
+        if "ventiapi" in str(spec_location):  # AWS environment detection
             volume_prefix = "ventiapi"
         
         # Prepare scanner options
@@ -1395,7 +1199,7 @@ async def get_real_endpoints_from_spec(scan_data):
                 if spec_data and 'paths' in spec_data:
                     endpoints = list(spec_data['paths'].keys())
                     print(f"📋 Parsed {len(endpoints)} endpoints from spec: {endpoints[:5]}...")
-                    return endpoints  # Return all endpoints
+                    return endpoints[:10]  # Limit for display
             except Exception as e:
                 print(f"Error parsing spec file: {e}")
         
@@ -1412,7 +1216,7 @@ async def get_real_endpoints_from_spec(scan_data):
                                 if 'paths' in spec_data:
                                     endpoints = list(spec_data['paths'].keys())
                                     print(f"📋 Fetched {len(endpoints)} endpoints from {openapi_url}: {endpoints[:5]}...")
-                                    return endpoints  # Return all endpoints
+                                    return endpoints[:10]  # Limit for display
                 except ImportError:
                     print("aiohttp not available, skipping OpenAPI endpoint fetch")
             except Exception as e:
@@ -1437,11 +1241,6 @@ async def monitor_scan_progress(scan_id: str):
         spec_endpoints = await get_real_endpoints_from_spec(scan_data)
 
         # Define scanner-specific endpoints and behavior
-        # ZAP also scans individual API endpoints when using OpenAPI spec
-        zap_endpoints = spec_endpoints if spec_endpoints else ["/api/endpoints", "/api/users", "/api/books"]
-        # Nuclei now scans individual endpoints from the spec
-        nuclei_endpoints = spec_endpoints if spec_endpoints else ["/api/endpoints", "/api/users", "/api/books"]
-
         scanner_endpoints = {
             "ventiapi": {
                 "endpoints": spec_endpoints if spec_endpoints else ["/api/endpoints", "/api/users", "/api/books"],
@@ -1449,19 +1248,14 @@ async def monitor_scan_progress(scan_id: str):
                 "scan_type": "endpoint_based"
             },
             "zap": {
-                # ZAP uses OpenAPI spec if available, otherwise falls back to URL scan
+                # ZAP now uses OpenAPI spec if available, otherwise falls back to URL scan
                 "endpoints": spec_endpoints if spec_endpoints and scan_data.get("spec_location") else [scan_data.get("target_url", "https://httpbin.org")],
                 "description": "OpenAPI Security Scan" if spec_endpoints and scan_data.get("spec_location") else "Baseline Security Scan",
                 "scan_type": "openapi_based" if spec_endpoints and scan_data.get("spec_location") else "baseline_url"
-            },
-            "nuclei": {
-                "endpoints": nuclei_endpoints,
-                "description": "Community-powered vulnerability scanner",
-                "scan_type": "endpoint_based"
             }
         }
         
-        for step in range(40):  # Monitor for up to 120 seconds
+        for step in range(20):  # Monitor for up to 60 seconds
             await asyncio.sleep(3)
             
             if scan_id not in scans:
@@ -1485,13 +1279,12 @@ async def monitor_scan_progress(scan_id: str):
                     chunk_progress = min(95, (step * 4) + 5)
                     endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 8)
                 elif scanner_name == "zap":
-                    # ZAP: slower baseline scan progression with endpoint tracking
+                    # ZAP: slower baseline scan progression
                     chunk_progress = min(95, (step * 3) + 2)
-                    # ZAP scans endpoints progressively (every ~9 seconds)
-                    endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 3)
+                    endpoint_idx = 0  # ZAP scans the target URL
                 else:
                     chunk_progress = min(95, step * 4)
-                    endpoint_idx = min(len(scanner_info["endpoints"]) - 1, step // 8)
+                    endpoint_idx = 0
                 
                 if chunk_progress < 95:
                     chunk["status"] = "running"
@@ -1503,9 +1296,6 @@ async def monitor_scan_progress(scan_id: str):
                         chunk["current_endpoint"] = endpoints[endpoint_idx]
                         chunk["endpoints"] = endpoints[:endpoint_idx + 1]
                         chunk["endpoints_count"] = len(chunk["endpoints"])
-                        # Debug logging
-                        if step % 5 == 0:  # Log every 15 seconds
-                            print(f"  📍 {scanner_name}: endpoint {endpoint_idx+1}/{len(endpoints)} - {endpoints[endpoint_idx]}")
                     
                     # Add comprehensive scanner-specific metadata
                     chunk["scanner_description"] = scanner_info["description"]

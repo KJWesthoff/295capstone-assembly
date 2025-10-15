@@ -36,21 +36,89 @@ const extractScanMetadataStep = createStep({
     severities: z.record(z.number()),
     hasCVEs: z.boolean(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
+    const logger = mastra?.getLogger();
     let scan: RawScanResult;
+
+    logger?.info('🔍 Step 1: Extracting scan metadata...');
+
+    // Helper function to convert Python dict string to JSON
+    function pythonDictToJSON(pythonStr: string): string {
+      // First check if this looks like a Python dict vs JSON
+      if (!pythonStr.includes("'") && pythonStr.includes('"')) {
+        // Already looks like JSON, return as-is
+        return pythonStr;
+      }
+
+      // Remove Python byte string markers (b'string' or b"string")
+      let jsonStr = pythonStr.replace(/\bb'([^']*)'/g, '"$1"')
+                            .replace(/\bb"([^"]*)"/g, '"$1"');
+
+      // Replace Python constants
+      jsonStr = jsonStr
+        // Replace Python None with null
+        .replace(/\bNone\b/g, 'null')
+        // Replace Python True with true
+        .replace(/\bTrue\b/g, 'true')
+        // Replace Python False with false
+        .replace(/\bFalse\b/g, 'false');
+
+      // Complex regex to handle single quotes to double quotes conversion
+      // This handles most cases but may need refinement for edge cases
+      jsonStr = jsonStr.replace(/'/g, '"');
+
+      return jsonStr;
+    }
 
     // Handle both string and object inputs
     if (typeof inputData.scanData === 'string') {
       try {
-        scan = JSON.parse(inputData.scanData);
+        // Log first 500 chars to help debug JSON issues
+        logger?.debug('Parsing scan data (first 500 chars)', {
+          preview: inputData.scanData.substring(0, 500)
+        });
+
+        // First try standard JSON parsing
+        try {
+          scan = JSON.parse(inputData.scanData);
+          logger?.info('✅ Successfully parsed as standard JSON');
+        } catch (jsonError) {
+          // If standard JSON parsing fails, try Python dict conversion
+          logger?.info('Standard JSON parsing failed, attempting Python dict conversion...');
+
+          // Log the problematic section around the error position
+          const errorPos = (jsonError as any).message?.match(/position (\d+)/)?.[1];
+          if (errorPos) {
+            const pos = parseInt(errorPos);
+            const contextStart = Math.max(0, pos - 50);
+            const contextEnd = Math.min(inputData.scanData.length, pos + 50);
+            logger?.debug('Error context', {
+              before: inputData.scanData.substring(contextStart, pos),
+              at: inputData.scanData.substring(pos, pos + 1),
+              after: inputData.scanData.substring(pos + 1, contextEnd)
+            });
+          }
+
+          const convertedJson = pythonDictToJSON(inputData.scanData);
+          scan = JSON.parse(convertedJson);
+          logger?.info('✅ Successfully converted Python dict to JSON');
+        }
       } catch (error) {
-        throw new Error('Invalid scan data: Expected JSON format with "findings" array. Parse error: ' + (error as Error).message);
+        const errorMsg = `Invalid scan data: Expected JSON format with "findings" array. Parse error: ${(error as Error).message}`;
+        logger?.error('❌ JSON parsing failed even after Python dict conversion', {
+          error: errorMsg,
+          position: inputData.scanData.substring(Math.max(0, 900), Math.min(inputData.scanData.length, 920))
+        });
+        throw new Error(errorMsg);
       }
     } else if (typeof inputData.scanData === 'object' && inputData.scanData !== null) {
       // Already an object - use directly
       scan = inputData.scanData as RawScanResult;
+      logger?.debug('Scan data is already an object');
     } else {
-      throw new Error('Invalid scan data: Expected JSON string or object with "findings" array');
+      const errorMsg = 'Invalid scan data: Expected JSON string or object with "findings" array';
+      logger?.error('❌ Invalid scan data type', { type: typeof inputData.scanData });
+      throw new Error(errorMsg);
     }
 
     const processed = preprocessScan(scan);
@@ -106,10 +174,13 @@ const checkDatabaseCoverageStep = createStep({
     cveIds: z.array(z.string()),
     hasCVEs: z.boolean(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, mastra }) => {
+    const logger = mastra?.getLogger();
+    logger?.info('📊 Step 2: Checking database coverage...');
+
     // Skip database check if no DATABASE_URL is configured
     if (!process.env.DATABASE_URL) {
-      console.log('⚠️  No DATABASE_URL configured, skipping coverage check');
+      logger?.warn('⚠️  No DATABASE_URL configured, skipping coverage check');
       return {
         totalCWEs: inputData.cwes.length,
         cwesWithExamples: 0,
@@ -180,7 +251,7 @@ const checkDatabaseCoverageStep = createStep({
         hasCVEs: inputData.hasCVEs,
       };
     } catch (error) {
-      console.error('❌ Database connection error:', error);
+      logger?.error('❌ Database connection error:', error);
       // Gracefully handle DB errors - continue without enrichment check
       return {
         totalCWEs: inputData.cwes.length,
@@ -335,13 +406,16 @@ const generateAnalysisStep = createStep({
     }),
   }),
   execute: async ({ inputData, mastra }) => {
+    const logger = mastra?.getLogger();
+    logger?.info('🚀 Step 5: Generating security analysis...');
+
     // Dynamic import to access closePgClient
     const { closePgClient } = await import('../lib/retrieval.js');
 
     try {
       // Use CVE-aware analysis if CVEs are present, otherwise use standard analysis
       if (inputData.hasCVEs && inputData.cveIds.length > 0) {
-        console.log(`🔍 Using CVE-aware analysis for ${inputData.cveIds.length} CVE(s)...`);
+        logger?.info(`🔍 Using CVE-aware analysis for ${inputData.cveIds.length} CVE(s): ${inputData.cveIds.join(', ')}`);
 
         const cveAnalysisResult = await cveAnalysisTool.execute({
           context: {
@@ -359,7 +433,7 @@ const generateAnalysisStep = createStep({
           },
         };
       } else {
-        console.log('📊 Using standard analysis (no CVEs detected)...');
+        logger?.info('📊 Using standard analysis (no CVEs detected)...');
 
         // Use the standard analyze-scan-tool
         const analysisResult = await analyzeScanTool.execute({
@@ -378,10 +452,18 @@ const generateAnalysisStep = createStep({
           },
         };
       }
+    } catch (error) {
+      const errorMsg = `Failed to generate analysis: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger?.error('❌ Analysis generation failed', {
+        error: errorMsg,
+        hasCVEs: inputData.hasCVEs,
+        cveCount: inputData.cveIds?.length || 0
+      });
+      throw new Error(errorMsg);
     } finally {
       // Ensure PostgreSQL connection is closed
       await closePgClient();
-      console.log('✅ Database connection closed');
+      logger?.info('✅ Database connection closed');
     }
   },
 });

@@ -45,7 +45,7 @@ export const fetchScanResultsTool = new Tool({
       console.log(`🔍 Fetching scan results for ID: ${scanId}`);
 
       // First authenticate to get a token
-      const authResponse = await fetch(`${scannerUrl}/auth/login`, {
+      const authResponse = await fetch(`${scannerUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,7 +61,7 @@ export const fetchScanResultsTool = new Tool({
       const token = authData.access_token;
 
       // Now fetch the scan results
-      const resultsResponse = await fetch(`${scannerUrl}/scans/${scanId}/findings`, {
+      const resultsResponse = await fetch(`${scannerUrl}/api/scan/${scanId}/findings`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -78,16 +78,22 @@ export const fetchScanResultsTool = new Tool({
 
       console.log(`✅ Retrieved ${scanResults.findings?.length || 0} findings for scan ${scanId}`);
 
+      // Ensure the scan data is properly formatted
+      const formattedScanData = {
+        findings: scanResults.findings || [],
+        scan_id: scanId,
+        api_base_url: scanResults.api_base_url,
+        scan_date: scanResults.scan_date,
+        total_findings: scanResults.findings?.length || 0,
+      };
+
+      // Log the structure for debugging
+      console.log(`📊 Scan data structure: ${JSON.stringify(formattedScanData).substring(0, 200)}...`);
+
       // Return in the format expected by scan-analysis-workflow
       return {
         success: true,
-        scanData: {
-          findings: scanResults.findings || [],
-          scan_id: scanId,
-          api_base_url: scanResults.api_base_url,
-          scan_date: scanResults.scan_date,
-          total_findings: scanResults.findings?.length || 0,
-        },
+        scanData: formattedScanData,
       };
 
     } catch (error) {

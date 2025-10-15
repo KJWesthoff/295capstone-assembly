@@ -12,7 +12,7 @@ export default function SecurityDashboardPage() {
   const { scanResults, setScanResults } = useScanResultsState();
   const addContextEntry = useCedarStore(s => s.addContextEntry);
 
-  // Subscribe scan results to agent context
+  // Subscribe scan results to agent context - only call once at component level
   useSecurityContext();
   
   const [showScanDialog, setShowScanDialog] = useState(false);
@@ -27,6 +27,20 @@ export default function SecurityDashboardPage() {
     const pollInterval = setInterval(async () => {
       try {
         const status = await scannerApi.getScanStatus(activeScanId);
+
+        // Debug: Log the chunk_status data
+        if (status.chunk_status) {
+          console.log('Chunk status data:', status.chunk_status.map((chunk: any) => ({
+            id: chunk.chunk_id,
+            progress: chunk.progress,
+            status: chunk.status,
+            scanner: chunk.scanner,
+            endpoints_count: chunk.endpoints_count,
+            total_endpoints: chunk.total_endpoints,
+            scanned_endpoints: chunk.scanned_endpoints?.length
+          })));
+        }
+
         setCurrentScanStatus(status);
 
         if (status.status === 'completed') {
@@ -98,21 +112,9 @@ export default function SecurityDashboardPage() {
       groupedByEndpoint,
     });
 
-    // Add to AI context automatically
-    const contextId = `scan-${scanId}`;
-    addContextEntry(contextId, {
-      id: contextId,
-      source: 'function',
-      data: {
-        scanId,
-        summary,
-        totalEndpoints: Object.keys(groupedByEndpoint).length,
-      },
-      metadata: {
-        label: `Scan completed: ${summary.total} findings`,
-        icon: '🔍',
-      },
-    });
+    // Note: We don't add individual findings to context automatically anymore
+    // The useSecurityContext hook will add just the summary
+    // Users can manually add specific findings they want to discuss
   };
 
   const handleAddToContext = (finding: VulnerabilityFinding) => {
@@ -125,14 +127,23 @@ export default function SecurityDashboardPage() {
 
       console.log('Adding to context:', finding);
 
+      // Create a more concise label with severity indicator
+      const severityIcon = finding.severity === 'Critical' ? '🔴' :
+                           finding.severity === 'High' ? '🟠' :
+                           finding.severity === 'Medium' ? '🟡' : '🔵';
+
       addContextEntry(finding.id, {
         id: finding.id,
         source: 'manual',
         data: finding,
         metadata: {
-          label: `${finding.method || 'Unknown'} ${finding.endpoint || 'Unknown'}`,
-          icon: '⚠️',
+          label: `${severityIcon} ${finding.title}`,
+          icon: '🔍',
           severity: finding.severity,
+          color: finding.severity === 'Critical' ? '#EF4444' :
+                 finding.severity === 'High' ? '#F97316' :
+                 finding.severity === 'Medium' ? '#EAB308' : '#3B82F6',
+          showInChat: true,
         },
       });
     } catch (error) {
@@ -154,14 +165,26 @@ export default function SecurityDashboardPage() {
 
         console.log('Adding to context:', finding);
 
+        // Create a more concise label with severity indicator
+        const severityIcon = finding.severity === 'Critical' ? '🔴' :
+                             finding.severity === 'High' ? '🟠' :
+                             finding.severity === 'Medium' ? '🟡' : '🔵';
+
         addContextEntry(finding.id, {
           id: finding.id,
           source: 'manual',
           data: finding,
           metadata: {
-            label: `${finding.method || 'Unknown'} ${finding.endpoint || 'Unknown'}`,
-            icon: '⚠️',
+            label: `${severityIcon} ${finding.title}`,
+            icon: '🔍',
             severity: finding.severity,
+            color: finding.severity === 'Critical' ? '#EF4444' :
+                   finding.severity === 'High' ? '#F97316' :
+                   finding.severity === 'Medium' ? '#EAB308' : '#3B82F6',
+            showInChat: true,
+            order: finding.severity === 'Critical' ? 1 :
+                   finding.severity === 'High' ? 2 :
+                   finding.severity === 'Medium' ? 3 : 4,
           },
         });
       });
@@ -205,17 +228,7 @@ export default function SecurityDashboardPage() {
         groupedByEndpoint: {},
       });
 
-      // Notify AI
-      const startContextId = `scan-started-${response.scan_id}`;
-      addContextEntry(startContextId, {
-        id: startContextId,
-        source: 'function',
-        data: { scanId: response.scan_id, status: 'started' },
-        metadata: {
-          label: 'Security scan started',
-          icon: '🔄',
-        },
-      });
+      // No need to add scan start to context - the summary will be added automatically when complete
     } catch (error) {
       console.error('Failed to start scan:', error);
       const errorMessage = error instanceof Error
@@ -228,9 +241,11 @@ export default function SecurityDashboardPage() {
     }
   };
 
-  if (!scanResults || scanResults.status === 'running') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+  // Render everything in one return with conditional content
+  return (
+    <>
+      {(!scanResults || scanResults.status === 'running') ? (
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
           <header className="mb-8">
             <h1 className="text-4xl font-bold text-white mb-2">
@@ -340,6 +355,29 @@ export default function SecurityDashboardPage() {
                             }
                           };
 
+                          // Calculate actual progress based on scanned endpoints if progress is low
+                          const calculateProgress = () => {
+                            // If status is completed, return 100
+                            if (chunk.status === 'completed') return 100;
+
+                            // If chunk.progress exists and is reasonable, use it
+                            if (chunk.progress && chunk.progress > 5) {
+                              return chunk.progress;
+                            }
+
+                            // Otherwise calculate from scanned endpoints
+                            const scannedCount = chunk.scanned_endpoints?.length || 0;
+                            const totalCount = chunk.total_endpoints || chunk.endpoints_count || 1;
+
+                            if (scannedCount > 0 && totalCount > 0) {
+                              return Math.round((scannedCount / totalCount) * 100);
+                            }
+
+                            return chunk.progress || 0;
+                          };
+
+                          const actualProgress = calculateProgress();
+
                           return (
                             <div
                               key={chunk.chunk_id}
@@ -381,6 +419,19 @@ export default function SecurityDashboardPage() {
                                 </div>
                               </div>
 
+                              {/* Debug info for progress */}
+                              {actualProgress <= 5 && chunk.status === 'running' && (
+                                <div className="mb-2 p-2 bg-yellow-900 bg-opacity-20 border border-yellow-700 rounded text-xs">
+                                  <div className="text-yellow-300">Debug: Low progress detected</div>
+                                  <div className="text-yellow-200 font-mono">
+                                    Raw: {chunk.progress}%, Calculated: {actualProgress}%
+                                  </div>
+                                  <div className="text-yellow-200 font-mono">
+                                    Scanned: {chunk.scanned_endpoints?.length || 0} / {chunk.total_endpoints || chunk.endpoints_count || 0}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Scanned Endpoints */}
                               {chunk.scanned_endpoints && chunk.scanned_endpoints.length > 0 && (
                                 <div className="mb-3">
@@ -417,11 +468,11 @@ export default function SecurityDashboardPage() {
                                 <div className="flex-1 bg-gray-600 rounded-full h-2 overflow-hidden">
                                   <div
                                     className="bg-gradient-to-r from-blue-500 to-blue-400 h-full transition-all duration-500 ease-out"
-                                    style={{ width: `${chunk.progress}%` }}
+                                    style={{ width: `${actualProgress}%` }}
                                   />
                                 </div>
                                 <span className="text-xs text-gray-400 min-w-[40px] text-right">
-                                  {chunk.progress}%
+                                  {actualProgress}%
                                 </span>
                               </div>
 
@@ -502,25 +553,9 @@ export default function SecurityDashboardPage() {
             </div>
           )}
         </div>
-
-        <ScanConfigDialog
-          isOpen={showScanDialog}
-          onClose={() => setShowScanDialog(false)}
-          onSubmit={handleScanSubmit}
-          isLoading={isScanning}
-        />
-
-        <FloatingCedarChat
-          side="right"
-          title="🤖 Security Analyst AI"
-          collapsedLabel="💬 Ask about security..."
-        />
       </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+      ) : (
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <header className="mb-8">
@@ -673,22 +708,24 @@ export default function SecurityDashboardPage() {
           ))}
         </div>
       </div>
+      </div>
+      )}
 
-      {/* Floating Cedar Chat */}
-      <FloatingCedarChat
-        side="right"
-        title="🤖 Security Analyst AI"
-        collapsedLabel="💬 Ask about vulnerabilities..."
-      />
-
-      {/* Scan Config Dialog */}
+      {/* Scan Config Dialog - Always rendered */}
       <ScanConfigDialog
         isOpen={showScanDialog}
         onClose={() => setShowScanDialog(false)}
         onSubmit={handleScanSubmit}
         isLoading={isScanning}
       />
-    </div>
+
+      {/* Floating Cedar Chat - Always rendered once */}
+      <FloatingCedarChat
+        side="right"
+        title="🤖 Security Analyst AI"
+        collapsedLabel={scanResults?.status === 'completed' ? "💬 Ask about vulnerabilities..." : "💬 Ask about security..."}
+      />
+    </>
   );
 }
 

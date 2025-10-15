@@ -42,9 +42,10 @@ export function useRoadmapContext() {
   }));
 }
 
-// Security context hook - subscribes scan results to agent context
+// Security context hook - subscribes scan SUMMARY to agent context (not all findings)
 export function useSecurityContext() {
-  // Subscribe scan results to agent context
+  // Subscribe only the scan summary to agent context by default
+  // This provides a better UX - users can then add specific findings as needed
   useSubscribeStateToAgentContext(
     'scanResults',
     (scanResults: ScanResultsState | null) => {
@@ -52,30 +53,30 @@ export function useSecurityContext() {
         return { message: 'No scan results available yet.' };
       }
 
+      // Only include summary information by default, not all findings
+      // Users can manually add specific findings they want to discuss
       return {
         scanId: scanResults.scanId,
         apiBaseUrl: scanResults.apiBaseUrl,
         scanDate: scanResults.scanDate,
         status: scanResults.status,
-        summary: scanResults.summary,
+        summary: {
+          total: scanResults.summary.total,
+          critical: scanResults.summary.critical,
+          high: scanResults.summary.high,
+          medium: scanResults.summary.medium,
+          low: scanResults.summary.low,
+        },
         totalEndpoints: Object.keys(scanResults.groupedByEndpoint).length,
-        findings: scanResults.findings.map((finding: VulnerabilityFinding) => ({
-          id: finding.id,
-          severity: finding.severity,
-          title: finding.title,
-          rule: finding.rule,
-          endpoint: finding.endpoint,
-          method: finding.method,
-          description: finding.description,
-          scanner: finding.scanner,
-          score: finding.score,
-          evidence: finding.evidence,
-        })),
+        // Note: We're NOT including the full findings array here
+        // Users can add specific findings using the "+" button
+        message: `Scan ${scanResults.scanId} completed with ${scanResults.summary.total} findings. Use the + buttons to add specific vulnerabilities to discuss.`,
       };
     },
     {
       icon: React.createElement(Shield, { size: 16 }),
-      color: '#EF4444', // Red color for security findings
+      color: '#3B82F6', // Blue color for scan summary (less alarming than red)
+      labelField: () => 'Scan Summary', // Custom label for the context badge
     },
   );
 }

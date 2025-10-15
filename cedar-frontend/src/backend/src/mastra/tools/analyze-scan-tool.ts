@@ -21,6 +21,7 @@ import {
   retrieveCodeExamplesForCWEs,
   type RetrievalConfig,
 } from '../lib/retrieval';
+import { validateEnvironment } from '../lib/database-auth';
 
 export const analyzeScanTool = createTool({
   id: 'analyze-scan',
@@ -100,7 +101,9 @@ Use this tool when the user provides a vulnerability scan JSON file or scan resu
     } else {
         try {
           const config: RetrievalConfig = {
-            connectionString: process.env.DATABASE_URL,
+            connectionString: process.env.DATABASE_URL!,
+            mistralApiKey: process.env.MISTRAL_API_KEY!,
+            openaiApiKey: process.env.OPENAI_API_KEY!,
           };
 
           const retrieved = await retrieveAndRerankContext(processed, config, {

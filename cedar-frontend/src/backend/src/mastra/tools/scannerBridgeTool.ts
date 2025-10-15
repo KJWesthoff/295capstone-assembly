@@ -21,6 +21,7 @@ async function getAuthToken(): Promise<string> {
   }
 
   try {
+    console.log(`Authenticating with scanner service at ${SCANNER_SERVICE_URL}`);
     const response = await fetch(`${SCANNER_SERVICE_URL}/api/auth/login`, {
       method: 'POST',
       headers: {
@@ -33,10 +34,16 @@ async function getAuthToken(): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(`Authentication failed with status ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Authentication failed: ${response.status} - ${errorText}`);
+      throw new Error(`Authentication failed with status ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+
+    if (!data.access_token) {
+      throw new Error('No access token in authentication response');
+    }
 
     // Cache token for 50 minutes (tokens typically expire in 60 minutes)
     authTokenCache = {
@@ -44,6 +51,7 @@ async function getAuthToken(): Promise<string> {
       expires: Date.now() + (50 * 60 * 1000),
     };
 
+    console.log('Successfully authenticated with scanner service');
     return data.access_token;
   } catch (error) {
     console.error('Failed to get auth token:', error);
