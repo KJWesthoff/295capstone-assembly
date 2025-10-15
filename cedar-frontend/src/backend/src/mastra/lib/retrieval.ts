@@ -55,7 +55,11 @@ export async function initializePgClient(connectionString: string): Promise<Clie
   if (!pgClient) {
     pgClient = new Client({
       connectionString,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      // Accept self-signed certificates in development/Docker environments
+      // In production with proper CA-signed certs, set rejectUnauthorized: true
+      ssl: connectionString?.includes('sslmode=require')
+        ? { rejectUnauthorized: false }
+        : false,
     });
     await pgClient.connect();
   }

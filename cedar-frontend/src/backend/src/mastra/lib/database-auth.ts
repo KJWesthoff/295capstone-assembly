@@ -44,6 +44,9 @@ export function getPostgresPool(): Pool {
       connectionTimeoutMillis: 5000, // Fail fast on connection
       statement_timeout: 60000, // 60 second statement timeout
       query_timeout: 60000, // 60 second query timeout
+      ssl: {
+        rejectUnauthorized: false, // Accept self-signed certificates in development
+      },
     });
 
     // Handle pool errors
@@ -118,6 +121,9 @@ export async function getDatabaseClient(): Promise<Client> {
     connectionString: DATABASE_URL,
     statement_timeout: 60000,
     query_timeout: 60000,
+    ssl: {
+      rejectUnauthorized: false, // Accept self-signed certificates in development
+    },
   });
 
   try {

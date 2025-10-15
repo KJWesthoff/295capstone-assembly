@@ -305,6 +305,9 @@ const checkDatabaseCoverageStep = createStep({
 
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false, // Accept self-signed certificates in development
+      },
     });
 
     try {

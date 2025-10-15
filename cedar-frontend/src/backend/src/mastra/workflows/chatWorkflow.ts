@@ -154,6 +154,8 @@ export const ChatInputSchema = z.object({
   streamController: z.any().optional(),
   // For structured output
   output: z.any().optional(),
+  // Cedar OS context from frontend
+  additionalContext: z.any().optional(),
 });
 
 export const ChatOutputSchema = z.object({
@@ -179,34 +181,73 @@ const fetchContext = createStep({
     // [STEP 5] (Backend): If the user adds a node via @mention then sends a message, the agent will receive it here in the user prompt field.
     // [STEP 6] (Backend): If you call the subscribeInputContext hook on the frontend, the agent will receive that state as context, formatted in the way you specified.
 
-    // Check if the prompt mentions a scan ID and we need to provide scan context
+    let enhancedPrompt = inputData.prompt;
+
+    // Extract scan ID from additionalContext if present
+    if (inputData.additionalContext) {
+      console.log('Additional context received:', JSON.stringify(inputData.additionalContext, null, 2));
+
+      // Look for scan ID in additionalContext
+      let scanId: string | null = null;
+
+      // Check scanResults state subscription (from useSecurityContext)
+      if (inputData.additionalContext.scanResults) {
+        const scanResults = Array.isArray(inputData.additionalContext.scanResults)
+          ? inputData.additionalContext.scanResults[0]
+          : inputData.additionalContext.scanResults;
+
+        if (scanResults?.data?.scanId) {
+          scanId = scanResults.data.scanId;
+          console.log(`Found scan ID in scanResults context: ${scanId}`);
+        }
+      }
+
+      // Check manual context entries (from addContextEntry button)
+      for (const key in inputData.additionalContext) {
+        const entries = inputData.additionalContext[key];
+        if (Array.isArray(entries)) {
+          for (const entry of entries) {
+            if (entry.data?.scanId) {
+              scanId = entry.data.scanId;
+              console.log(`Found scan ID in manual context entry: ${scanId}`);
+              break;
+            }
+          }
+        }
+        if (scanId) break;
+      }
+
+      // If scan ID found and user is asking for analysis, append it to prompt
+      if (scanId && (
+        inputData.prompt.toLowerCase().includes('analyz') ||
+        inputData.prompt.toLowerCase().includes('report') ||
+        inputData.prompt.toLowerCase().includes('scan')
+      )) {
+        enhancedPrompt = `${inputData.prompt}
+
+[CONTEXT: Scan ID ${scanId} is available in the context. Use scan-analysis-workflow to analyze it.]`;
+        console.log(`Enhanced prompt with scan ID: ${scanId}`);
+      }
+    }
+
+    // Check if the prompt itself mentions a scan ID directly
     const scanIdPattern = /\b([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\b/i;
     const scanIdMatch = inputData.prompt.match(scanIdPattern);
 
-    if (scanIdMatch && inputData.prompt.toLowerCase().includes('workflow')) {
+    if (scanIdMatch) {
       const scanId = scanIdMatch[1];
-      console.log(`Detected scan ID in prompt: ${scanId}`);
+      console.log(`Detected scan ID directly in prompt: ${scanId}`);
 
-      // Add instruction to the prompt for the agent to look for scan data in context
-      const enhancedPrompt = `${inputData.prompt}
+      if (!enhancedPrompt.includes(scanId)) {
+        enhancedPrompt = `${enhancedPrompt}
 
-IMPORTANT: The user is asking about scan ID ${scanId}. The scan results should be available in the Cedar OS context. Look for scan data with a "findings" array in the conversation context and use the scan-analysis-workflow to analyze it.`;
-
-      const result = { ...inputData, prompt: enhancedPrompt, context: inputData };
-      console.log('Workflow enhanced prompt for scan analysis');
-      return result;
+[CONTEXT: Scan ID ${scanId} mentioned. Use scan-analysis-workflow to analyze it.]`;
+      }
     }
 
-    // Cedar OS embeds context directly in the prompt string with special formatting
-    const frontendContext = inputData.prompt;
+    const result = { ...inputData, prompt: enhancedPrompt, context: inputData };
 
-    // The prompt from Cedar OS already contains the context embedded
-    // We just need to pass it through to the agent
-    const unifiedContext = frontendContext;
-
-    const result = { ...inputData, prompt: unifiedContext, context: inputData };
-
-    console.log('Workflow passing context to agent:', JSON.stringify(result, null, 2));
+    console.log('Workflow passing context to agent');
 
     return result;
   },
@@ -305,12 +346,24 @@ const callAgent = createStep({
       // Use security analyst agent for security pages, product roadmap agent for others
       const agent = securityAnalystAgent; // Default to security analyst for now
 
+      console.log('🤖 Starting agent.stream() with maxSteps: 5');
       const streamResult = await agent.stream(messages, {
         ...(systemPrompt ? ({ instructions: systemPrompt } as const) : {}),
         temperature,
         maxTokens,
+        maxSteps: 5, // Allow agent to call workflow (step 1) AND generate text response (step 2+)
         ...(resourceId && threadId && { memory: { resource: resourceId, thread: threadId } }),
+        onStepFinish: ({ text, toolCalls, toolResults, finishReason }) => {
+          console.log('📊 Agent step finished:', {
+            hasText: !!text,
+            textLength: text?.length || 0,
+            toolCallsCount: toolCalls?.length || 0,
+            toolNames: toolCalls?.map(tc => tc.toolName),
+            finishReason
+          });
+        },
       });
+      console.log('✅ agent.stream() created, starting text streaming...');
 
       let finalText = '';
       if (streamController) {

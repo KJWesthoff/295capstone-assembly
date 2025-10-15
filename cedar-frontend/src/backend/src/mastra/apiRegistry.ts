@@ -55,12 +55,12 @@ export const apiRoutes = [
     handler: async (c) => {
       try {
         const body = await c.req.json();
-        const { prompt, temperature, maxTokens, systemPrompt, resourceId, threadId } =
+        const { prompt, temperature, maxTokens, systemPrompt, resourceId, threadId, additionalContext } =
           ChatInputSchema.parse(body);
 
         const run = await chatWorkflow.createRunAsync();
         const result = await run.start({
-          inputData: { prompt, temperature, maxTokens, systemPrompt, resourceId, threadId },
+          inputData: { prompt, temperature, maxTokens, systemPrompt, resourceId, threadId, additionalContext },
         });
 
         if (result.status === 'success') {
@@ -88,7 +88,7 @@ export const apiRoutes = [
     handler: async (c) => {
       try {
         const body = await c.req.json();
-        const { prompt, temperature, maxTokens, systemPrompt, resourceId, threadId } =
+        const { prompt, temperature, maxTokens, systemPrompt, resourceId, threadId, additionalContext } =
           ChatInputSchema.parse(body);
 
         return createSSEStream(async (controller) => {
@@ -102,6 +102,7 @@ export const apiRoutes = [
               streamController: controller,
               resourceId,
               threadId,
+              additionalContext,
             },
           });
 

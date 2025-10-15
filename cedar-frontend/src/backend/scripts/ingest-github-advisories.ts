@@ -322,8 +322,10 @@ function generateExplanation(
 async function initializeDatabase(): Promise<Client> {
   const client = new Client({
     connectionString: DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' 
-      ? { rejectUnauthorized: false } 
+    // Accept self-signed certificates in development/Docker environments
+    // In production with proper CA-signed certs, set rejectUnauthorized: true
+    ssl: DATABASE_URL?.includes('sslmode=require')
+      ? { rejectUnauthorized: false }
       : false,
   });
 
