@@ -5,6 +5,51 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 const SCANNER_SERVICE_URL = process.env.SCANNER_SERVICE_URL || 'http://localhost:8000';
+const SCANNER_USERNAME = process.env.SCANNER_USERNAME || 'admin';
+const SCANNER_PASSWORD = process.env.SCANNER_PASSWORD || 'password';
+
+// Cache for auth token to avoid repeated authentication
+let authTokenCache: { token: string; expires: number } | null = null;
+
+/**
+ * Get authentication token for scanner API
+ */
+async function getAuthToken(): Promise<string> {
+  // Check if we have a valid cached token
+  if (authTokenCache && authTokenCache.expires > Date.now()) {
+    return authTokenCache.token;
+  }
+
+  try {
+    const response = await fetch(`${SCANNER_SERVICE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: SCANNER_USERNAME,
+        password: SCANNER_PASSWORD,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Authentication failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Cache token for 50 minutes (tokens typically expire in 60 minutes)
+    authTokenCache = {
+      token: data.access_token,
+      expires: Date.now() + (50 * 60 * 1000),
+    };
+
+    return data.access_token;
+  } catch (error) {
+    console.error('Failed to get auth token:', error);
+    throw new Error(`Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 /**
  * Tool to trigger a new API security scan
@@ -28,20 +73,28 @@ export const startScanTool = createTool({
     const { serverUrl, specUrl, scanners, dangerous, fuzzAuth } = context;
 
     try {
-      const response = await fetch(`${SCANNER_SERVICE_URL}/api/scan`, {
+      // Get auth token
+      const token = await getAuthToken();
+
+      // Create form data for the scan request
+      const formData = new URLSearchParams();
+      formData.append('server_url', serverUrl);
+      if (specUrl) {
+        formData.append('target_url', specUrl);
+      }
+      formData.append('scanners', scanners.join(','));
+      formData.append('dangerous', String(dangerous));
+      formData.append('fuzz_auth', String(fuzzAuth));
+      formData.append('rps', '1.0');
+      formData.append('max_requests', '100');
+
+      const response = await fetch(`${SCANNER_SERVICE_URL}/api/scan/start`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          server_url: serverUrl,
-          spec_url: specUrl,
-          scanners,
-          dangerous,
-          fuzz_auth: fuzzAuth,
-          rps: 1.0,
-          max_requests: 100,
-        }),
+        body: formData.toString(),
       });
 
       if (!response.ok) {
@@ -82,7 +135,14 @@ export const getScanStatusTool = createTool({
     const { scanId } = context;
 
     try {
-      const response = await fetch(`${SCANNER_SERVICE_URL}/api/scan/${scanId}/status`);
+      // Get auth token
+      const token = await getAuthToken();
+
+      const response = await fetch(`${SCANNER_SERVICE_URL}/api/scan/${scanId}/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
       if (!response.ok) {
         throw new Error(`Scanner API returned ${response.status}`);
@@ -129,7 +189,14 @@ export const getScanFindingsTool = createTool({
     const { scanId, severity } = context;
 
     try {
-      const response = await fetch(`${SCANNER_SERVICE_URL}/api/scan/${scanId}/findings`);
+      // Get auth token
+      const token = await getAuthToken();
+
+      const response = await fetch(`${SCANNER_SERVICE_URL}/api/scan/${scanId}/findings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
       if (!response.ok) {
         throw new Error(`Scanner API returned ${response.status}`);

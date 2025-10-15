@@ -21,6 +21,43 @@ if [ ! -f ".env.local" ]; then
     fi
 fi
 
+# Validate required credentials exist in .env.local
+if ! grep -q "ADMIN_USERNAME=" .env.local || ! grep -q "ADMIN_PASSWORD=" .env.local; then
+    echo "⚠️  Warning: ADMIN_USERNAME or ADMIN_PASSWORD not found in .env.local"
+    echo "   These credentials are required for Cedar frontend to authenticate with the scanner service"
+fi
+
+# Check if cedar-frontend/.env exists, create if missing
+if [ ! -f "cedar-frontend/.env" ]; then
+    echo "📋 Creating cedar-frontend/.env file..."
+    # Source the credentials from .env.local
+    if [ -f ".env.local" ]; then
+        ADMIN_USER=$(grep "^ADMIN_USERNAME=" .env.local | cut -d'=' -f2)
+        ADMIN_PASS=$(grep "^ADMIN_PASSWORD=" .env.local | cut -d'=' -f2)
+
+        cat > cedar-frontend/.env << EOF
+# Scanner Service Configuration (through nginx proxy)
+NEXT_PUBLIC_SCANNER_SERVICE_URL=http://localhost:3000
+NEXT_PUBLIC_SCANNER_USERNAME=${ADMIN_USER:-MICS295}
+NEXT_PUBLIC_SCANNER_PASSWORD=${ADMIN_PASS:-MaryMcHale}
+
+# Mastra backend URL
+NEXT_PUBLIC_MASTRA_URL=http://localhost:4111
+EOF
+        echo "✅ Created cedar-frontend/.env with scanner credentials"
+    fi
+fi
+
+# Clear Mastra build cache
+echo "🧹 Clearing Mastra build cache..."
+if [ -d "cedar-frontend/.mastra" ]; then
+    rm -rf cedar-frontend/.mastra
+    echo "✅ Cleared cedar-frontend/.mastra"
+fi
+if [ -d "cedar-frontend/src/backend/.mastra" ]; then
+    rm -rf cedar-frontend/src/backend/.mastra
+    echo "✅ Cleared cedar-frontend/src/backend/.mastra"
+fi
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
 docker compose down --remove-orphans
