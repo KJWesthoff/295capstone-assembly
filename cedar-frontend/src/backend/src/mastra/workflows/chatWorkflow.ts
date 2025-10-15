@@ -293,39 +293,59 @@ const callAgent = createStep({
       threadId,
     } = inputData;
 
-    if (streamController) {
-      streamJSONEvent(streamController, {
-        type: 'progress_update',
-        status: 'in_progress',
-        text: 'Generating response...',
-      });
-    }
-
-    // Use security analyst agent for security pages, product roadmap agent for others
-    const agent = securityAnalystAgent; // Default to security analyst for now
-
-    const streamResult = await agent.stream(messages, {
-      ...(systemPrompt ? ({ instructions: systemPrompt } as const) : {}),
-      temperature,
-      maxTokens,
-      ...(resourceId && threadId && { memory: { resource: resourceId, thread: threadId } }),
-    });
-
-    let finalText = '';
-    if (streamController) {
-      finalText = await handleTextStream(streamResult, streamController);
-      streamJSONEvent(streamController, {
-        type: 'progress_update',
-        status: 'complete',
-        text: 'Response generated',
-      });
-    } else {
-      for await (const chunk of streamResult.textStream) {
-        finalText += chunk as string;
+    try {
+      if (streamController) {
+        streamJSONEvent(streamController, {
+          type: 'progress_update',
+          status: 'in_progress',
+          text: 'Generating response...',
+        });
       }
-    }
 
-    return { content: finalText };
+      // Use security analyst agent for security pages, product roadmap agent for others
+      const agent = securityAnalystAgent; // Default to security analyst for now
+
+      const streamResult = await agent.stream(messages, {
+        ...(systemPrompt ? ({ instructions: systemPrompt } as const) : {}),
+        temperature,
+        maxTokens,
+        ...(resourceId && threadId && { memory: { resource: resourceId, thread: threadId } }),
+      });
+
+      let finalText = '';
+      if (streamController) {
+        finalText = await handleTextStream(streamResult, streamController);
+        streamJSONEvent(streamController, {
+          type: 'progress_update',
+          status: 'complete',
+          text: 'Response generated',
+        });
+      } else {
+        for await (const chunk of streamResult.textStream) {
+          finalText += chunk as string;
+        }
+      }
+
+      return { content: finalText };
+    } catch (error) {
+      console.error('Error in callAgent step:', error);
+
+      // Try to send error to stream if still available
+      if (streamController) {
+        try {
+          streamJSONEvent(streamController, {
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Unknown error occurred',
+          });
+        } catch (streamError) {
+          // Stream is closed, log and continue
+          console.debug('Could not send error to stream (already closed)');
+        }
+      }
+
+      // Re-throw the error for workflow error handling
+      throw error;
+    }
   },
 });
 

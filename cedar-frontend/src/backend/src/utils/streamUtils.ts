@@ -48,9 +48,18 @@ export function streamJSONEvent<T>(
   controller: ReadableStreamDefaultController<Uint8Array>,
   eventData: T,
 ) {
-  const encoder = new TextEncoder();
-  controller.enqueue(encoder.encode('data: '));
-  controller.enqueue(encoder.encode(`${JSON.stringify(eventData)}\n\n`));
+  try {
+    const encoder = new TextEncoder();
+    controller.enqueue(encoder.encode('data: '));
+    controller.enqueue(encoder.encode(`${JSON.stringify(eventData)}\n\n`));
+  } catch (error) {
+    // Silently ignore errors if the stream is already closed
+    if (error instanceof TypeError && error.message.includes('Controller is already closed')) {
+      console.debug('Stream already closed, skipping event emission');
+    } else {
+      throw error;
+    }
+  }
 }
 
 /**
@@ -65,12 +74,22 @@ export async function handleTextStream(
   const encoder = new TextEncoder();
   const chunks: string[] = [];
 
-  // Stream raw text chunks through data field
-  for await (const chunk of streamResult.textStream) {
-    chunks.push(chunk);
-    // Escape literal newlines for SSE compliance
-    const escaped = chunk.replace(/\n/g, '\\n');
-    streamController.enqueue(encoder.encode(`data:${escaped}\n\n`));
+  try {
+    // Stream raw text chunks through data field
+    for await (const chunk of streamResult.textStream) {
+      chunks.push(chunk);
+      // Escape literal newlines for SSE compliance
+      const escaped = chunk.replace(/\n/g, '\\n');
+      streamController.enqueue(encoder.encode(`data:${escaped}\n\n`));
+    }
+  } catch (error) {
+    // Handle stream errors gracefully
+    if (error instanceof TypeError && error.message.includes('Controller is already closed')) {
+      console.debug('Stream already closed during text streaming');
+    } else {
+      console.error('Error during text streaming:', error);
+      throw error;
+    }
   }
 
   return chunks.join('');

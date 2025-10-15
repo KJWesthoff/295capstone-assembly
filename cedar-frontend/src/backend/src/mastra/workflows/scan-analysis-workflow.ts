@@ -18,6 +18,87 @@ import { analyzeScanTool } from '../tools/analyze-scan-tool';
 import { cveAnalysisTool } from '../tools/cve-analysis-tool';
 
 // ============================================================================
+// Step 0: Fetch Scan Results by ID
+// ============================================================================
+
+const fetchScanResultsStep = createStep({
+  id: 'fetch-scan-results',
+  description: 'Fetch vulnerability scan results from the scanner API by scan ID',
+  inputSchema: z.object({
+    scanId: z.string().describe('The UUID of the scan to fetch results for'),
+  }),
+  outputSchema: z.object({
+    scanData: z.string().describe('Raw vulnerability scan JSON'),
+  }),
+  execute: async ({ inputData, mastra }) => {
+    const logger = mastra?.getLogger();
+    const { scanId } = inputData;
+
+    try {
+      // Get scanner service credentials from environment
+      const scannerUrl = process.env.SCANNER_SERVICE_URL || 'http://web-api:8000';
+      const username = process.env.SCANNER_USERNAME || 'MICS295';
+      const password = process.env.SCANNER_PASSWORD || 'MaryMcHale';
+
+      logger?.info(`🔍 Fetching scan results for ID: ${scanId}`);
+
+      // First authenticate to get a token
+      const authResponse = await fetch(`${scannerUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!authResponse.ok) {
+        throw new Error(`Authentication failed: ${authResponse.status}`);
+      }
+
+      const authData = await authResponse.json();
+      const token = authData.access_token;
+
+      // Now fetch the scan results
+      const resultsResponse = await fetch(`${scannerUrl}/api/scan/${scanId}/findings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!resultsResponse.ok) {
+        if (resultsResponse.status === 404) {
+          throw new Error(`Scan ID ${scanId} not found`);
+        }
+        throw new Error(`Failed to fetch scan results: ${resultsResponse.status}`);
+      }
+
+      const scanResults = await resultsResponse.json();
+
+      logger?.info(`✅ Retrieved ${scanResults.findings?.length || 0} findings for scan ${scanId}`);
+
+      // Ensure the scan data is properly formatted
+      const formattedScanData = {
+        findings: scanResults.findings || [],
+        scan_id: scanId,
+        api_base_url: scanResults.api_base_url,
+        scan_date: scanResults.scan_date,
+        total: scanResults.findings?.length || 0,
+      };
+
+      // Return as JSON string for the next step
+      return {
+        scanData: JSON.stringify(formattedScanData),
+      };
+
+    } catch (error) {
+      const errorMsg = `Failed to fetch scan results: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger?.error('❌ Error fetching scan results:', { error: errorMsg });
+      throw new Error(errorMsg);
+    }
+  },
+});
+
+// ============================================================================
 // Step 1: Extract Metadata from Scan
 // ============================================================================
 
@@ -25,7 +106,7 @@ const extractScanMetadataStep = createStep({
   id: 'extract-scan-metadata',
   description: 'Parse scan results and extract CVE/CWE/OWASP metadata',
   inputSchema: z.object({
-    scanData: z.string().describe('Raw vulnerability scan JSON'),
+    scanData: z.string().describe('Raw vulnerability scan JSON from previous step'),
   }),
   outputSchema: z.object({
     processed: z.any(), // ProcessedScan type
@@ -36,88 +117,109 @@ const extractScanMetadataStep = createStep({
     severities: z.record(z.number()),
     hasCVEs: z.boolean(),
   }),
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData, mastra, getStepResult }) => {
     const logger = mastra?.getLogger();
     let scan: RawScanResult;
 
     logger?.info('🔍 Step 1: Extracting scan metadata...');
 
-    // Helper function to convert Python dict string to JSON
-    function pythonDictToJSON(pythonStr: string): string {
+    // Get scanData from the previous fetch-scan-results step
+    const fetchStepResult = getStepResult('fetch-scan-results');
+    const scanDataFromFetch = fetchStepResult?.scanData || inputData.scanData;
+
+    // Helper function to clean malformed JSON
+    function cleanMalformedJSON(jsonStr: string): string {
       // First check if this looks like a Python dict vs JSON
-      if (!pythonStr.includes("'") && pythonStr.includes('"')) {
-        // Already looks like JSON, return as-is
-        return pythonStr;
+      if (jsonStr.includes("'") && !jsonStr.includes('"')) {
+        // Looks like Python dict, convert it
+        jsonStr = jsonStr
+          // Replace Python None with null
+          .replace(/\bNone\b/g, 'null')
+          // Replace Python True with true
+          .replace(/\bTrue\b/g, 'true')
+          // Replace Python False with false
+          .replace(/\bFalse\b/g, 'false')
+          // Replace single quotes with double quotes
+          .replace(/'/g, '"');
       }
 
-      // Remove Python byte string markers (b'string' or b"string")
-      let jsonStr = pythonStr.replace(/\bb'([^']*)'/g, '"$1"')
-                            .replace(/\bb"([^"]*)"/g, '"$1"');
+      // Fix Python byte string markers (b") that appear from truncated scanner output
+      // These can appear in multiple contexts:
+      // 1. At the end of strings: "text b"}
+      // 2. Between objects: }b"},{
+      // 3. In values: "value": b"text"
 
-      // Replace Python constants
-      jsonStr = jsonStr
-        // Replace Python None with null
-        .replace(/\bNone\b/g, 'null')
-        // Replace Python True with true
-        .replace(/\bTrue\b/g, 'true')
-        // Replace Python False with false
-        .replace(/\bFalse\b/g, 'false');
+      // Pattern 1: Remove b" before closing braces/brackets/commas
+      jsonStr = jsonStr.replace(/\s*b"(\}|\]|,)/g, '...$1');
 
-      // Complex regex to handle single quotes to double quotes conversion
-      // This handles most cases but may need refinement for edge cases
-      jsonStr = jsonStr.replace(/'/g, '"');
+      // Pattern 2: Remove b" between closing and opening braces (}b"},{"rule")
+      jsonStr = jsonStr.replace(/\}b"\},\{/g, '}...,{');
+
+      // Pattern 3: Clean up any remaining standalone b" patterns
+      jsonStr = jsonStr.replace(/([^\\])b"/g, '$1..."');
+
+      // Pattern 4: Remove Python byte string prefixes (b'...' or b"...")
+      jsonStr = jsonStr.replace(/\bb'([^']*)'/g, '"$1"')
+                       .replace(/\bb"([^"\\]*)"/g, '"$1"');
 
       return jsonStr;
     }
 
     // Handle both string and object inputs
-    if (typeof inputData.scanData === 'string') {
+    if (typeof scanDataFromFetch === 'string') {
       try {
         // Log first 500 chars to help debug JSON issues
         logger?.debug('Parsing scan data (first 500 chars)', {
-          preview: inputData.scanData.substring(0, 500)
+          preview: scanDataFromFetch.substring(0, 500)
         });
 
         // First try standard JSON parsing
         try {
-          scan = JSON.parse(inputData.scanData);
+          scan = JSON.parse(scanDataFromFetch);
           logger?.info('✅ Successfully parsed as standard JSON');
         } catch (jsonError) {
-          // If standard JSON parsing fails, try Python dict conversion
-          logger?.info('Standard JSON parsing failed, attempting Python dict conversion...');
+          // If standard JSON parsing fails, try cleaning malformed JSON
+          logger?.info('Standard JSON parsing failed, attempting to clean malformed JSON...');
 
           // Log the problematic section around the error position
           const errorPos = (jsonError as any).message?.match(/position (\d+)/)?.[1];
           if (errorPos) {
             const pos = parseInt(errorPos);
             const contextStart = Math.max(0, pos - 50);
-            const contextEnd = Math.min(inputData.scanData.length, pos + 50);
+            const contextEnd = Math.min(scanDataFromFetch.length, pos + 50);
             logger?.debug('Error context', {
-              before: inputData.scanData.substring(contextStart, pos),
-              at: inputData.scanData.substring(pos, pos + 1),
-              after: inputData.scanData.substring(pos + 1, contextEnd)
+              before: scanDataFromFetch.substring(contextStart, pos),
+              at: scanDataFromFetch.substring(pos, pos + 1),
+              after: scanDataFromFetch.substring(pos + 1, contextEnd),
+              errorMessage: (jsonError as Error).message
             });
+
+            // Check if this is the specific b" truncation issue
+            const context = scanDataFromFetch.substring(contextStart, contextEnd);
+            if (context.includes('b"')) {
+              logger?.info('Detected byte string markers (b") in JSON - likely from truncated scanner output');
+            }
           }
 
-          const convertedJson = pythonDictToJSON(inputData.scanData);
-          scan = JSON.parse(convertedJson);
-          logger?.info('✅ Successfully converted Python dict to JSON');
+          const cleanedJson = cleanMalformedJSON(scanDataFromFetch);
+          scan = JSON.parse(cleanedJson);
+          logger?.info('✅ Successfully cleaned and parsed malformed JSON');
         }
       } catch (error) {
         const errorMsg = `Invalid scan data: Expected JSON format with "findings" array. Parse error: ${(error as Error).message}`;
         logger?.error('❌ JSON parsing failed even after Python dict conversion', {
           error: errorMsg,
-          position: inputData.scanData.substring(Math.max(0, 900), Math.min(inputData.scanData.length, 920))
+          position: scanDataFromFetch.substring(Math.max(0, 900), Math.min(scanDataFromFetch.length, 920))
         });
         throw new Error(errorMsg);
       }
-    } else if (typeof inputData.scanData === 'object' && inputData.scanData !== null) {
+    } else if (typeof scanDataFromFetch === 'object' && scanDataFromFetch !== null) {
       // Already an object - use directly
-      scan = inputData.scanData as RawScanResult;
+      scan = scanDataFromFetch as RawScanResult;
       logger?.debug('Scan data is already an object');
     } else {
       const errorMsg = 'Invalid scan data: Expected JSON string or object with "findings" array';
-      logger?.error('❌ Invalid scan data type', { type: typeof inputData.scanData });
+      logger?.error('❌ Invalid scan data type', { type: typeof scanDataFromFetch });
       throw new Error(errorMsg);
     }
 
@@ -129,8 +231,14 @@ const extractScanMetadataStep = createStep({
     const cveIds = extractCVEIds(processed);
 
     // Determine ecosystems from scan metadata (if available)
-    const ecosystems: string[] = [];
-    // You could extract this from scan.target, scan.metadata, etc.
+    // Default to 'npm' (JavaScript/Node.js) as most APIs are JavaScript-based
+    // This ensures enrichment runs even when ecosystem can't be detected
+    const ecosystems: string[] = ['npm'];
+
+    // TODO: Future enhancement - detect ecosystem from scan metadata:
+    // - Parse API paths for technology indicators (/api/v1 suggests REST)
+    // - Check OpenAPI spec for framework hints (Express, FastAPI, Spring)
+    // - Analyze endpoint patterns for language-specific conventions
 
     console.log(`📋 Metadata extracted:
       - CWEs: ${cwes.length}
@@ -144,7 +252,7 @@ const extractScanMetadataStep = createStep({
       owaspIds,
       cveIds,
       ecosystems,
-      severities: processed.summary.severityBreakdown,
+      severities: { ...processed.summary.severityBreakdown } as Record<string, number>,
       hasCVEs: cveIds.length > 0,
     };
   },
@@ -163,6 +271,7 @@ const checkDatabaseCoverageStep = createStep({
     ecosystems: z.array(z.string()),
     cveIds: z.array(z.string()),
     hasCVEs: z.boolean(),
+    scanData: z.string(), // Add scanData to input
   }),
   outputSchema: z.object({
     totalCWEs: z.number(),
@@ -173,6 +282,7 @@ const checkDatabaseCoverageStep = createStep({
     recommendedEcosystem: z.string().optional(),
     cveIds: z.array(z.string()),
     hasCVEs: z.boolean(),
+    scanData: z.string(), // Pass scanData through
   }),
   execute: async ({ inputData, mastra }) => {
     const logger = mastra?.getLogger();
@@ -283,6 +393,9 @@ const enrichDatabaseStep = createStep({
   inputSchema: z.object({
     recommendedEcosystem: z.string().optional(),
     lackingCWEs: z.array(z.string()),
+    cveIds: z.array(z.string()).optional(),
+    hasCVEs: z.boolean().optional(),
+    scanData: z.string().optional(), // Pass through scanData
   }),
   outputSchema: z.object({
     enrichmentPerformed: z.boolean(),
@@ -290,10 +403,11 @@ const enrichDatabaseStep = createStep({
     codeExamplesInserted: z.number(),
     cveIds: z.array(z.string()),
     hasCVEs: z.boolean(),
+    scanData: z.string().optional(), // Pass through scanData
   }),
   execute: async ({ inputData, mastra }) => {
-    const cveIds = (inputData as any).cveIds || [];
-    const hasCVEs = (inputData as any).hasCVEs || false;
+    const cveIds = inputData.cveIds || [];
+    const hasCVEs = inputData.hasCVEs || false;
 
     if (!inputData.recommendedEcosystem) {
       console.log('⏭️  Skipping enrichment: No ecosystem detected');
@@ -476,7 +590,7 @@ export const scanAnalysisWorkflow = createWorkflow({
   id: 'scan-analysis-workflow',
   description: 'Intelligent vulnerability scan analysis with automatic database enrichment',
   inputSchema: z.object({
-    scanData: z.string().describe('Raw vulnerability scan JSON'),
+    scanId: z.string().describe('The UUID of the scan to analyze'),
   }),
   outputSchema: z.object({
     scanContext: z.string(),
@@ -517,6 +631,9 @@ export const scanAnalysisWorkflow = createWorkflow({
     }),
   }),
 })
+  // Step 0: Fetch scan results by ID
+  .then(fetchScanResultsStep)
+
   // Step 1: Extract metadata
   .then(extractScanMetadataStep)
 
@@ -546,18 +663,42 @@ export const scanAnalysisWorkflow = createWorkflow({
     ],
   ])
 
-  // Step 5: Prepare data for analysis
-  .map(async ({ inputData, getInitData }) => {
-    const initData = getInitData();
+  // Step 5: Prepare data for analysis - create a proper step
+  .then(createStep({
+    id: 'prepare-analysis-data',
+    description: 'Prepare data for analysis step',
+    inputSchema: z.object({
+      enrichmentPerformed: z.boolean(),
+      codeExamplesInserted: z.number(),
+      hasCVEs: z.boolean(),
+      cveIds: z.array(z.string()),
+      scanData: z.string().optional(), // This should come through the pipeline
+    }),
+    outputSchema: z.object({
+      scanData: z.string(),
+      enrichmentPerformed: z.boolean(),
+      codeExamplesInserted: z.number(),
+      hasCVEs: z.boolean(),
+      cveIds: z.array(z.string()),
+    }),
+    execute: async ({ inputData, getStepResult }) => {
+      // Get scanData from the fetch-scan-results step
+      const fetchStepResult = getStepResult('fetch-scan-results');
+      const scanData = fetchStepResult?.scanData;
 
-    return {
-      scanData: initData.scanData,
-      enrichmentPerformed: inputData.enrichmentPerformed,
-      codeExamplesInserted: inputData.codeExamplesInserted,
-      hasCVEs: inputData.hasCVEs || false,
-      cveIds: inputData.cveIds || [],
-    };
-  }, { id: 'prepare-analysis-data' })
+      if (!scanData) {
+        throw new Error('scanData not available from fetch-scan-results step');
+      }
+
+      return {
+        scanData: scanData,
+        enrichmentPerformed: inputData.enrichmentPerformed,
+        codeExamplesInserted: inputData.codeExamplesInserted,
+        hasCVEs: inputData.hasCVEs || false,
+        cveIds: inputData.cveIds || [],
+      };
+    },
+  }))
 
   // Step 6: Generate CVE-aware analysis with enriched data
   .then(generateAnalysisStep)

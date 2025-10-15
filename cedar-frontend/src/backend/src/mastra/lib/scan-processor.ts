@@ -17,8 +17,33 @@ import { z } from 'zod';
 export const ScanFindingSchema = z.object({
   rule: z.string(),
   title: z.string(),
-  severity: z.enum(['Critical', 'High', 'Medium', 'Low']),
-  score: z.number().min(0).max(10),
+  severity: z.string().transform((val) => {
+    // Normalize severity to capitalized format
+    const normalized = val.toLowerCase();
+
+    // Map Informational to Low since it's the least severe
+    if (normalized === 'informational' || normalized === 'info') {
+      return 'Low';
+    }
+
+    // Map other common variations
+    const severityMap: Record<string, string> = {
+      'critical': 'Critical',
+      'high': 'High',
+      'medium': 'Medium',
+      'low': 'Low',
+      'info': 'Low',
+      'informational': 'Low',
+      'minor': 'Low',
+      'major': 'High',
+      'severe': 'Critical',
+      'warning': 'Medium',
+      'error': 'High'
+    };
+
+    return severityMap[normalized] || 'Medium'; // Default to Medium if unknown
+  }).pipe(z.enum(['Critical', 'High', 'Medium', 'Low'])),
+  score: z.number().min(0).max(10).catch(0), // Default to 0 if missing
   endpoint: z.string(),
   method: z.string(),
   description: z.string(),

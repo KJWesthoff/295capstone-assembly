@@ -576,6 +576,25 @@ export default function SecurityDashboardPage() {
                     >
                       📋
                     </button>
+                    <button
+                      onClick={() => {
+                        addContextEntry(`scan-id-${scanResults.scanId}`, {
+                          id: `scan-id-${scanResults.scanId}`,
+                          source: 'manual',
+                          data: { scanId: scanResults.scanId },
+                          metadata: {
+                            label: `🔍 Scan ${scanResults.scanId.slice(0, 8)}...`,
+                            icon: '🔍',
+                            color: '#3B82F6',
+                            showInChat: true,
+                          },
+                        });
+                      }}
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-full transition-colors"
+                      title="Add Scan ID to Cedar Context"
+                    >
+                      + Add to Context
+                    </button>
                   </div>
                 </div>
                 <div className="text-gray-400 text-sm">
@@ -587,7 +606,7 @@ export default function SecurityDashboardPage() {
               </div>
               <div className="mt-3 p-3 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg">
                 <p className="text-xs text-blue-300">
-                  💬 <strong>Tip:</strong> Ask the AI assistant to analyze these results by providing the Scan ID above
+                  💬 <strong>Tip:</strong> Click "+ Add to Context" above, then ask the AI assistant: "Analyze this scan" or "Give me a security report"
                 </p>
               </div>
             </div>

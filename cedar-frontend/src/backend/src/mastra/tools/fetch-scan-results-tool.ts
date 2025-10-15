@@ -87,8 +87,8 @@ export const fetchScanResultsTool = new Tool({
         total_findings: scanResults.findings?.length || 0,
       };
 
-      // Log the structure for debugging
-      console.log(`📊 Scan data structure: ${JSON.stringify(formattedScanData).substring(0, 200)}...`);
+      // Log the structure for debugging (without truncating data)
+      console.log(`📊 Scan data retrieved: ${formattedScanData.findings.length} findings for scan ${scanId}`);
 
       // Return in the format expected by scan-analysis-workflow
       return {
