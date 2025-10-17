@@ -960,7 +960,7 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         spec_location = scan_data["spec_location"]
         
         # Determine volume prefix (for environment compatibility)
-        volume_prefix = "295capstone-assembly"  # Default for local docker-compose
+        volume_prefix = "scannerapp"  # Default for local docker-compose
         if "ventiapi" in str(spec_location):  # AWS environment detection
             volume_prefix = "ventiapi"
         
