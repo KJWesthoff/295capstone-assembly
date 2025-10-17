@@ -96,6 +96,20 @@ create_security_group() {
             --port 80 \
             --cidr 0.0.0.0/0
         
+        aws ec2 authorize-security-group-ingress \
+            --region $REGION \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 3001 \
+            --cidr 0.0.0.0/0
+        
+        aws ec2 authorize-security-group-ingress \
+            --region $REGION \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 4111 \
+            --cidr 0.0.0.0/0
+        
         print_success "Created security group: $SG_ID"
     else
         print_success "Using existing security group: $SG_ID"
@@ -203,7 +217,7 @@ mkdir -p /opt/ventiapi
 chown ec2-user:ec2-user /opt/ventiapi
 
 # Create data directories
-mkdir -p /opt/ventiapi/data/{results,specs,redis}
+mkdir -p /opt/ventiapi/data/{results,specs,redis,postgres}
 chown -R ec2-user:ec2-user /opt/ventiapi/data
 
 # Create log directory
@@ -317,6 +331,15 @@ JWT_EXPIRES_IN=24h
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=change-this-password
 
+# OpenAI Configuration (required for Cedar AI features)
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Database Configuration
+DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=rag_pass
+POSTGRES_DB=rag_db
+
 # Application Configuration
 APP_NAME=VentiAPI Scanner
 APP_VERSION=1.0.0
@@ -395,6 +418,15 @@ JWT_EXPIRES_IN=24h
 ADMIN_USERNAME=MICS295
 ADMIN_PASSWORD=MaryMcHale
 
+# OpenAI Configuration (required for Cedar AI features)
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Database Configuration
+DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=rag_pass
+POSTGRES_DB=rag_db
+
 # Application Configuration
 APP_NAME=VentiAPI Scanner
 APP_VERSION=1.0.0
@@ -444,6 +476,9 @@ echo "Building and starting Docker services..."
 newgrp docker << 'DOCKEREOF'
 cd /opt/ventiapi
 docker-compose down || true
+
+# Build all services including Cedar components
+echo "Building all services..."
 docker-compose build
 
 # Build scanner images explicitly (required for scans to work)
@@ -470,7 +505,24 @@ echo "Testing scanner images..."
 timeout 10s docker run --rm ventiapi-scanner --help >/dev/null 2>&1 && echo "✅ VentiAPI scanner working" || echo "❌ VentiAPI scanner failed"
 timeout 10s docker run --rm ventiapi-zap --help >/dev/null 2>&1 && echo "✅ ZAP scanner working" || echo "❌ ZAP scanner failed"
 
+# Start all services
+echo "Starting all services..."
 docker-compose up -d
+
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL to be ready..."
+sleep 30
+docker-compose exec -T postgres pg_isready -U rag_user -d rag_db || echo "PostgreSQL not ready yet, continuing..."
+
+# Restore database if dump exists
+if [ -f "database-restore.sh" ]; then
+    echo "Restoring database..."
+    chmod +x database-restore.sh
+    ./database-restore.sh || echo "Database restore failed, continuing with empty database"
+else
+    echo "No database-restore.sh found, starting with empty database"
+fi
+
 DOCKEREOF
 
 # Wait a moment for services to start
@@ -511,9 +563,17 @@ show_final_info() {
     echo "  SSH Command: ssh -i ~/.ssh/${KEY_PAIR_NAME}.pem ec2-user@$PUBLIC_IP"
     echo
     echo "Application Access:"
-    echo "  🌐 Application URL: http://$PUBLIC_IP:3000"
+    echo "  🌐 Scanner Application: http://$PUBLIC_IP:3000"
+    echo "  🤖 Cedar AI Dashboard: http://$PUBLIC_IP:3001"
+    echo "  🔧 Mastra AI Backend: http://$PUBLIC_IP:4111"
     echo "  📚 API Documentation: http://$PUBLIC_IP:3000/api/docs"
     echo "  🔑 Admin Login: $ADMIN_USER / $ADMIN_PASS"
+    echo
+    echo "⚠️  IMPORTANT: Configure OpenAI API Key for Cedar AI Features:"
+    echo "  ssh -i ~/.ssh/${KEY_PAIR_NAME}.pem ec2-user@$PUBLIC_IP"
+    echo "  cd /opt/ventiapi && nano .env.local"
+    echo "  # Set OPENAI_API_KEY=your-actual-api-key"
+    echo "  docker-compose restart cedar-mastra"
     echo
     echo "Management Commands:"
     echo "  # Check application status"
