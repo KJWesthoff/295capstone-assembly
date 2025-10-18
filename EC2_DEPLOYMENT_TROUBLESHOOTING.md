@@ -272,6 +272,13 @@ redis          redis:7-alpine            "docker-entrypoint.s…"   Up
 3. Authenticated requests to `/api/scanners` return all 3 engines
 4. Dynamic scanner discovery working in Cedar Dashboard
 
+### RAG System Status
+1. ✅ **OpenAI API Key**: Valid key configured in Cedar Mastra
+2. ✅ **Database Connection**: PostgreSQL with pgvector for RAG storage
+3. ✅ **AI Agent**: Security analyst agent responding to queries
+4. ✅ **Chat Interface**: Streaming responses in Cedar Dashboard
+5. ✅ **Context Awareness**: AI can reference scan results and security knowledge
+
 ---
 
 ## Key Lessons Learned
@@ -300,6 +307,13 @@ redis          redis:7-alpine            "docker-entrypoint.s…"   Up
 - Missing environment variables can break entire authentication flow
 - Cedar Dashboard requires both frontend and backend authentication configuration
 - Dynamic content (like scanner lists) depends on successful authentication
+
+### 6. AI/RAG System Configuration
+- OpenAI API keys must be valid and properly scoped for the application
+- Environment file precedence can override critical API configurations
+- AI system failures often appear as empty responses rather than obvious errors
+- RAG systems require both valid API keys AND proper database connections
+- Silent failures in AI systems are harder to debug than explicit error messages
 
 ---
 
@@ -352,6 +366,78 @@ HEALTHCHECK --interval=30s --timeout=10s \
   CMD curl -f http://localhost:3000/health || exit 1
 ```
 
+### 5. OpenAI API Key Management
+```bash
+# Good: Explicit environment variable override
+docker run -d \
+  --env-file .env.local \
+  -e OPENAI_API_KEY=${ACTUAL_API_KEY} \
+  container-name
+
+# Better: Separate environment files
+docker run -d \
+  --env-file .env.secrets \
+  --env-file .env.local \
+  container-name
+
+# Best: Use secrets management
+docker run -d \
+  --secret openai_api_key \
+  -e OPENAI_API_KEY_FILE=/run/secrets/openai_api_key \
+  container-name
+```
+
+### 6. Environment Variable Validation
+```bash
+#!/bin/bash
+# Validate critical environment variables
+required_vars=("OPENAI_API_KEY" "DATABASE_URL" "ADMIN_PASSWORD")
+
+for var in "${required_vars[@]}"; do
+  if [[ -z "${!var}" ]] || [[ "${!var}" == *"placeholder"* ]] || [[ "${!var}" == *"your-"* ]]; then
+    echo "❌ $var not properly configured"
+    exit 1
+  else
+    echo "✅ $var configured"
+  fi
+done
+```
+
+---
+
+## Problem 10: RAG System OpenAI API Key Configuration
+
+### Issue
+- Cedar Dashboard chat giving empty responses
+- RAG system failing silently
+- AI security analysis not working
+
+### Root Cause
+```javascript
+// Console shows no visible errors, but backend logs show:
+AI_APICallError: Incorrect API key provided: your-ope************here
+finishReason: 'error'
+```
+
+- Cedar Mastra using placeholder API key from `.env.local`
+- Valid OpenAI API key was in `cedar-frontend/.env` but not being used
+- Environment file precedence overriding correct configuration
+
+### Solution
+1. **Identified Correct API Key**: Found valid key in `cedar-frontend/.env`
+2. **Fixed Environment Variable Priority**:
+   ```bash
+   docker run -d --name cedar-mastra \
+     --env-file .env.local \
+     -e OPENAI_API_KEY=sk-proj-[actual-key] \
+     # ... other args
+   ```
+3. **Verified Configuration**: Checked container has correct API key
+4. **Tested RAG Functionality**: Confirmed AI responses working
+
+**Files Involved**: `cedar-frontend/.env`, `.env.local`
+**Environment Variables**: `OPENAI_API_KEY`
+
 ---
 
 ## Timeline Summary
@@ -362,7 +448,8 @@ HEALTHCHECK --interval=30s --timeout=10s \
 4. **Network Fixes**: Fixed container naming and security group ports
 5. **Authentication Fixes**: Added missing credentials and CORS configuration
 6. **Frontend Fixes**: Fixed hardcoded URLs and build-time environment variables
-7. **Final Result**: Complete working deployment with all functionality
+7. **RAG System Fix**: Configured valid OpenAI API key for AI functionality
+8. **Final Result**: Complete working deployment with all functionality including AI
 
-**Total Resolution Time**: ~4 hours of systematic debugging
-**Success Metrics**: All endpoints accessible, all scanners working, Cedar Dashboard fully functional
+**Total Resolution Time**: ~5 hours of systematic debugging
+**Success Metrics**: All endpoints accessible, all scanners working, Cedar Dashboard fully functional, RAG AI system working

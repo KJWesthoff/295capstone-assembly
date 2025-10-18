@@ -237,7 +237,10 @@ When scan results change:
 Use Docker Compose (see Quick Start)
 
 ### AWS EC2 (Current Production)
-See `AWS_DEPLOYMENT.md` for complete instructions
+See deployment guides for complete instructions:
+- **`EC2_DEPLOYMENT_CHECKLIST.md`**: Step-by-step deployment procedures and validation
+- **`EC2_DEPLOYMENT_TROUBLESHOOTING.md`**: Common issues and systematic fixes
+- **`AWS_DEPLOYMENT.md`**: Complete deployment guide
 - Deployed at http://54.241.100.240:3000
 - Uses docker-compose.yml on EC2 instance
 - nginx reverse proxy on port 3000
@@ -293,7 +296,13 @@ See `test-scanner-connection.sh` for scanner connectivity tests
 - `START_HERE.md`: Cedar dashboard quick start
 - `SPIKE_CEDEROS_INTEGRATION.md`: Detailed Cedar/Mastra integration design
 - `ARCHITECTURE_COMPARISON.md`: MVP vs Production architecture comparison
+
+### Deployment Documentation
 - `AWS_DEPLOYMENT.md`: AWS deployment guide
+- `EC2_DEPLOYMENT_CHECKLIST.md`: Complete deployment checklist and procedures
+- `EC2_DEPLOYMENT_TROUBLESHOOTING.md`: Troubleshooting guide with 10+ common issues and fixes
+
+### Configuration and Security
 - `SECURITY.md`: Security implementation details
 - `SECRETS.md`: Secrets management guide
 - `MULTI_SCANNER_GUIDE.md`: Multi-scanner configuration
