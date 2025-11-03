@@ -135,7 +135,7 @@ services:
   # Cedar Frontend (Next.js with Cedar OS)
   cedar-frontend:
     build:
-      context: ./cedar-frontend
+      context: ./cedar-mastra
       dockerfile: Dockerfile.nextjs
       args:
         - NEXT_PUBLIC_MASTRA_URL=http://localhost:4111
@@ -165,7 +165,7 @@ services:
   cedar-mastra:
     #platform: linux/amd64  # Use x86_64 for LibSQL native module support
     build:
-      context: ./cedar-frontend
+      context: ./cedar-mastra
       dockerfile: Dockerfile.mastra
     container_name: cedar-mastra
     ports:
@@ -173,7 +173,7 @@ services:
     networks:
       - scanner-network
     env_file:
-      - ./cedar-frontend/.env
+      - ./cedar-mastra/.env
       - .env.local
     environment:
       - SCANNER_SERVICE_URL=http://web-api:8000

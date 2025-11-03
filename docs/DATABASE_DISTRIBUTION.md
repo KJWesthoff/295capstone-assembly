@@ -260,8 +260,8 @@ find database/dumps -name "*.sql.gz" -mtime +30 -delete  # Keep last 30 days
 ### Database Connection Errors
 
 ```bash
-# Check DATABASE_URL in cedar-frontend/.env
-cat cedar-frontend/.env | grep DATABASE_URL
+# Check DATABASE_URL in cedar-mastra/.env
+cat cedar-mastra/.env | grep DATABASE_URL
 
 # Should be: postgresql://rag_user:rag_pass@localhost:54320/rag_db (local dev)
 # Or: postgresql://rag_user:rag_pass@postgres:5432/rag_db (docker compose)

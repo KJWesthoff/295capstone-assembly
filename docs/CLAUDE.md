@@ -49,7 +49,7 @@ uvicorn main:app --reload --port 8000
 
 ```bash
 # Install dependencies (first time)
-cd cedar-frontend
+cd cedar-mastra
 bun install
 cd src/backend && bun install && cd ../..
 
@@ -110,10 +110,10 @@ AI-native architecture using Cedar OS state management and Mastra RAG framework:
 6. Streaming response rendered in chat UI
 
 **Important Directories**:
-- `cedar-frontend/src/app/`: Next.js pages including security dashboard
-- `cedar-frontend/src/app/cedar-os/`: Cedar state management and context
-- `cedar-frontend/src/backend/src/mastra/agents/`: AI security analyst agents
-- `cedar-frontend/src/backend/src/mastra/tools/`: Scanner bridge tools and RAG query tools
+- `cedar-mastra/src/app/`: Next.js pages including security dashboard
+- `cedar-mastra/src/app/cedar-os/`: Cedar state management and context
+- `cedar-mastra/src/backend/src/mastra/agents/`: AI security analyst agents
+- `cedar-mastra/src/backend/src/mastra/tools/`: Scanner bridge tools and RAG query tools
 
 ## Scanner Service Details
 
@@ -172,7 +172,7 @@ Each scanner runs in isolated Docker containers with shared result volumes.
 
 ### Cedar Dashboard
 
-`cedar-frontend/.env`:
+`cedar-mastra/.env`:
 - `OPENAI_API_KEY`: OpenAI API key for LLM
 - `SCANNER_SERVICE_URL`: URL to Python scanner API (default: http://localhost:8000)
 - Database credentials for PostgreSQL RAG vector store (when integrated)
@@ -225,10 +225,10 @@ docker compose exec web-api ls -la /shared/specs/
 ### Working with Cedar Integration
 
 Key files for Cedar/Mastra integration:
-- `cedar-frontend/src/app/cedar-os/scanState.ts`: State management for scan results
-- `cedar-frontend/src/backend/src/mastra/agents/securityAnalystAgent.ts`: Main AI agent
-- `cedar-frontend/src/backend/src/mastra/tools/scannerBridgeTool.ts`: Scanner API integration
-- `cedar-frontend/src/backend/src/mastra/workflows/chatWorkflow.ts`: Handles streaming chat with Cedar context
+- `cedar-mastra/src/app/cedar-os/scanState.ts`: State management for scan results
+- `cedar-mastra/src/backend/src/mastra/agents/securityAnalystAgent.ts`: Main AI agent
+- `cedar-mastra/src/backend/src/mastra/tools/scannerBridgeTool.ts`: Scanner API integration
+- `cedar-mastra/src/backend/src/mastra/workflows/chatWorkflow.ts`: Handles streaming chat with Cedar context
 
 When scan results change:
 1. Update state shape in `scanState.ts`

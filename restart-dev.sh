@@ -10,13 +10,13 @@ SERVICE="${1:-all}"
 # Clear Mastra build cache function
 clear_mastra_cache() {
     echo "🧹 Clearing Mastra build cache..."
-    if [ -d "cedar-frontend/.mastra" ]; then
-        rm -rf cedar-frontend/.mastra
-        echo "✅ Cleared cedar-frontend/.mastra"
+    if [ -d "cedar-mastra/.mastra" ]; then
+        rm -rf cedar-mastra/.mastra
+        echo "✅ Cleared cedar-mastra/.mastra"
     fi
-    if [ -d "cedar-frontend/src/backend/.mastra" ]; then
-        rm -rf cedar-frontend/src/backend/.mastra
-        echo "✅ Cleared cedar-frontend/src/backend/.mastra"
+    if [ -d "cedar-mastra/src/backend/.mastra" ]; then
+        rm -rf cedar-mastra/src/backend/.mastra
+        echo "✅ Cleared cedar-mastra/src/backend/.mastra"
     fi
 }
 
