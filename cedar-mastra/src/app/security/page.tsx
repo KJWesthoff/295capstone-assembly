@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useScanResultsState, getSeverityColor, VulnerabilityFinding } from '@/app/cedar-os/scanState';
 import { FloatingCedarChat } from '@/app/cedar-os/components/chatComponents/FloatingCedarChat';
 import { useCedarStore } from 'cedar-os';
@@ -9,16 +10,53 @@ import { scannerApi, ScanStatus } from '@/lib/scannerApi';
 import { useSecurityContext } from '@/app/cedar-os/context';
 
 export default function SecurityDashboardPage() {
+  const router = useRouter();
   const { scanResults, setScanResults } = useScanResultsState();
   const addContextEntry = useCedarStore(s => s.addContextEntry);
 
   // Subscribe scan results to agent context - only call once at component level
   useSecurityContext();
-  
+
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [currentScanStatus, setCurrentScanStatus] = useState<ScanStatus | null>(null);
+
+  // Severity filters
+  const [severityFilters, setSeverityFilters] = useState<Set<string>>(new Set(['Critical', 'High', 'Medium', 'Low']));
+
+  // Track which findings have been added to context
+  const [addedFindings, setAddedFindings] = useState<Set<string>>(new Set());
+
+  // Track if component has mounted (prevents hydration errors)
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Helper functions for filtering
+  const toggleSeverityFilter = (severity: string) => {
+    const newFilters = new Set(severityFilters);
+    if (newFilters.has(severity)) {
+      newFilters.delete(severity);
+    } else {
+      newFilters.add(severity);
+    }
+    setSeverityFilters(newFilters);
+  };
+
+  const resetFilters = () => {
+    setSeverityFilters(new Set(['Critical', 'High', 'Medium', 'Low']));
+  };
+
+  // Get filtered findings
+  const getFilteredFindings = () => {
+    if (!scanResults) return [];
+    return scanResults.findings.filter(f => severityFilters.has(f.severity));
+  };
+
+  const filteredFindings = getFilteredFindings();
 
   // Poll scan status if there's an active scan
   useEffect(() => {
@@ -50,6 +88,16 @@ export default function SecurityDashboardPage() {
           setIsScanning(false);
           setCurrentScanStatus(null);
           clearInterval(pollInterval);
+
+          // Navigate to role-specific dashboard after scan completes
+          const userRole = localStorage.getItem('userRole') || 'dashboard';
+          const routeMap: Record<string, string> = {
+            'executive': '/executive',
+            'security': '/dashboard',
+            'developer': '/developer',
+            'dashboard': '/dashboard' // fallback
+          };
+          router.push(routeMap[userRole] || '/dashboard');
         } else if (status.status === 'failed') {
           alert('Scan failed: ' + (status.error || 'Unknown error'));
           setIsScanning(false);
@@ -65,6 +113,9 @@ export default function SecurityDashboardPage() {
   }, [activeScanId, scanResults?.status]);
 
   const loadScanResults = (scanId: string, findings: any[]) => {
+    // Reset added findings when loading new scan results
+    setAddedFindings(new Set());
+
     // Debug: Log raw findings from API
     console.log('Raw findings from scanner API:', JSON.stringify(findings, null, 2));
 
@@ -146,6 +197,14 @@ export default function SecurityDashboardPage() {
           showInChat: true,
         },
       });
+
+      // Mark this finding as added
+      setAddedFindings(prev => {
+        const newSet = new Set(prev);
+        newSet.add(finding.id);
+        console.log('✅ Updated addedFindings. Now contains:', Array.from(newSet));
+        return newSet;
+      });
     } catch (error) {
       console.error('Failed to add to context:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -188,6 +247,10 @@ export default function SecurityDashboardPage() {
           },
         });
       });
+
+      // Mark all findings as added
+      const findingIds = findings.map(f => f.id).filter(Boolean);
+      setAddedFindings(prev => new Set([...prev, ...findingIds]));
 
       console.log('Successfully added all findings to context');
     } catch (error) {
@@ -653,6 +716,63 @@ export default function SecurityDashboardPage() {
           </div>
         </div>
 
+        {/* Filters and Actions */}
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            {/* Filter Checkboxes */}
+            <div className="flex items-center gap-4">
+              <span className="text-white font-semibold text-sm">Filter by Severity:</span>
+              {['Critical', 'High', 'Medium', 'Low'].map((severity) => {
+                const isActive = severityFilters.has(severity);
+                const colorClasses = {
+                  Critical: 'bg-red-900 bg-opacity-30 border-red-600 text-red-300',
+                  High: 'bg-orange-900 bg-opacity-30 border-orange-600 text-orange-300',
+                  Medium: 'bg-yellow-900 bg-opacity-30 border-yellow-600 text-yellow-300',
+                  Low: 'bg-blue-900 bg-opacity-30 border-blue-600 text-blue-300',
+                };
+
+                return (
+                  <label
+                    key={severity}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
+                      isActive
+                        ? colorClasses[severity as keyof typeof colorClasses]
+                        : 'bg-gray-700 border-gray-600 text-gray-400'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={() => toggleSeverityFilter(severity)}
+                      className="w-4 h-4 cursor-pointer"
+                    />
+                    <span className="text-sm font-medium">{severity}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={resetFilters}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold rounded-lg transition-colors border border-gray-600"
+              >
+                Reset Filters
+              </button>
+              <button
+                onClick={() => handleAddAllToContext(filteredFindings)}
+                disabled={filteredFindings.length === 0}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
+                title="Add all filtered vulnerabilities to chat"
+              >
+                <span>💬</span>
+                <span>Add all filtered to chat ({filteredFindings.length})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Vulnerabilities by Endpoint */}
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-white mb-4">
@@ -660,6 +780,8 @@ export default function SecurityDashboardPage() {
           </h2>
 
           {Object.entries(scanResults.groupedByEndpoint)
+            .map(([endpoint, findings]) => [endpoint, findings.filter(f => severityFilters.has(f.severity))] as const)
+            .filter(([, filteredEndpointFindings]) => filteredEndpointFindings.length > 0)
             .sort(([, findingsA], [, findingsB]) => {
               // Severity ranking: Critical > High > Medium > Low
               const severityRank = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1 };
@@ -720,6 +842,7 @@ export default function SecurityDashboardPage() {
                     key={finding.id}
                     finding={finding}
                     onAddToContext={() => handleAddToContext(finding)}
+                    isAdded={addedFindings.has(finding.id)}
                   />
                 ))}
               </div>
@@ -738,12 +861,14 @@ export default function SecurityDashboardPage() {
         isLoading={isScanning}
       />
 
-      {/* Floating Cedar Chat - Always rendered once */}
-      <FloatingCedarChat
-        side="right"
-        title="🤖 Security Analyst AI"
-        collapsedLabel={scanResults?.status === 'completed' ? "💬 Ask about vulnerabilities..." : "💬 Ask about security..."}
-      />
+      {/* Page-specific Cedar Chat - only render after mount to prevent hydration errors */}
+      {mounted && (
+        <FloatingCedarChat
+          side="right"
+          title="🤖 Security Analyst AI"
+          collapsedLabel={scanResults?.status === 'completed' ? "💬 Ask about vulnerabilities..." : "💬 Ask about security..."}
+        />
+      )}
     </>
   );
 }
@@ -752,9 +877,11 @@ export default function SecurityDashboardPage() {
 function VulnerabilityCard({
   finding,
   onAddToContext,
+  isAdded,
 }: {
   finding: VulnerabilityFinding;
   onAddToContext: () => void;
+  isAdded: boolean;
 }) {
   return (
     <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 hover:border-gray-500 transition-colors">
@@ -787,11 +914,19 @@ function VulnerabilityCard({
 
       <div className="flex gap-2 mt-3">
         <button
-          onClick={onAddToContext}
-          className="w-8 h-8 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold rounded-full transition-colors flex items-center justify-center"
-          title="Add to chat context"
+          onClick={() => {
+            console.log('🔘 Add button clicked for finding:', finding.id);
+            onAddToContext();
+          }}
+          disabled={isAdded}
+          className={`w-8 h-8 text-white text-lg font-bold rounded-full transition-all flex items-center justify-center ${
+            isAdded
+              ? 'bg-green-600 cursor-default'
+              : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+          }`}
+          title={isAdded ? 'Added to chat context' : 'Add to chat context'}
         >
-          +
+          {isAdded ? '✓' : '+'}
         </button>
       </div>
     </div>

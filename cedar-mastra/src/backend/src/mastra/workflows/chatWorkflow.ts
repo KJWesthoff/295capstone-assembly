@@ -183,12 +183,13 @@ const fetchContext = createStep({
 
     let enhancedPrompt = inputData.prompt;
 
-    // Extract scan ID from additionalContext if present
+    // Extract scan ID and vulnerability findings from additionalContext if present
     if (inputData.additionalContext) {
       console.log('Additional context received:', JSON.stringify(inputData.additionalContext, null, 2));
 
       // Look for scan ID in additionalContext
       let scanId: string | null = null;
+      const vulnerabilityFindings: any[] = [];
 
       // Check scanResults state subscription (from useSecurityContext)
       if (inputData.additionalContext.scanResults) {
@@ -207,14 +208,85 @@ const fetchContext = createStep({
         const entries = inputData.additionalContext[key];
         if (Array.isArray(entries)) {
           for (const entry of entries) {
+            // Extract scan ID if present
             if (entry.data?.scanId) {
               scanId = entry.data.scanId;
               console.log(`Found scan ID in manual context entry: ${scanId}`);
-              break;
+            }
+
+            // Extract vulnerability findings (from Finding type: id, endpoint, severity, etc.)
+            if (entry.data?.id && entry.data?.endpoint && entry.data?.severity) {
+              vulnerabilityFindings.push(entry.data);
+              console.log(`Found vulnerability finding: ${entry.data.id} - ${entry.data.endpoint.method} ${entry.data.endpoint.path} (${entry.data.severity})`);
             }
           }
         }
-        if (scanId) break;
+      }
+
+      // Format vulnerability findings for the agent
+      if (vulnerabilityFindings.length > 0) {
+        const formattedFindings = vulnerabilityFindings.map(finding => `
+**Vulnerability: ${finding.summaryHumanReadable || finding.id}**
+- ID: ${finding.id}
+- Severity: ${finding.severity} (CVSS: ${finding.cvss})
+- Endpoint: ${finding.endpoint.method} ${finding.endpoint.path}
+- Service: ${finding.endpoint.service || 'Unknown'}
+- OWASP: ${finding.owasp}
+- CWE: ${finding.cwe?.join(', ') || 'N/A'}
+- CVE: ${finding.cve?.length > 0 ? finding.cve.join(', ') : 'None'}
+- Scanners: ${finding.scanners?.join(', ') || 'Unknown'}
+- Status: ${finding.status}
+- Exploit Present: ${finding.exploitPresent ? 'Yes' : 'No'}
+- Priority Score: ${finding.priorityScore?.toFixed(2) || 'N/A'}
+${finding.suggestedFix ? `- Suggested Fix: ${finding.suggestedFix}` : ''}
+`).join('\n---\n');
+
+        enhancedPrompt = `${inputData.prompt}
+
+[CONTEXT: User has selected the following vulnerability findings to discuss:]
+${formattedFindings}
+
+[ROLE GUIDANCE:]
+You are a friendly API security lead helping a small team that cannot afford a full security department.
+They have at most a few hours this week to work on security.
+
+Your approach:
+- Be conversational and approachable - you're a colleague, not a lecturer
+- Start with what matters most, not everything at once
+- Ask if they want to dive deeper rather than overwhelming them
+- Use plain language - pretend you're explaining to a friend over coffee
+- Encourage questions and back-and-forth dialogue
+
+Your job is NOT to list every problem or dump a wall of text. Your job is to:
+1) Explain what's at risk in plain language
+2) Tell them what to fix TODAY (in a few hours) vs this month
+3) Make them feel empowered, not overwhelmed
+4) Help them see why this tool is worth using regularly
+
+[COMMUNICATION STYLE:]
+Write like you're talking to a colleague, NOT writing a security report:
+
+❌ DON'T DO THIS:
+- Section headers ("What to do today:", "Business Impact:", etc.)
+- Numbered or bulleted lists
+- Technical jargon (P0, WAF, ORM, CVSS, CWE, CVE)
+- Comprehensive coverage of everything
+- Formal tone or audit-report language
+
+✅ DO THIS INSTEAD:
+- Write in natural paragraphs like you're explaining over Slack
+- Use everyday language ("this is really bad" not "P0 critical severity")
+- Lead with the scariest thing in plain terms
+- Suggest 1-2 quick fixes they can do right now
+- End with an open question inviting them to dig deeper
+
+Example good response structure:
+"Hey, so this SQL injection in your login is pretty serious - someone could sign in as admin without knowing the password. The good news is the fix is straightforward: switch to parameterized queries instead of building SQL strings.
+
+Want me to show you exactly what that looks like in your code? Or should we talk about which one to tackle first if you have multiple findings?"
+
+Keep it short (2-3 paragraphs max). Make them WANT to ask a follow-up question, don't answer everything upfront.`;
+        console.log(`Enhanced prompt with ${vulnerabilityFindings.length} vulnerability findings`);
       }
 
       // If scan ID found and user is asking for analysis, append it to prompt
@@ -223,10 +295,18 @@ const fetchContext = createStep({
         inputData.prompt.toLowerCase().includes('report') ||
         inputData.prompt.toLowerCase().includes('scan')
       )) {
-        enhancedPrompt = `${inputData.prompt}
+        if (vulnerabilityFindings.length === 0) {
+          // Only add scan ID context if we haven't already added vulnerability findings
+          enhancedPrompt = `${inputData.prompt}
 
 [CONTEXT: Scan ID ${scanId} is available in the context. Use scan-analysis-workflow to analyze it.]`;
-        console.log(`Enhanced prompt with scan ID: ${scanId}`);
+          console.log(`Enhanced prompt with scan ID: ${scanId}`);
+        } else {
+          // If we have both vulnerability findings and scan ID, add scan ID to the existing enhanced prompt
+          enhancedPrompt = `${enhancedPrompt}
+
+[ADDITIONAL CONTEXT: These vulnerabilities are from scan ID ${scanId}]`;
+        }
       }
     }
 

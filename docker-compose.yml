@@ -1,5 +1,7 @@
 services:
-  # Nginx Reverse Proxy (for Railway deployment)
+  # Nginx Reverse Proxy (API Gateway for Scanner Service)
+  # Note: This ONLY proxies the scanner API, not the frontend
+  # The Cedar frontend runs separately on its own port
   nginx:
     image: nginx:alpine
     container_name: ventiapi-nginx
@@ -7,21 +9,20 @@ services:
       - "3000:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - frontend-build:/usr/share/nginx/html
     networks:
       - scanner-network
     depends_on:
-      - frontend
       - web-api
 
-  # Frontend React App (build only)
-  frontend:
-    build: ./frontend
-    container_name: ventiapi-frontend
-    volumes:
-      - frontend-build:/shared
-    networks:
-      - scanner-network
+  # DISABLED: Old Frontend React App (replaced by Cedar frontend)
+  # The Cedar frontend now runs manually via: cd cedar-mastra && npm run dev
+  # frontend:
+  #   build: ./frontend
+  #   container_name: ventiapi-frontend
+  #   volumes:
+  #     - frontend-build:/shared
+  #   networks:
+  #     - scanner-network
 
   # Web API Backend
   web-api:

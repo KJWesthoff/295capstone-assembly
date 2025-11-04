@@ -1,11 +1,36 @@
+'use client';
+
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Shield, Lock, Zap } from "lucide-react";
+import { Shield, Lock, Zap, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import cyberBearLogo from "@/assets/cyber-bear-logo.png";
 import heroSecurity from "@/assets/hero-security.png";
 
+type UserRole = 'executive' | 'security' | 'developer';
+
+const roles: { value: UserRole; label: string; icon: string; description: string }[] = [
+  { value: 'executive', label: 'C-Suite Executive', icon: '👔', description: 'High-level risk overview' },
+  { value: 'security', label: 'Security Analyst', icon: '🛡️', description: 'Detailed vulnerability analysis' },
+  { value: 'developer', label: 'Software Engineer', icon: '💻', description: 'Actionable remediation guidance' },
+];
+
 const Hero = () => {
+  const router = useRouter();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+
+  const handleRoleSelect = (role: UserRole) => {
+    setSelectedRole(role);
+    // Store the role in localStorage
+    localStorage.setItem('userRole', role);
+    setShowDropdown(false);
+    // Navigate to scanner page
+    router.push('/security');
+  };
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-primary">
       {/* Background Image with Overlay */}
@@ -72,15 +97,55 @@ const Hero = () => {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
-              <Link href="/security">
+              {/* Role Selection Dropdown */}
+              <div className="relative w-full sm:w-auto">
                 <Button
                   size="lg"
                   variant="hero"
-                  className="text-lg w-full sm:w-auto"
+                  className="text-lg w-full sm:w-auto flex items-center gap-2"
+                  onClick={() => setShowDropdown(!showDropdown)}
                 >
                   Get Started
+                  <ChevronDown className={`w-5 h-5 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
                 </Button>
-              </Link>
+
+                {/* Dropdown Menu */}
+                {showDropdown && (
+                  <div className="absolute top-full mt-2 w-full sm:w-80 bg-white rounded-lg shadow-2xl border border-gray-200 z-[100] max-h-[400px] overflow-y-auto">
+                    <div className="p-3 bg-gray-50 border-b border-gray-200 sticky top-0">
+                      <p className="text-sm font-semibold text-gray-900">Select Your Role</p>
+                      <p className="text-xs text-gray-600 mt-1">Choose your perspective for the dashboard</p>
+                    </div>
+                    <div className="p-2">
+                      {roles.map((role) => (
+                        <button
+                          key={role.value}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRoleSelect(role.value);
+                          }}
+                          type="button"
+                          className="w-full text-left p-3 rounded-md hover:bg-gray-100 transition-colors group cursor-pointer block"
+                        >
+                          <div className="flex items-start gap-3 pointer-events-none">
+                            <span className="text-2xl">{role.icon}</span>
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900 group-hover:text-blue-600">
+                                {role.label}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {role.description}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <Link href="/security">
                 <Button
                   size="lg"

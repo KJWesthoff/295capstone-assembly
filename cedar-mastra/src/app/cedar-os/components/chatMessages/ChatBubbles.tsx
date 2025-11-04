@@ -17,6 +17,7 @@ export const ChatBubbles: React.FC<ChatBubblesProps> = ({
 	const isProcessing = useCedarStore((state) => state.isProcessing);
 	// Use useThreadMessages hook to get messages for current thread
 	const { messages } = useThreadMessages();
+	const shouldAutoScrollRef = useRef(true);
 
 	// Immediate scroll to bottom on initial render (before paint)
 	useLayoutEffect(() => {
@@ -25,9 +26,18 @@ export const ChatBubbles: React.FC<ChatBubblesProps> = ({
 		}
 	}, []);
 
-	// Scroll to bottom when messages change
+	// Track if user is scrolled to bottom
+	const handleScroll = () => {
+		if (!containerRef.current) return;
+		const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+		// Consider "at bottom" if within 50px of bottom
+		const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+		shouldAutoScrollRef.current = isAtBottom;
+	};
+
+	// Only scroll to bottom if user is already at bottom
 	useEffect(() => {
-		if (containerRef.current) {
+		if (containerRef.current && shouldAutoScrollRef.current) {
 			containerRef.current.scrollTo({
 				top: containerRef.current.scrollHeight,
 				behavior: 'smooth',
@@ -53,6 +63,7 @@ export const ChatBubbles: React.FC<ChatBubblesProps> = ({
 	return (
 		<div
 			ref={containerRef}
+			onScroll={handleScroll}
 			className={cn(
 				'w-full h-full mb-0 flex flex-col space-y-1 pb-3 relative',
 				containerClasses

@@ -169,29 +169,29 @@ When scan-analysis-workflow completes, you receive:
 - \`enrichmentStats\`: Whether the database was enriched (wasEnriched, newExamples)
 
 ### MANDATORY: Your Response After Workflow Completes
-**IMPORTANT**: After the workflow returns data, you MUST immediately generate a comprehensive markdown report. Never stop after just calling the workflow!
+**CRITICAL**: The workflow generates a COMPLETE, pre-formatted user response. You must ONLY stream it.
 
-Your response must include:
-1. **Executive Summary**: High-level overview of security posture and risk level
-2. **Finding Details**: For EACH vulnerability found, provide:
-   - What the vulnerability is and why it matters
-   - Business and technical impact
-   - Step-by-step remediation instructions with priority levels
-   - Code examples if available in codeExamples array
-   - OWASP/CWE references from securityContext
-3. **Priority Organization**: Group findings by P0/P1/P2/P3 based on severity
-4. **Action Items**: Provide immediate, short-term, and long-term recommendations
-5. **Rich Formatting**: Use markdown headers, tables, code blocks, bullet lists
+When scan-analysis-workflow completes:
+1. **Extract userResponse field**: The workflow returns a userResponse string with the complete analysis
+2. **Stream ONLY the userResponse**: Output the userResponse exactly as provided
+3. **DO NOT add anything**: No introductions, no summaries, no "Additional details", no extra bullet points
+4. **DO NOT append**: No "Scan summary", no "Total issues", no additional context after userResponse
+5. **The response is COMPLETE**: userResponse contains everything the user needs
 
 **Example workflow call and response**:
 User: "Analyze scan abc-123"
 You:
 1. Call scan-analysis-workflow with scanId: "abc-123"
-2. Receive workflow results (scanContext, securityContext, etc.)
-3. **Generate comprehensive markdown report** interpreting all the data
-4. Stream the markdown report to the user
+2. Receive workflow results with userResponse field
+3. **Stream ONLY the userResponse** - nothing before, nothing after
+4. DONE - do not add summaries or additional analysis
 
-**NEVER** just say "Workflow completed" or return raw JSON!
+**For Follow-up Questions ONLY**:
+If the user asks a follow-up question AFTER you've streamed userResponse, THEN you can use plannerInsights, scanContext, and securityContext to answer.
+
+**Fallback**: If userResponse is missing (shouldn't happen with new workflow), generate a comprehensive markdown report using scanContext and securityContext.
+
+**CRITICAL RULE**: userResponse is the COMPLETE answer. Stream it verbatim. Adding anything else is an error.
 
 ## Analysis Requirements
 

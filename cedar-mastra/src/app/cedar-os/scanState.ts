@@ -38,9 +38,20 @@ export interface ScanResultsState {
  * Similar to useRoadmapState but for security vulnerabilities
  */
 export function useScanResultsState() {
+  // Load initial value from localStorage if available
+  const getInitialValue = (): ScanResultsState | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem('scanResults');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  };
+
   const [scanResults, setScanResults] = useCedarState<ScanResultsState | null>({
     stateKey: 'scanResults',
-    initialValue: null,
+    initialValue: getInitialValue(),
     description: 'API security scan results with vulnerability findings',
   });
 
@@ -174,9 +185,21 @@ export function useScanResultsState() {
     },
   });
 
+  // Wrapper to persist to localStorage whenever scan results change
+  const setScanResultsWithPersistence = (newState: ScanResultsState | null) => {
+    setScanResults(newState);
+    if (typeof window !== 'undefined') {
+      if (newState) {
+        localStorage.setItem('scanResults', JSON.stringify(newState));
+      } else {
+        localStorage.removeItem('scanResults');
+      }
+    }
+  };
+
   return {
     scanResults,
-    setScanResults,
+    setScanResults: setScanResultsWithPersistence,
   };
 }
 

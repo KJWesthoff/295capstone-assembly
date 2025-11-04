@@ -86,6 +86,7 @@ export const FindingsTable = ({
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [internalSelectedFindings, setInternalSelectedFindings] = useState<Set<string>>(new Set());
+  const [addedFindings, setAddedFindings] = useState<Set<string>>(new Set());
   const { addItem } = useContextBasket();
   const { addToContext } = useCedarActions();
 
@@ -114,8 +115,14 @@ export const FindingsTable = ({
 
   const handleAddToChat = (finding: Finding, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+
+    console.log('🔘 Add button clicked for finding:', finding.id);
+    console.log('📋 Finding data:', finding);
+
     const payload = cedarPayloadShapes.fullFinding(finding);
     const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
+
+    console.log('📦 Adding to context with label:', label);
 
     // Use Cedar's native context system
     addToContext(
@@ -126,6 +133,14 @@ export const FindingsTable = ({
       finding.severity === "High" ? "#ea580c" :
       finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
     );
+
+    // Mark this finding as added
+    setAddedFindings(prev => {
+      const newSet = new Set(prev);
+      newSet.add(finding.id);
+      console.log('✅ Updated addedFindings. Now contains:', Array.from(newSet));
+      return newSet;
+    });
   };
 
   const handleAddAllFiltered = () => {
@@ -528,10 +543,26 @@ export const FindingsTable = ({
                         variant="ghost"
                         size="sm"
                         onClick={(e) => handleAddToChat(finding, e)}
-                        className="h-7 text-xs bg-primary/10 hover:bg-primary/20 text-primary"
+                        disabled={addedFindings.has(finding.id)}
+                        className={cn(
+                          "h-7 text-xs transition-all",
+                          addedFindings.has(finding.id)
+                            ? "bg-green-600/20 hover:bg-green-600/30 text-green-600 cursor-default"
+                            : "bg-primary/10 hover:bg-primary/20 text-primary"
+                        )}
+                        title={addedFindings.has(finding.id) ? "Added to chat context" : "Add to chat context"}
                       >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Add
+                        {addedFindings.has(finding.id) ? (
+                          <>
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Added
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

@@ -9,10 +9,11 @@ export function useCedarActions() {
     addContextEntry(key, {
       id: data.id || `${key}-${Date.now()}`,
       source: "manual" as const,
-      content: JSON.stringify(data), // Cedar expects 'content' field, not 'data'
+      data: data, // Pass data object directly so chatWorkflow can access it
       metadata: {
         label,
         color: color || "#003262",
+        showInChat: true,
       },
     });
     toast.success(`Added to Chat: ${label}`);
