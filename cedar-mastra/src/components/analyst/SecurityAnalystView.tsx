@@ -8,7 +8,12 @@ import { FindingDetailsDrawer } from "./FindingDetailsDrawer";
 import { DiffViewModal } from "./DiffViewModal";
 import { ChatPresets } from "./ChatPresets";
 
-export const SecurityAnalystView = () => {
+interface SecurityAnalystViewProps {
+  selectedFindings?: Set<string>;
+  onSelectionChange?: (selected: Set<string>) => void;
+}
+
+export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: SecurityAnalystViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [showDiffModal, setShowDiffModal] = useState(false);
 
@@ -35,6 +40,8 @@ export const SecurityAnalystView = () => {
         onRowClick={setSelectedFinding}
         onOpenDiff={() => setShowDiffModal(true)}
         diffCounts={diffCounts}
+        selectedFindings={selectedFindings}
+        onSelectionChange={onSelectionChange}
       />
 
       <ChatPresets />

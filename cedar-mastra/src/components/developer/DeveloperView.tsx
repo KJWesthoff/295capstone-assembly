@@ -7,7 +7,12 @@ import { ChatPresets } from "./ChatPresets";
 import { mockFindings } from "@/data/mockFindings";
 import type { Finding } from "@/types/finding";
 
-export const DeveloperView = () => {
+interface DeveloperViewProps {
+  selectedFindings?: Set<string>;
+  onSelectionChange?: (selected: Set<string>) => void;
+}
+
+export const DeveloperView = ({ selectedFindings, onSelectionChange }: DeveloperViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
   return (
@@ -26,6 +31,8 @@ export const DeveloperView = () => {
       <DeveloperFindingsTable
         findings={mockFindings}
         onSelectFinding={setSelectedFinding}
+        selectedFindings={selectedFindings}
+        onSelectionChange={onSelectionChange}
       />
 
       <DeveloperDetailsDrawer

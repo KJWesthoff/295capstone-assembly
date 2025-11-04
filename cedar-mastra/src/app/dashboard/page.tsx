@@ -1,12 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { SecurityAnalystView } from "@/components/analyst/SecurityAnalystView";
 import { ContextBasketProvider } from "@/contexts/ContextBasketContext";
 import { Shield } from "lucide-react";
 
 export default function DashboardPage() {
+  const [selectedFindingIds, setSelectedFindingIds] = useState<Set<string>>(new Set());
+
   return (
     <ContextBasketProvider>
+      {/* Note: Checkbox selection is for UI filtering only.
+          Use "Add to Chat" buttons to manually add findings to Cedar context. */}
+
       <div className="min-h-screen bg-background">
         <header className="border-b border-border bg-card sticky top-0 z-10 shadow-sm">
           <div className="container mx-auto px-6 py-4">
@@ -29,7 +35,10 @@ export default function DashboardPage() {
         </header>
 
         <main className="container mx-auto px-6 py-12">
-          <SecurityAnalystView />
+          <SecurityAnalystView
+            selectedFindings={selectedFindingIds}
+            onSelectionChange={setSelectedFindingIds}
+          />
         </main>
       </div>
     </ContextBasketProvider>

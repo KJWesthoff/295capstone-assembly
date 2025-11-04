@@ -32,11 +32,14 @@ import { useContextBasket } from "@/contexts/ContextBasketContext";
 import { toast } from "sonner";
 import { getFixabilityTooltip } from "@/types/finding";
 import { cedar, cedarPayloadShapes, cedarEstimateTokens, cedarKeyboardShortcuts } from "@/lib/cedar/actions";
+import { useCedarActions } from "@/lib/cedar/hooks";
 import type { Finding } from "@/types/finding";
 
 interface DeveloperFindingsTableProps {
   findings: Finding[];
   onSelectFinding: (finding: Finding) => void;
+  selectedFindings?: Set<string>;
+  onSelectionChange?: (selected: Set<string>) => void;
 }
 
 const severityColors = {
@@ -58,13 +61,29 @@ const testsStatusColors = {
   Passing: "bg-success text-success-foreground",
 };
 
-export const DeveloperFindingsTable = ({ findings, onSelectFinding }: DeveloperFindingsTableProps) => {
+export const DeveloperFindingsTable = ({
+  findings,
+  onSelectFinding,
+  selectedFindings: controlledSelectedFindings,
+  onSelectionChange
+}: DeveloperFindingsTableProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all");
   const [selectedFramework, setSelectedFramework] = useState<string>("all");
-  const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
+  const [internalSelectedFindings, setInternalSelectedFindings] = useState<Set<string>>(new Set());
   const [filteredFindings, setFilteredFindings] = useState<Finding[]>(findings);
   const { addItem } = useContextBasket();
+  const { addToContext } = useCedarActions();
+
+  // Use controlled state if provided, otherwise use internal state
+  const selectedFindings = controlledSelectedFindings ?? internalSelectedFindings;
+  const setSelectedFindings = (newSelection: Set<string>) => {
+    if (onSelectionChange) {
+      onSelectionChange(newSelection);
+    } else {
+      setInternalSelectedFindings(newSelection);
+    }
+  };
 
   useEffect(() => {
     let filtered = findings;
@@ -118,30 +137,36 @@ export const DeveloperFindingsTable = ({ findings, onSelectFinding }: DeveloperF
 
   const handleAddToChat = (finding: Finding) => {
     const payload = cedarPayloadShapes.devMinimal(finding);
-    const tokens = cedarEstimateTokens(payload);
-    addItem({
-      type: "vulnerability",
-      label: `${finding.endpoint.method} ${finding.endpoint.path}`,
-      data: payload,
-      tokens,
-    });
-    toast.success(`Added to Context Basket (≈${tokens} tokens)`);
+    const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
+
+    // Use Cedar's native context system
+    addToContext(
+      `finding-${finding.id}`,
+      payload,
+      label,
+      finding.severity === "Critical" ? "#dc2626" :
+      finding.severity === "High" ? "#ea580c" :
+      finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
+    );
   };
 
   const handleAddSelectedToChat = () => {
     const selected = filteredFindings.filter((f) => selectedFindings.has(f.id));
     selected.forEach((finding) => {
       const payload = cedarPayloadShapes.devMinimal(finding);
-      const tokens = cedarEstimateTokens(payload);
-      addItem({
-        type: "vulnerability",
-        label: `${finding.endpoint.method} ${finding.endpoint.path}`,
-        data: payload,
-        tokens,
-      });
+      const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
+
+      // Use Cedar's native context system
+      addToContext(
+        `finding-${finding.id}`,
+        payload,
+        label,
+        finding.severity === "Critical" ? "#dc2626" :
+        finding.severity === "High" ? "#ea580c" :
+        finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
+      );
     });
-    const totalTokens = selected.reduce((sum, f) => sum + cedarEstimateTokens(cedarPayloadShapes.devMinimal(f)), 0);
-    toast.success(`${selected.length} findings added to Context Basket (≈${totalTokens} tokens)`);
+    toast.success(`${selected.length} findings added to Chat`);
   };
 
   const handleAddAllFilteredToChat = () => {

@@ -32,6 +32,7 @@ import { useContextBasket } from "@/contexts/ContextBasketContext";
 import { toast } from "sonner";
 import { getPriorityTooltip } from "@/types/finding";
 import { cedar, cedarPayloadShapes, cedarEstimateTokens } from "@/lib/cedar/actions";
+import { useCedarActions } from "@/lib/cedar/hooks";
 
 interface FindingsTableProps {
   findings: Finding[];
@@ -42,6 +43,8 @@ interface FindingsTableProps {
     regressed: number;
     resolved: number;
   };
+  selectedFindings?: Set<string>;
+  onSelectionChange?: (selected: Set<string>) => void;
 }
 
 const severityColors = {
@@ -71,12 +74,30 @@ const getAuthIcon = (exposure: number) => {
   return { icon: <Shield className="h-3 w-3" />, label: "Admin", color: "text-info" };
 };
 
-export const FindingsTable = ({ findings, onRowClick, onOpenDiff, diffCounts }: FindingsTableProps) => {
+export const FindingsTable = ({
+  findings,
+  onRowClick,
+  onOpenDiff,
+  diffCounts,
+  selectedFindings: controlledSelectedFindings,
+  onSelectionChange
+}: FindingsTableProps) => {
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
+  const [internalSelectedFindings, setInternalSelectedFindings] = useState<Set<string>>(new Set());
   const { addItem } = useContextBasket();
+  const { addToContext } = useCedarActions();
+
+  // Use controlled state if provided, otherwise use internal state
+  const selectedFindings = controlledSelectedFindings ?? internalSelectedFindings;
+  const setSelectedFindings = (newSelection: Set<string>) => {
+    if (onSelectionChange) {
+      onSelectionChange(newSelection);
+    } else {
+      setInternalSelectedFindings(newSelection);
+    }
+  };
 
   const filteredFindings = findings.filter((f) => {
     const matchSearch =
@@ -94,14 +115,17 @@ export const FindingsTable = ({ findings, onRowClick, onOpenDiff, diffCounts }: 
   const handleAddToChat = (finding: Finding, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const payload = cedarPayloadShapes.fullFinding(finding);
-    const tokenEstimate = cedarEstimateTokens(payload);
-    addItem({
-      type: "vulnerability",
-      label: `${finding.endpoint.method} ${finding.endpoint.path}`,
-      data: payload,
-      tokens: tokenEstimate,
-    });
-    toast.success("Added to Context Basket");
+    const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
+
+    // Use Cedar's native context system
+    addToContext(
+      `finding-${finding.id}`,
+      payload,
+      label,
+      finding.severity === "Critical" ? "#dc2626" :
+      finding.severity === "High" ? "#ea580c" :
+      finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
+    );
   };
 
   const handleAddAllFiltered = () => {
@@ -140,19 +164,21 @@ export const FindingsTable = ({ findings, onRowClick, onOpenDiff, diffCounts }: 
 
   const handleAddSelectedToChat = () => {
     const selected = filteredFindings.filter(f => selectedFindings.has(f.id));
-    let totalTokens = 0;
     selected.forEach(finding => {
       const payload = cedarPayloadShapes.fullFinding(finding);
-      const tokens = cedarEstimateTokens(payload);
-      totalTokens += tokens;
-      addItem({
-        type: "vulnerability",
-        label: `${finding.endpoint.method} ${finding.endpoint.path}`,
-        data: payload,
-        tokens,
-      });
+      const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
+
+      // Use Cedar's native context system
+      addToContext(
+        `finding-${finding.id}`,
+        payload,
+        label,
+        finding.severity === "Critical" ? "#dc2626" :
+        finding.severity === "High" ? "#ea580c" :
+        finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
+      );
     });
-    toast.success(`Added ${selected.length} selected findings (≈${totalTokens} tokens) to Context Basket`);
+    toast.success(`Added ${selected.length} selected findings to Chat`);
     setSelectedFindings(new Set());
   };
 

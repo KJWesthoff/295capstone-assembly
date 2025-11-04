@@ -38,6 +38,14 @@
 
     --radius: 0.75rem;
 
+    /* Severity colors for vulnerability findings */
+    --critical: 0 84% 60%;
+    --high: 25 95% 53%;
+    --medium: 45 93% 47%;
+    --low: 142 76% 36%;
+    --info: 199 89% 48%;
+    --success: 142 76% 36%;
+
     /* Custom cybersecurity theme colors */
     --cyber-blue: 200 100% 50%;
     --cyber-glow: 200 100% 70%;
@@ -92,6 +100,14 @@
     --border: 210 50% 25%;
     --input: 210 50% 25%;
     --ring: 43 98% 54%;
+
+    /* Severity colors for vulnerability findings (dark mode adjusted) */
+    --critical: 0 84% 60%;
+    --high: 25 95% 53%;
+    --medium: 45 93% 47%;
+    --low: 142 76% 36%;
+    --info: 199 89% 48%;
+    --success: 142 76% 36%;
 
     --cyber-blue: 200 100% 60%;
     --cyber-glow: 200 100% 75%;
