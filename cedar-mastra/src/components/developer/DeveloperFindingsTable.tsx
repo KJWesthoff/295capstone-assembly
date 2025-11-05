@@ -28,11 +28,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
-import { useContextBasket } from "@/contexts/ContextBasketContext";
 import { toast } from "sonner";
 import { getFixabilityTooltip } from "@/types/finding";
-import { cedar, cedarPayloadShapes, cedarEstimateTokens, cedarKeyboardShortcuts } from "@/lib/cedar/actions";
-import { useCedarActions } from "@/lib/cedar/hooks";
+import { cedar, cedarPayloadShapes, cedarKeyboardShortcuts } from "@/lib/cedar/actions";
+import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import type { Finding } from "@/types/finding";
 
 interface DeveloperFindingsTableProps {
@@ -72,8 +71,7 @@ export const DeveloperFindingsTable = ({
   const [selectedFramework, setSelectedFramework] = useState<string>("all");
   const [internalSelectedFindings, setInternalSelectedFindings] = useState<Set<string>>(new Set());
   const [filteredFindings, setFilteredFindings] = useState<Finding[]>(findings);
-  const { addItem } = useContextBasket();
-  const { addToContext } = useCedarActions();
+  const { addFindingToChat, addFindingsToChat } = useFindingActions();
 
   // Use controlled state if provided, otherwise use internal state
   const selectedFindings = controlledSelectedFindings ?? internalSelectedFindings;
@@ -137,51 +135,16 @@ export const DeveloperFindingsTable = ({
 
   const handleAddToChat = (finding: Finding) => {
     const payload = cedarPayloadShapes.devMinimal(finding);
-    const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
-
-    // Use Cedar's native context system
-    addToContext(
-      `finding-${finding.id}`,
-      payload,
-      label,
-      finding.severity === "Critical" ? "#dc2626" :
-      finding.severity === "High" ? "#ea580c" :
-      finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
-    );
+    addFindingToChat(finding, "finding", payload);
   };
 
   const handleAddSelectedToChat = () => {
     const selected = filteredFindings.filter((f) => selectedFindings.has(f.id));
-    selected.forEach((finding) => {
-      const payload = cedarPayloadShapes.devMinimal(finding);
-      const label = `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
-
-      // Use Cedar's native context system
-      addToContext(
-        `finding-${finding.id}`,
-        payload,
-        label,
-        finding.severity === "Critical" ? "#dc2626" :
-        finding.severity === "High" ? "#ea580c" :
-        finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
-      );
-    });
-    toast.success(`${selected.length} findings added to Chat`);
+    addFindingsToChat(selected, "finding", cedarPayloadShapes.devMinimal);
   };
 
   const handleAddAllFilteredToChat = () => {
-    filteredFindings.forEach((finding) => {
-      const payload = cedarPayloadShapes.devMinimal(finding);
-      const tokens = cedarEstimateTokens(payload);
-      addItem({
-        type: "vulnerability",
-        label: `${finding.endpoint.method} ${finding.endpoint.path}`,
-        data: payload,
-        tokens,
-      });
-    });
-    const totalTokens = filteredFindings.reduce((sum, f) => sum + cedarEstimateTokens(cedarPayloadShapes.devMinimal(f)), 0);
-    toast.success(`${filteredFindings.length} findings added to Context Basket (≈${totalTokens} tokens)`);
+    addFindingsToChat(filteredFindings, "finding", cedarPayloadShapes.devMinimal);
   };
 
   const handleCopyRepro = (finding: Finding) => {
@@ -281,7 +244,7 @@ export const DeveloperFindingsTable = ({
               </Button>
               <Button size="sm" variant="outline" onClick={handleAddSelectedToChat}>
                 <Plus className="h-4 w-4 mr-1" />
-                Add to Chat (≈{filteredFindings.filter(f => selectedFindings.has(f.id)).reduce((sum, f) => sum + cedarEstimateTokens(cedarPayloadShapes.devMinimal(f)), 0)} tokens)
+                Add to Chat ({selectedFindings.size} selected)
               </Button>
               <Button size="sm" variant="outline" onClick={() => setSelectedFindings(new Set())}>
                 Clear Selection

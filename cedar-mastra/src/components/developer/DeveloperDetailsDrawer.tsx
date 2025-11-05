@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useContextBasket } from "@/contexts/ContextBasketContext";
+import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { toast } from "sonner";
 import { mockEvidence } from "@/data/mockFindings";
-import { cedar, cedarPayloadShapes, cedarEstimateTokens } from "@/lib/cedar/actions";
+import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
 import type { Finding } from "@/types/finding";
 
 interface DeveloperDetailsDrawerProps {
@@ -25,7 +25,7 @@ const severityColors = {
 };
 
 export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDrawerProps) => {
-  const { addItem } = useContextBasket();
+  const { addCustomToChat } = useFindingActions();
 
   if (!finding) return null;
 
@@ -33,17 +33,6 @@ export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDra
 
   const handleCopyCode = (code: string) => {
     cedar.util.copy(code);
-  };
-
-  const handleAddToChat = (type: string, data: any, label: string) => {
-    const tokens = cedarEstimateTokens(data);
-    addItem({
-      type: type as any,
-      label,
-      data,
-      tokens,
-    });
-    toast.success(`${label} added to Context Basket (≈${tokens} tokens)`);
   };
 
   // Sample diff for demonstration
@@ -208,8 +197,8 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
           </div>
           <Button
             onClick={() =>
-              handleAddToChat(
-                "vulnerability",
+              addCustomToChat(
+                `developer-full-${finding.id}`,
                 cedarPayloadShapes.devFix(finding, {
                   proposedDiff,
                   hotPatchConfig,
@@ -217,7 +206,8 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                   guardrailRule,
                   prBody,
                 }),
-                "Full Developer Details"
+                "Full Developer Details",
+                finding.severity
               )
             }
             size="sm"
@@ -261,7 +251,12 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  handleAddToChat("vulnerability", { overview: finding.summaryHumanReadable }, "Overview")
+                  addCustomToChat(
+                    `developer-overview-${finding.id}`,
+                    { overview: finding.summaryHumanReadable },
+                    "Overview",
+                    finding.severity
+                  )
                 }
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -392,7 +387,12 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                   size="sm"
                   variant="outline"
                   onClick={() =>
-                    handleAddToChat("vulnerability", { proposedDiff, hotPatchConfig }, "Fix Details")
+                    addCustomToChat(
+                      `developer-fix-${finding.id}`,
+                      { proposedDiff, hotPatchConfig },
+                      "Fix Details",
+                      finding.severity
+                    )
                   }
                 >
                   <Plus className="h-4 w-4 mr-2" />
@@ -401,7 +401,14 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleAddToChat("vulnerability", { unitTest }, "Tests")}
+                  onClick={() =>
+                    addCustomToChat(
+                      `developer-tests-${finding.id}`,
+                      { unitTest },
+                      "Tests",
+                      finding.severity
+                    )
+                  }
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Tests to Chat
@@ -409,7 +416,14 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleAddToChat("vulnerability", { guardrailRule }, "Guardrail")}
+                  onClick={() =>
+                    addCustomToChat(
+                      `developer-guardrail-${finding.id}`,
+                      { guardrailRule },
+                      "Guardrail",
+                      finding.severity
+                    )
+                  }
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Guardrail to Chat
@@ -491,7 +505,14 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleAddToChat("evidence", cedarPayloadShapes.evidenceLite(evidence), "Evidence & Repro")}
+                onClick={() =>
+                  addCustomToChat(
+                    `developer-evidence-${finding.id}`,
+                    cedarPayloadShapes.evidenceLite(evidence),
+                    "Evidence & Repro",
+                    finding.severity
+                  )
+                }
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Evidence to Chat
@@ -539,7 +560,12 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  handleAddToChat("report", cedarPayloadShapes.similarCases([{ source: "PR#123", summary: "...", diffPointer: "...", link: "#" }]), "Similar Cases")
+                  addCustomToChat(
+                    `developer-similar-${finding.id}`,
+                    cedarPayloadShapes.similarCases([{ source: "PR#123", summary: "...", diffPointer: "...", link: "#" }]),
+                    "Similar Cases",
+                    finding.severity
+                  )
                 }
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -595,10 +621,11 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                 size="sm"
                 variant="outline"
                 onClick={() =>
-                  handleAddToChat(
-                    "compliance",
+                  addCustomToChat(
+                    `developer-compliance-${finding.id}`,
                     cedarPayloadShapes.complianceRef(finding),
-                    "Compliance Mapping"
+                    "Compliance Mapping",
+                    finding.severity
                   )
                 }
               >

@@ -9,6 +9,7 @@ import { ExecutiveOwnershipTable } from "./ExecutiveOwnershipTable";
 import { ExecutiveChatPresets } from "./ExecutiveChatPresets";
 import { BoardBriefWizard } from "./BoardBriefWizard";
 import { useExecutiveReportBridge } from "@/hooks/useExecutiveReportBridge";
+import { useRegisterExecutiveData } from "@/lib/cedar/useRegisterExecutiveData";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
 import {
@@ -22,11 +23,14 @@ import {
 export const ExecutiveView = () => {
   const [wizardOpen, setWizardOpen] = useState(false);
 
+  // Register executive data with Cedar for @mention functionality
+  const { risks, owners } = useRegisterExecutiveData(mockExecTopRisks, mockExecSlaOwners);
+
   const { addCardToReport, setReportMeta, reportItems, reportMeta } = useExecutiveReportBridge({
     kpis: mockExecSummary,
-    topRiskCards: mockExecTopRisks,
+    topRiskCards: risks,
     complianceSnapshot: mockExecCompliance,
-    ownershipRows: mockExecSlaOwners
+    ownershipRows: owners
   });
 
   return (
@@ -57,14 +61,14 @@ export const ExecutiveView = () => {
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-8">
-          <ExecutiveTopRisks risks={mockExecTopRisks} onAddToReport={addCardToReport} />
+          <ExecutiveTopRisks risks={risks} onAddToReport={addCardToReport} />
         </div>
         <div className="col-span-4">
           <ExecutiveComplianceSnapshot compliance={mockExecCompliance} onAddToReport={addCardToReport} />
         </div>
       </div>
 
-      <ExecutiveOwnershipTable owners={mockExecSlaOwners} onAddToReport={addCardToReport} />
+      <ExecutiveOwnershipTable owners={owners} onAddToReport={addCardToReport} />
 
       <ExecutiveChatPresets />
 

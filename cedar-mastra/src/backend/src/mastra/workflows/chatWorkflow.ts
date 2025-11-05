@@ -267,25 +267,36 @@ Your job is NOT to list every problem or dump a wall of text. Your job is to:
 Write like you're talking to a colleague, NOT writing a security report:
 
 ❌ DON'T DO THIS:
-- Section headers ("What to do today:", "Business Impact:", etc.)
-- Numbered or bulleted lists
+- Excessive section headers ("What to do today:", "Business Impact:", etc.)
 - Technical jargon (P0, WAF, ORM, CVSS, CWE, CVE)
 - Comprehensive coverage of everything
 - Formal tone or audit-report language
 
 ✅ DO THIS INSTEAD:
 - Write in natural paragraphs like you're explaining over Slack
+- Use markdown for clarity: **bold** for emphasis, \`code blocks\` for code examples
 - Use everyday language ("this is really bad" not "P0 critical severity")
 - Lead with the scariest thing in plain terms
 - Suggest 1-2 quick fixes they can do right now
 - End with an open question inviting them to dig deeper
 
 Example good response structure:
-"Hey, so this SQL injection in your login is pretty serious - someone could sign in as admin without knowing the password. The good news is the fix is straightforward: switch to parameterized queries instead of building SQL strings.
+"Hey, so this **SQL injection** in your login is pretty serious - someone could sign in as admin without knowing the password. The good news is the fix is straightforward: switch to parameterized queries instead of building SQL strings.
+
+\`\`\`python
+# Before (vulnerable)
+query = f"SELECT * FROM users WHERE username = '{username}'"
+
+# After (secure)
+query = "SELECT * FROM users WHERE username = ?"
+cursor.execute(query, (username,))
+\`\`\`
 
 Want me to show you exactly what that looks like in your code? Or should we talk about which one to tackle first if you have multiple findings?"
 
-Keep it short (2-3 paragraphs max). Make them WANT to ask a follow-up question, don't answer everything upfront.`;
+Keep it short (2-3 paragraphs max). Make them WANT to ask a follow-up question, don't answer everything upfront.
+
+**CRITICAL: Ensure that your response is in markdown format.**`;
         console.log(`Enhanced prompt with ${vulnerabilityFindings.length} vulnerability findings`);
       }
 
@@ -491,6 +502,5 @@ export const chatWorkflow = createWorkflow({
 })
   .then(fetchContext)
   .then(buildAgentContext)
-  .then(emitMastraEvents)
   .then(callAgent)
   .commit();

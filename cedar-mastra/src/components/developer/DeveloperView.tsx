@@ -6,6 +6,7 @@ import { DeveloperDetailsDrawer } from "./DeveloperDetailsDrawer";
 import { ChatPresets } from "./ChatPresets";
 import { mockFindings } from "@/data/mockFindings";
 import type { Finding } from "@/types/finding";
+import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 
 interface DeveloperViewProps {
   selectedFindings?: Set<string>;
@@ -14,6 +15,9 @@ interface DeveloperViewProps {
 
 export const DeveloperView = ({ selectedFindings, onSelectionChange }: DeveloperViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
+
+  // Register findings with Cedar for @mention functionality
+  const { findings } = useRegisterFindings(mockFindings);
 
   return (
     <div className="space-y-6">
@@ -29,7 +33,7 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
       <ChatPresets />
 
       <DeveloperFindingsTable
-        findings={mockFindings}
+        findings={findings}
         onSelectFinding={setSelectedFinding}
         selectedFindings={selectedFindings}
         onSelectionChange={onSelectionChange}

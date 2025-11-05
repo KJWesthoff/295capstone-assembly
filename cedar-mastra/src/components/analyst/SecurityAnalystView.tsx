@@ -7,6 +7,7 @@ import { FindingsTable } from "./FindingsTable";
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer";
 import { DiffViewModal } from "./DiffViewModal";
 import { ChatPresets } from "./ChatPresets";
+import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 
 interface SecurityAnalystViewProps {
   selectedFindings?: Set<string>;
@@ -16,6 +17,9 @@ interface SecurityAnalystViewProps {
 export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: SecurityAnalystViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [showDiffModal, setShowDiffModal] = useState(false);
+
+  // Register findings with Cedar for @mention functionality
+  const { findings } = useRegisterFindings(mockFindings);
 
   // Calculate diff counts from mock data
   const diffCounts = {
