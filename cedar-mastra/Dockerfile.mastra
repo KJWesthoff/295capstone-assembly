@@ -1,0 +1,29 @@
+# Cedar Backend - Mastra AI Agent Server
+# Using Debian-based image for better native module support (libsql)
+
+FROM node:20-slim
+
+# Install build dependencies and runtime dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    bash \
+    build-essential \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy backend package files and install
+COPY src/backend/package.json src/backend/package-lock.json* ./
+RUN npm install --legacy-peer-deps --verbose
+
+# Copy backend source
+COPY src/backend/ ./
+
+EXPOSE 4111
+
+ENV PORT=4111
+ENV NODE_ENV=development
+
+# Run Mastra in dev mode (skips problematic build step)
+CMD ["npm", "run", "dev"]

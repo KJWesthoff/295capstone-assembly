@@ -1,0 +1,33 @@
+{
+  "name": "examples-backend-mastra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "start": "mastra start"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "@ai-sdk/mistral": "^2.0.19",
+    "@ai-sdk/openai": "^2.0.50",
+    "@mastra/core": "^0.20.2",
+    "@mastra/libsql": "^0.15.1",
+    "@mastra/loggers": "^0.10.15",
+    "@mastra/memory": "^0.15.6",
+    "@mastra/pg": "^0.17.2",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "mastra": "^0.15.1",
+    "typescript": "^5.8.3"
+  },
+  "optionalDependencies": {
+    "@libsql/linux-arm64-gnu": "0.5.22"
+  }
+}

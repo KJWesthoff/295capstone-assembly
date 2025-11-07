@@ -68,7 +68,7 @@ A modern full-stack application for scanning APIs for security vulnerabilities w
    # Or manually with docker compose
    cp .env.local.example .env.local
    # Edit .env.local with your credentials
-   docker compose --profile build-only build scanner
+   docker compose --profile build-only build scanner;
    docker compose up -d
    ```
 
