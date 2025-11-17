@@ -5,6 +5,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useStyling } from 'cedar-os';
 import { Copy, Check } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+// Dynamically import MermaidDiagram to avoid SSR issues
+const MermaidDiagram = dynamic(() => import('./MermaidDiagram'), { ssr: false });
 
 interface MarkdownRendererProps {
 	content: string;
@@ -83,6 +87,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 						const match = /language-(\w+)/.exec(className || '');
 						const isInline = !match;
 						const codeString = String(children).replace(/\n$/, '');
+						const language = match ? match[1] : '';
+
+						// Render Mermaid diagrams
+						if (language === 'mermaid') {
+							return <MermaidDiagram chart={codeString} />;
+						}
 
 						return isInline ? (
 							<code

@@ -10,19 +10,13 @@ import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { toast } from "sonner";
 import { mockEvidence } from "@/data/mockFindings";
 import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
+import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import type { Finding } from "@/types/finding";
 
 interface DeveloperDetailsDrawerProps {
   finding: Finding | null;
   onClose: () => void;
 }
-
-const severityColors = {
-  Critical: "bg-destructive text-destructive-foreground",
-  High: "bg-destructive/80 text-destructive-foreground",
-  Medium: "bg-[hsl(var(--chart-3))] text-foreground font-semibold",
-  Low: "bg-muted text-foreground font-semibold",
-};
 
 export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDrawerProps) => {
   const { addCustomToChat } = useFindingActions();
@@ -167,7 +161,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
-                <Badge className={severityColors[finding.severity]}>{finding.severity}</Badge>
+                <Badge className={getSeverityColor(finding.severity as Severity)}>{finding.severity}</Badge>
                 <span className="font-mono text-sm font-semibold text-foreground">
                   {finding.endpoint.method} {finding.endpoint.path}
                 </span>

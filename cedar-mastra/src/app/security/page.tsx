@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScanResultsState, getSeverityColor, VulnerabilityFinding } from '@/app/cedar-os/scanState';
-import { FloatingCedarChat } from '@/app/cedar-os/components/chatComponents/FloatingCedarChat';
 import { useCedarStore } from 'cedar-os';
 import { ScanConfigDialog, ScanConfig } from '@/components/security/ScanConfigDialog';
 import { scannerApi, ScanStatus } from '@/lib/scannerApi';
@@ -14,8 +13,10 @@ export default function SecurityDashboardPage() {
   const { scanResults, setScanResults } = useScanResultsState();
   const addContextEntry = useCedarStore(s => s.addContextEntry);
 
-  // Subscribe scan results to agent context - only call once at component level
-  useSecurityContext();
+  // TODO: Cedar OS subscription leak bug - disabled until fixed upstream
+  // Each call to useSecurityContext() creates duplicate "Scan Summary" badges (7x observed)
+  // Issue: useSubscribeStateToAgentContext doesn't deduplicate or cleanup properly
+  // useSecurityContext();
 
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -861,14 +862,7 @@ export default function SecurityDashboardPage() {
         isLoading={isScanning}
       />
 
-      {/* Page-specific Cedar Chat - only render after mount to prevent hydration errors */}
-      {mounted && (
-        <FloatingCedarChat
-          side="right"
-          title="🤖 Security Analyst AI"
-          collapsedLabel={scanResults?.status === 'completed' ? "💬 Ask about vulnerabilities..." : "💬 Ask about security..."}
-        />
-      )}
+      {/* Global Cedar Chat from layout.tsx is used - no need for page-specific chat */}
     </>
   );
 }

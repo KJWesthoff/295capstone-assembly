@@ -33,6 +33,8 @@ import { toast } from "sonner";
 import { getPriorityTooltip } from "@/types/finding";
 import { cedar, cedarPayloadShapes, cedarEstimateTokens } from "@/lib/cedar/actions";
 import { useCedarActions } from "@/lib/cedar/hooks";
+import { getSeverityColor, Severity } from "@/lib/utils/severity";
+import { SeverityTooltip } from "@/components/shared/SeverityTooltip";
 
 interface FindingsTableProps {
   findings: Finding[];
@@ -46,13 +48,6 @@ interface FindingsTableProps {
   selectedFindings?: Set<string>;
   onSelectionChange?: (selected: Set<string>) => void;
 }
-
-const severityColors = {
-  Critical: "bg-critical/20 text-critical border-critical/40",
-  High: "bg-high/20 text-high border-high/40",
-  Medium: "bg-medium/20 text-medium border-medium/40",
-  Low: "bg-low/20 text-low border-low/40",
-};
 
 const getEvidenceQuality = (finding: Finding): { label: string; icon: React.ReactNode; color: string } => {
   // Simplified logic: check if we have evidence ID and if exploit is present
@@ -88,7 +83,7 @@ export const FindingsTable = ({
   const [internalSelectedFindings, setInternalSelectedFindings] = useState<Set<string>>(new Set());
   const [addedFindings, setAddedFindings] = useState<Set<string>>(new Set());
   const { addItem } = useContextBasket();
-  const { addToContext } = useCedarActions();
+  const { addToContext, sendMessage } = useCedarActions();
 
   // Use controlled state if provided, otherwise use internal state
   const selectedFindings = controlledSelectedFindings ?? internalSelectedFindings;
@@ -398,7 +393,7 @@ export const FindingsTable = ({
         </div>
 
         {/* Table */}
-        <div className="border border-border rounded-lg bg-card">
+        <div className="border border-border rounded-lg bg-card overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -442,6 +437,7 @@ export const FindingsTable = ({
                 return (
                   <TableRow
                     key={finding.id}
+                    data-finding-id={finding.id}
                     onClick={() => onRowClick(finding)}
                     className={cn("cursor-pointer", isSelected && "bg-primary/5")}
                   >
@@ -495,9 +491,25 @@ export const FindingsTable = ({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={cn("uppercase text-xs font-semibold", severityColors[finding.severity])}>
-                        {finding.severity}
-                      </Badge>
+                      <SeverityTooltip
+                        severity={finding.severity}
+                        onFilterBySeverity={() => {
+                          setSeverityFilter([finding.severity]);
+                          toast.success(`Filtered to ${finding.severity} severity findings`);
+                        }}
+                        onExplainSeverity={() => {
+                          handleAddToChat(finding);
+                          sendMessage?.(`Why is this finding rated as ${finding.severity} severity? Explain the CVSS calculation and risk factors.`);
+                        }}
+                        onShowRemediation={() => {
+                          handleAddToChat(finding);
+                          sendMessage?.(`@finding-${finding.id} Provide step-by-step remediation guidance for this ${finding.severity} severity vulnerability.`);
+                        }}
+                      >
+                        <Badge className={cn("uppercase text-xs font-semibold cursor-help", getSeverityColor(finding.severity as Severity, 'border'))}>
+                          {finding.severity}
+                        </Badge>
+                      </SeverityTooltip>
                     </TableCell>
                     <TableCell className="font-semibold">{finding.cvss.toFixed(1)}</TableCell>
                     <TableCell>

@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { CedarCopilot, ProviderConfig } from 'cedar-os';
 import { FloatingCedarChat } from '@/app/cedar-os/components/chatComponents/FloatingCedarChat';
+import { DebuggerPanel } from '@/app/cedar-os/components/debugger/DebuggerPanel';
+import { GlobalSpells } from '@/components/shared/GlobalSpells';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -39,11 +41,15 @@ export default function RootLayout({
           {children}
           {/* Floating Cedar Chat - Available on all pages (only render after mount to prevent hydration errors) */}
           {mounted && (
-            <FloatingCedarChat
-              side="right"
-              title="Agent"
-              collapsedLabel="Ask me anything..."
-            />
+            <>
+              <FloatingCedarChat
+                side="right"
+                title="Agent"
+                collapsedLabel="Ask me anything..."
+              />
+              <DebuggerPanel />
+              <GlobalSpells />
+            </>
           )}
         </CedarCopilot>
       </body>

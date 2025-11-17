@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { DeveloperFindingsTable } from "./DeveloperFindingsTable";
 import { DeveloperDetailsDrawer } from "./DeveloperDetailsDrawer";
-import { ChatPresets } from "./ChatPresets";
+import { ChatPresets } from "@/components/shared/ChatPresets";
+import { developerPresets } from "@/config/chatPresets";
+import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { mockFindings } from "@/data/mockFindings";
 import type { Finding } from "@/types/finding";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
@@ -21,16 +23,12 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-serif font-bold text-foreground">Developer Dashboard</h2>
-          <p className="text-muted-foreground mt-1">
-            Fast-track vulnerabilities to safe PRs with staged remediation plans
-          </p>
-        </div>
-      </div>
+      <DashboardHeader
+        title="Developer Dashboard"
+        description="Fast-track vulnerabilities to safe PRs with staged remediation plans"
+      />
 
-      <ChatPresets />
+      <ChatPresets presets={developerPresets} />
 
       <DeveloperFindingsTable
         findings={findings}

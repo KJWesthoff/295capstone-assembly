@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { useCedarActions } from "./hooks";
 import { cedarPayloadShapes } from "./actions";
+import { getSeverityColor as getSeverityColorUtil, Severity } from "@/lib/utils/severity";
 import type { Finding } from "@/types/finding";
 
 // 🐛 DEBUG FLAG: Set to true to log all context additions to browser console
@@ -14,19 +15,10 @@ export function useFindingActions() {
   const { addToContext } = useCedarActions();
 
   /**
-   * Get color code based on vulnerability severity
+   * Get hex color code based on vulnerability severity
    */
-  const getSeverityColor = (severity: string): string => {
-    switch (severity) {
-      case "Critical":
-        return "#dc2626";
-      case "High":
-        return "#ea580c";
-      case "Medium":
-        return "#ca8a04";
-      default:
-        return "#16a34a"; // Low
-    }
+  const getColor = (severity: string): string => {
+    return getSeverityColorUtil(severity as Severity, 'hex');
   };
 
   /**
@@ -47,7 +39,7 @@ export function useFindingActions() {
       customLabel ||
       `${finding.severity}: ${finding.endpoint.method} ${finding.endpoint.path}`;
     const key = `${keyPrefix}-${finding.id}`;
-    const color = getSeverityColor(finding.severity);
+    const color = getColor(finding.severity);
 
     if (DEBUG_CONTEXT_ADDITIONS) {
       console.log("🔍 [Cedar Context] Adding single finding:", {
@@ -109,7 +101,7 @@ export function useFindingActions() {
     label: string,
     severity?: string
   ) => {
-    const color = severity ? getSeverityColor(severity) : "#003262"; // Default Cal blue
+    const color = severity ? getColor(severity) : "#003262"; // Default Cal blue
 
     if (DEBUG_CONTEXT_ADDITIONS) {
       console.log("🔍 [Cedar Context] Adding custom data:", {
@@ -129,6 +121,6 @@ export function useFindingActions() {
     addFindingToChat,
     addFindingsToChat,
     addCustomToChat,
-    getSeverityColor,
+    getSeverityColor: getColor,
   };
 }

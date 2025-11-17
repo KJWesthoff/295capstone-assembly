@@ -32,21 +32,10 @@ import { toast } from "sonner";
 import { getFixabilityTooltip } from "@/types/finding";
 import { cedar, cedarPayloadShapes, cedarKeyboardShortcuts } from "@/lib/cedar/actions";
 import { useFindingActions } from "@/lib/cedar/useFindingActions";
+import { useCedarActions } from "@/lib/cedar/hooks";
+import { getSeverityColor, Severity } from "@/lib/utils/severity";
+import { SeverityTooltip } from "@/components/shared/SeverityTooltip";
 import type { Finding } from "@/types/finding";
-
-interface DeveloperFindingsTableProps {
-  findings: Finding[];
-  onSelectFinding: (finding: Finding) => void;
-  selectedFindings?: Set<string>;
-  onSelectionChange?: (selected: Set<string>) => void;
-}
-
-const severityColors = {
-  Critical: "bg-destructive text-destructive-foreground",
-  High: "bg-destructive/80 text-destructive-foreground",
-  Medium: "bg-[hsl(var(--chart-3))] text-foreground font-semibold",
-  Low: "bg-muted text-foreground font-semibold",
-};
 
 const prStatusColors = {
   None: "bg-muted text-muted-foreground",
@@ -72,6 +61,7 @@ export const DeveloperFindingsTable = ({
   const [internalSelectedFindings, setInternalSelectedFindings] = useState<Set<string>>(new Set());
   const [filteredFindings, setFilteredFindings] = useState<Finding[]>(findings);
   const { addFindingToChat, addFindingsToChat } = useFindingActions();
+  const { sendMessage } = useCedarActions();
 
   // Use controlled state if provided, otherwise use internal state
   const selectedFindings = controlledSelectedFindings ?? internalSelectedFindings;
@@ -344,6 +334,7 @@ export const DeveloperFindingsTable = ({
             {filteredFindings.map((finding) => (
               <TableRow
                 key={finding.id}
+                data-finding-id={finding.id}
                 className="hover:bg-muted/30 cursor-pointer"
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest("button, input")) return;
@@ -386,7 +377,23 @@ export const DeveloperFindingsTable = ({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge className={severityColors[finding.severity]}>{finding.severity}</Badge>
+                  <SeverityTooltip
+                    severity={finding.severity}
+                    onFilterBySeverity={() => {
+                      setSelectedSeverity(finding.severity);
+                      toast.success(`Filtered to ${finding.severity} severity findings`);
+                    }}
+                    onExplainSeverity={() => {
+                      handleAddToChat(finding);
+                      sendMessage?.(`Why is this finding rated as ${finding.severity} severity? Provide a developer-focused explanation with impact on code and remediation priority.`);
+                    }}
+                    onShowRemediation={() => {
+                      handleAddToChat(finding);
+                      sendMessage?.(`@finding-${finding.id} Provide detailed remediation guidance including code examples, testing approach, and PR checklist.`);
+                    }}
+                  >
+                    <Badge className={getSeverityColor(finding.severity as Severity)}>{finding.severity}</Badge>
+                  </SeverityTooltip>
                 </TableCell>
                 <TableCell className="font-semibold">{finding.cvss}</TableCell>
                 <TableCell>

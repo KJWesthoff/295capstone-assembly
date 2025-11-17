@@ -21,6 +21,7 @@ import { sqlGenerationTool } from './tools/sql-generation-tool';
 import { scannerTools } from './tools/scannerBridgeTool';
 import { mastraDocsSearchTool } from './tools/mastraDocsSearchTool';
 import { roadmapTools } from './tools/roadmapTool';
+import { visualizeAttackPathTool } from './tools/visualize-attack-path-tool';
 
 // Create Mastra instance
 export const mastra = new Mastra({
@@ -56,6 +57,7 @@ export const tools = {
   remediationPrioritizationTool,
   sqlExecutionTool,
   sqlGenerationTool,
+  visualizeAttackPathTool,
   ...scannerTools,  // Spread the scanner tools collection
   mastraDocsSearchTool,
   ...roadmapTools   // Spread the roadmap tools collection

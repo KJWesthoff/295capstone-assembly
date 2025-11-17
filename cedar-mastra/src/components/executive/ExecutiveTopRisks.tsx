@@ -4,8 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, UserCircle, Calendar, Shield, Globe } from "lucide-react";
-import { cedar, cedarPayloadShapes, cedarEstimateTokens } from "@/lib/cedar/actions";
-import { useCedarActions } from "@/lib/cedar/hooks";
+import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
+import { getSeverityColor, Severity } from "@/lib/utils/severity";
+import { useFindingActions } from "@/lib/cedar/useFindingActions";
 
 interface TopRisk {
   id: string;
@@ -26,28 +27,14 @@ interface ExecutiveTopRisksProps {
   onAddToReport?: (label: string, payload: any) => void;
 }
 
-const severityColors = {
-  Critical: "bg-destructive text-destructive-foreground",
-  High: "bg-destructive/80 text-destructive-foreground",
-  Medium: "bg-[hsl(var(--chart-3))] text-foreground font-semibold",
-  Low: "bg-muted text-foreground font-semibold",
-};
-
 export const ExecutiveTopRisks = ({ risks, onAddToReport }: ExecutiveTopRisksProps) => {
-  const { addToContext } = useCedarActions();
+  const { addCustomToChat } = useFindingActions();
 
   const handleAddToChat = (risk: TopRisk) => {
     const payload = cedarPayloadShapes.execTopRisk(risk);
     const label = `Risk: ${risk.title.substring(0, 50)}...`;
 
-    addToContext(
-      `risk-${risk.id}`,
-      payload,
-      label,
-      risk.severity === "Critical" ? "#dc2626" :
-      risk.severity === "High" ? "#ea580c" :
-      risk.severity === "Medium" ? "#ca8a04" : "#16a34a"
-    );
+    addCustomToChat(`risk-${risk.id}`, payload, label, risk.severity);
   };
 
   const handleAddTop3ToChat = () => {
@@ -57,14 +44,7 @@ export const ExecutiveTopRisks = ({ risks, onAddToReport }: ExecutiveTopRisksPro
       const payload = cedarPayloadShapes.execTopRisk(risk);
       const label = `Risk: ${risk.title.substring(0, 50)}...`;
 
-      addToContext(
-        `risk-${risk.id}`,
-        payload,
-        label,
-        risk.severity === "Critical" ? "#dc2626" :
-        risk.severity === "High" ? "#ea580c" :
-        risk.severity === "Medium" ? "#ca8a04" : "#16a34a"
-      );
+      addCustomToChat(`risk-${risk.id}`, payload, label, risk.severity);
     });
   };
 
@@ -95,7 +75,7 @@ export const ExecutiveTopRisks = ({ risks, onAddToReport }: ExecutiveTopRisksPro
                     </h4>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-2">
-                    <Badge className={severityColors[risk.severity as keyof typeof severityColors]}>
+                    <Badge className={getSeverityColor(risk.severity as Severity)}>
                       {risk.severity}
                     </Badge>
                     {risk.exploitPresent && (

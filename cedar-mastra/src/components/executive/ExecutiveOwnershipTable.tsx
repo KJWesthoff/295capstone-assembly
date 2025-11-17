@@ -46,7 +46,7 @@ export const ExecutiveOwnershipTable = ({ owners, onAddToReport }: ExecutiveOwne
     <Card className="p-6 bg-card border-border">
       <h3 className="text-lg font-semibold text-foreground mb-4">Ownership & SLA</h3>
 
-      <div className="rounded-md border border-border overflow-hidden">
+      <div className="rounded-md border border-border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">

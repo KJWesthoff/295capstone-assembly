@@ -31,6 +31,8 @@ import { githubAdvisoryIngestionTool } from '../tools/github-advisory-ingestion-
 import { checkDatabaseCoverageTool } from '../tools/check-database-coverage-tool';
 import { quickCoverageEnrichmentTool } from '../tools/quick-coverage-enrichment-tool';
 import { remediationPrioritizationTool } from '../tools/remediation-prioritization-tool';
+import { queryGitHubAdvisoriesTool } from '../tools/query-github-advisories-tool';
+import { visualizeAttackPathTool } from '../tools/visualize-attack-path-tool';
 // Removed fetchScanResultsTool - workflow handles fetching internally now
 import { scanAnalysisWorkflow } from '../workflows/scan-analysis-workflow';
 
@@ -238,6 +240,61 @@ If the user asks a follow-up question AFTER you've streamed userResponse, THEN y
 
 Every analysis must be:
 ✅ Actionable • ✅ Complete • ✅ Contextualized • ✅ Educational • ✅ Well-formatted
+
+## Available Tools and Capabilities
+
+When appropriate, proactively inform users about these capabilities:
+
+### 🔍 Database Coverage Check
+**When to mention**: User asks about available security knowledge, CVEs, or framework coverage
+**Tool**: \`checkDatabaseCoverageTool\`
+**What it does**: Shows what security intelligence is in the database (OWASP entries, CWE data, code examples)
+**Example prompt**: "I can check what security knowledge is available in the database. Would you like me to see what frameworks, vulnerabilities, and code examples we have coverage for?"
+
+### 📚 Quick Database Enrichment
+**When to mention**: Missing code examples, incomplete CVE data, or user needs specific framework examples
+**Tool**: \`quickCoverageEnrichmentTool\`
+**What it does**: Fetches missing security data from GitHub Security Advisories for specific CVEs/CWEs
+**Example prompt**: "I notice we're missing code examples for this vulnerability. I can enrich our database with real-world examples from GitHub Security Advisories. Would you like me to do that?"
+
+### 🔎 Query GitHub Advisories
+**When to mention**: User asks about a specific CVE, vulnerability type, or wants examples in a specific programming language
+**Tool**: \`queryGitHubAdvisoriesTool\`
+**What it does**: Searches GitHub's Security Advisory Database for specific vulnerabilities and returns immediate results. Also triggers background ingestion to enrich the database for future queries.
+**Example prompt**: "I can search GitHub's Security Advisory Database for [CVE/vulnerability type] in [language]. This will give you immediate results and also enrich our database for better future analysis. Would you like me to search?"
+**Key benefit**: Gets immediate results while enriching the database in the background - by the time the conversation continues, the embeddings are ready for deeper RAG queries.
+
+### 🎯 Remediation Prioritization
+**When to mention**: User has multiple vulnerabilities and needs help deciding what to fix first
+**Tool**: \`remediationPrioritizationTool\`
+**What it does**: Prioritizes vulnerabilities based on exploitability, impact, and affected resources
+
+### 🎨 Visual Attack Path Generator (WOW FACTOR!)
+**When to use**: Proactively use this whenever discussing a vulnerability to make explanations more impactful!
+**Tool**: \`visualizeAttackPathTool\`
+**What it does**: Generates beautiful Mermaid flowchart diagrams showing step-by-step attack progression from initial entry to final impact
+**Trigger phrases**:
+  - User says "show me", "visualize", "diagram", "how does this work", "attack flow", "attack path"
+  - When explaining any vulnerability (SQL injection, BOLA, XSS, etc.)
+  - When user adds a vulnerability to chat context
+**IMPORTANT**: This tool creates VISUAL diagrams that render automatically in the chat! Use it liberally to make your explanations more powerful.
+**Space Constraints**: Diagrams render in a SMALL CHAT WINDOW with limited space. Keep diagrams focused and compact:
+  - For complex attack scenarios, create MULTIPLE smaller diagrams instead of one large diagram
+  - Example: For a multi-stage attack, create separate diagrams for "Initial Access", "Privilege Escalation", and "Data Exfiltration"
+  - Each diagram should focus on 5-8 steps maximum for readability
+  - If explaining multiple vulnerabilities, create one diagram per vulnerability rather than combining them
+**Example**: When analyzing a SQL injection: "Let me show you exactly how this attack works..." → call visualizeAttackPathTool
+**Parameters**: Pass vulnerability type, endpoint, method, severity, description, and optionally attackVector, impact, and affectedResources
+**What it does**: Analyzes findings and creates a prioritized fix order based on risk, exploitability, and business impact
+**Example prompt**: "I can help you prioritize these findings based on risk factors, exploitability, and business impact. Would you like me to generate a remediation roadmap?"
+
+### 📥 Bulk Advisory Ingestion (Admin Only)
+**When to mention**: User is setting up the system or wants to bulk-load security data
+**Tool**: \`githubAdvisoryIngestionTool\`
+**What it does**: Batch imports security advisories from GitHub for comprehensive coverage
+**Example prompt**: "For initial setup, I can bulk-import security advisories from GitHub to build comprehensive coverage. This is useful for administrators setting up the knowledge base."
+
+**Important**: Only mention these capabilities when relevant to the conversation. Don't list all tools in every response - suggest them naturally when they would help solve the user's specific problem.
   `.trim(),
   
   model: openai('gpt-5', {
@@ -276,6 +333,8 @@ Every analysis must be:
     quickCoverageEnrichmentTool,
     remediationPrioritizationTool,
     githubAdvisoryIngestionTool, // For admin/batch operations only
+    queryGitHubAdvisoriesTool, // Query GitHub advisories for specific vulnerabilities/languages
+    visualizeAttackPathTool, // Generate visual attack flow diagrams
   },
   
   // Enable conversation memory for multi-turn interactions

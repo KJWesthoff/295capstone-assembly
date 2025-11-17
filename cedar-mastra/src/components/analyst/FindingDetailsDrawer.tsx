@@ -7,25 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useContextBasket } from "@/contexts/ContextBasketContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { cedar, cedarPayloadShapes, cedarEstimateTokens } from "@/lib/cedar/actions";
+import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
+import { getSeverityColor, Severity } from "@/lib/utils/severity";
+import { useFindingActions } from "@/lib/cedar/useFindingActions";
 
 interface FindingDetailsDrawerProps {
   finding: Finding | null;
   onClose: () => void;
 }
 
-const severityColors = {
-  Critical: "bg-critical/20 text-critical border-critical/40",
-  High: "bg-high/20 text-high border-high/40",
-  Medium: "bg-medium/20 text-medium border-medium/40",
-  Low: "bg-low/20 text-low border-low/40",
-};
-
 export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerProps) => {
-  const { addItem } = useContextBasket();
+  const { addCustomToChat } = useFindingActions();
 
   if (!finding) return null;
 
@@ -38,38 +32,27 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
   const handleAddToChat = (type: "full" | "overview" | "evidence" | "compliance") => {
     let payload: any;
     let label: string;
-    let itemType: "vulnerability" | "evidence" | "compliance";
 
     switch (type) {
       case "full":
         payload = cedarPayloadShapes.fullFindingWithEvidenceAndMappings(finding, evidence);
         label = `Full details: ${finding.endpoint.method} ${finding.endpoint.path}`;
-        itemType = "vulnerability";
         break;
       case "overview":
         payload = cedarPayloadShapes.minimalFinding(finding);
         label = `Overview: ${finding.endpoint.method} ${finding.endpoint.path}`;
-        itemType = "vulnerability";
         break;
       case "evidence":
         payload = cedarPayloadShapes.evidenceLite(evidence);
         label = `Evidence: ${finding.evidenceId}`;
-        itemType = "evidence";
         break;
       case "compliance":
         payload = cedarPayloadShapes.complianceOnly(finding);
         label = `Compliance: ${finding.endpoint.method} ${finding.endpoint.path}`;
-        itemType = "compliance";
         break;
     }
 
-    const tokenEstimate = cedarEstimateTokens(payload);
-    addItem({
-      type: itemType,
-      label,
-      data: payload,
-      tokens: tokenEstimate,
-    });
+    addCustomToChat(`analyst-${type}-${finding.id}`, payload, label, finding.severity);
     toast.success("Added to Context Basket");
   };
 
@@ -80,7 +63,7 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
         <div className="flex items-start justify-between">
           <div className="space-y-2 flex-1">
             <div className="flex items-center gap-2">
-              <Badge className={cn("uppercase text-xs font-semibold", severityColors[finding.severity])}>
+              <Badge className={cn("uppercase text-xs font-semibold", getSeverityColor(finding.severity as Severity, 'border'))}>
                 {finding.severity}
               </Badge>
               <span className="font-mono text-sm">

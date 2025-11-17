@@ -6,7 +6,9 @@ import { Finding } from "@/types/finding";
 import { FindingsTable } from "./FindingsTable";
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer";
 import { DiffViewModal } from "./DiffViewModal";
-import { ChatPresets } from "./ChatPresets";
+import { ChatPresets } from "@/components/shared/ChatPresets";
+import { analystPresets } from "@/config/chatPresets";
+import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 
 interface SecurityAnalystViewProps {
@@ -30,14 +32,11 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-serif font-semibold text-foreground mb-2">
-          Deduped Findings
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Prioritized by exploitability, CVSS, exposure, and recency. Click any row for full details.
-        </p>
-      </div>
+      <DashboardHeader
+        title="Deduped Findings"
+        description="Prioritized by exploitability, CVSS, exposure, and recency. Click any row for full details."
+        size="md"
+      />
 
       <FindingsTable
         findings={mockFindings}
@@ -48,7 +47,12 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
         onSelectionChange={onSelectionChange}
       />
 
-      <ChatPresets />
+      <ChatPresets
+        presets={analystPresets}
+        title="Quick AI Actions"
+        subtitle="Pre-configured prompts for common security analyst workflows"
+        gridCols={{ base: 1, md: 2, lg: 4 }}
+      />
 
       <FindingDetailsDrawer finding={selectedFinding} onClose={() => setSelectedFinding(null)} />
 
