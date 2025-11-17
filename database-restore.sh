@@ -28,9 +28,9 @@ if [ ! -f "${DUMP_FILE}" ]; then
 fi
 
 # Check if postgres container is running
-if ! docker compose ps postgres | grep -q "running"; then
+if ! docker-compose ps postgres | grep -q "running"; then
     echo "⚠️  PostgreSQL container is not running. Starting it..."
-    docker compose up -d postgres
+    docker-compose up -d postgres
     echo "⏳ Waiting for PostgreSQL to be ready..."
     sleep 5
 fi
@@ -40,7 +40,7 @@ echo "🏥 Checking PostgreSQL health..."
 MAX_RETRIES=30
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if docker compose exec postgres pg_isready -U rag_user -d rag_db > /dev/null 2>&1; then
+    if docker-compose exec postgres pg_isready -U rag_user -d rag_db > /dev/null 2>&1; then
         echo "✅ PostgreSQL is ready!"
         break
     fi
@@ -60,19 +60,19 @@ echo "📂 Restoring from: ${DUMP_FILE}"
 if [[ "${DUMP_FILE}" == *.gz ]]; then
     # Compressed file - decompress and restore
     echo "🗜️  Decompressing and restoring..."
-    gunzip -c "${DUMP_FILE}" | docker compose exec -T postgres psql -U rag_user -d rag_db
+    gunzip -c "${DUMP_FILE}" | docker-compose exec -T postgres psql -U rag_user -d rag_db
 else
     # Uncompressed file - restore directly
     echo "📤 Restoring uncompressed dump..."
-    cat "${DUMP_FILE}" | docker compose exec -T postgres psql -U rag_user -d rag_db
+    cat "${DUMP_FILE}" | docker-compose exec -T postgres psql -U rag_user -d rag_db
 fi
 
 echo ""
 echo "✅ Database restored successfully!"
 echo ""
 echo "📊 Database Info:"
-docker compose exec postgres psql -U rag_user -d rag_db -c "\dt" || true
+docker-compose exec postgres psql -U rag_user -d rag_db -c "\dt" || true
 echo ""
 echo "💡 Next steps:"
-echo "   - Verify data: docker compose exec postgres psql -U rag_user -d rag_db"
+echo "   - Verify data: docker-compose exec postgres psql -U rag_user -d rag_db"
 echo "   - Start services: ./start-dev.sh"

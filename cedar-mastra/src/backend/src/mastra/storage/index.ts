@@ -12,4 +12,3 @@ const dbPath = process.env.NODE_ENV === 'production'
 
 export const storage = new LibSQLStore({
   url: `file:${dbPath}`,
-});

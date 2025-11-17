@@ -13,7 +13,7 @@ import { Agent } from '@mastra/core';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { Memory } from '@mastra/memory';
-import { LibSQLStore } from '@mastra/libsql';
+import { PostgresStore } from '@mastra/pg';
 import {
   preprocessScan,
   generateLLMContext,
@@ -339,8 +339,8 @@ When appropriate, proactively inform users about these capabilities:
   
   // Enable conversation memory for multi-turn interactions
   memory: new Memory({
-    storage: new LibSQLStore({
-      url: 'file:./mastra.db',
+    storage: new PostgresStore({
+      connectionString: process.env.DATABASE_URL || 'postgresql://rag_user:rag_pass@postgres:5432/rag_db',
     }),
   }),
 });

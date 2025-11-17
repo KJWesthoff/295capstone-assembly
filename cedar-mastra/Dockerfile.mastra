@@ -15,7 +15,8 @@ WORKDIR /app
 
 # Copy backend package files and install
 COPY src/backend/package.json src/backend/package-lock.json* ./
-RUN npm install --legacy-peer-deps --verbose
+RUN npm install --legacy-peer-deps --verbose && \
+    npm rebuild libsql --verbose
 
 # Copy backend source
 COPY src/backend/ ./
