@@ -87,10 +87,10 @@ class ScannerAuth {
    */
   async autoLogin(): Promise<boolean> {
     // Try default credentials from environment or fallback
-    const defaultUsername = process.env.NEXT_PUBLIC_SCANNER_USERNAME || 'scanner_admin';
-    const defaultPassword = process.env.NEXT_PUBLIC_SCANNER_PASSWORD || 'SecureP@ssw0rd2024!';
-    
-    console.log(`🔑 Attempting auto-login to scanner service...`);
+    const defaultUsername = process.env.NEXT_PUBLIC_SCANNER_USERNAME || 'MICS295';
+    const defaultPassword = process.env.NEXT_PUBLIC_SCANNER_PASSWORD || 'MaryMcHale';
+
+    console.log(`🔑 Attempting auto-login to scanner service with username: ${defaultUsername}...`);
     return await this.login(defaultUsername, defaultPassword);
   }
 

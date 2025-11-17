@@ -208,10 +208,10 @@ export function useScanResultsState() {
  */
 export function getSeverityColor(severity: string): string {
   const colors = {
-    critical: 'bg-red-600 text-white',
-    high: 'bg-orange-500 text-white',
-    medium: 'bg-yellow-500 text-gray-900',
-    low: 'bg-blue-500 text-white',
+    critical: 'bg-critical text-white',
+    high: 'bg-high text-white',
+    medium: 'bg-medium text-foreground font-semibold',
+    low: 'bg-low text-white',
   };
   return colors[severity.toLowerCase() as keyof typeof colors] || 'bg-gray-500 text-white';
 }

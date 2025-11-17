@@ -26,6 +26,8 @@ const Hero = () => {
     setSelectedRole(role);
     // Store the role in localStorage
     localStorage.setItem('userRole', role);
+    // Clear any stale scan results from previous sessions
+    localStorage.removeItem('scanResults');
     setShowDropdown(false);
     // Navigate to scanner page
     router.push('/security');

@@ -22,6 +22,37 @@ export default function SecurityDashboardPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [currentScanStatus, setCurrentScanStatus] = useState<ScanStatus | null>(null);
+  
+  // Track if we should show old results or force form view
+  const [showOldResults, setShowOldResults] = useState(false);
+  
+  // On mount, check if we have completed scan results but don't auto-show them
+  // Only show if user explicitly wants to view them or if scan is running
+  useEffect(() => {
+    if (scanResults && scanResults.status === 'completed' && !activeScanId) {
+      // Don't auto-show completed results - user must click to view them
+      setShowOldResults(false);
+    } else if (scanResults && scanResults.status === 'running' && !activeScanId) {
+      // If we have a running scan from localStorage, verify it still exists
+      // The scan may have been lost if the backend restarted
+      const verifyRunningScan = async () => {
+        try {
+          await scannerApi.getScanStatus(scanResults.scanId);
+          // Scan exists, proceed with polling
+          setShowOldResults(false);
+          setActiveScanId(scanResults.scanId);
+        } catch (error) {
+          // Scan doesn't exist anymore (404), clear it
+          console.warn('Running scan from localStorage no longer exists, clearing:', scanResults.scanId);
+          setScanResults(null);
+          setActiveScanId(null);
+          setShowOldResults(false);
+        }
+      };
+      verifyRunningScan();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Severity filters
   const [severityFilters, setSeverityFilters] = useState<Set<string>>(new Set(['Critical', 'High', 'Medium', 'Low']));
@@ -63,9 +94,15 @@ export default function SecurityDashboardPage() {
   useEffect(() => {
     if (!activeScanId || scanResults?.status === 'completed') return;
 
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
+
     const pollInterval = setInterval(async () => {
       try {
         const status = await scannerApi.getScanStatus(activeScanId);
+        
+        // Reset error counter on success
+        consecutiveErrors = 0;
 
         // Debug: Log the chunk_status data
         if (status.chunk_status) {
@@ -106,7 +143,27 @@ export default function SecurityDashboardPage() {
           clearInterval(pollInterval);
         }
       } catch (error) {
-        console.error('Error polling scan status:', error);
+        consecutiveErrors++;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Error polling scan status (${consecutiveErrors}/${maxConsecutiveErrors}):`, errorMessage);
+        
+        // If 404, the scan doesn't exist - stop polling immediately
+        if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+          console.error('Scan not found, stopping poll');
+          clearInterval(pollInterval);
+          setIsScanning(false);
+          setActiveScanId(null);
+          alert(`Scan ${activeScanId} not found. It may have been deleted or the backend was restarted. Please start a new scan.`);
+          return;
+        }
+        
+        // Stop polling after too many consecutive errors
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error('Too many consecutive errors, stopping poll');
+          clearInterval(pollInterval);
+          setIsScanning(false);
+          alert(`Failed to poll scan status after ${maxConsecutiveErrors} attempts. Error: ${errorMessage}. Please refresh the page and check the scan manually.`);
+        }
       }
     }, 3000); // Poll every 3 seconds
 
@@ -279,6 +336,12 @@ export default function SecurityDashboardPage() {
         fuzzAuth: config.fuzzAuth,
       });
 
+      // Validate that we got a scan_id
+      if (!response.scan_id) {
+        throw new Error('Scan started but no scan_id was returned from the server');
+      }
+
+      console.log('✅ Scan started successfully with ID:', response.scan_id);
       setActiveScanId(response.scan_id);
       
       // Show scanning state
@@ -292,6 +355,17 @@ export default function SecurityDashboardPage() {
         groupedByEndpoint: {},
       });
 
+      // Verify the scan exists by checking status immediately (with a small delay)
+      setTimeout(async () => {
+        try {
+          const status = await scannerApi.getScanStatus(response.scan_id);
+          console.log('✅ Verified scan exists, status:', status.status);
+        } catch (verifyError) {
+          console.error('⚠️ Warning: Could not verify scan after creation:', verifyError);
+          // Don't fail the scan start, but log the warning
+        }
+      }, 1000);
+
       // No need to add scan start to context - the summary will be added automatically when complete
     } catch (error) {
       console.error('Failed to start scan:', error);
@@ -302,13 +376,18 @@ export default function SecurityDashboardPage() {
         : JSON.stringify(error);
       alert('Failed to start scan: ' + errorMessage);
       setIsScanning(false);
+      setActiveScanId(null);
     }
   };
 
   // Render everything in one return with conditional content
+  // Show form/running view if: no scan results OR scan is running OR (completed but user hasn't chosen to view)
+  // Show results view if: scan is completed AND user chose to view them
+  const shouldShowForm = !scanResults || scanResults.status === 'running' || (scanResults.status === 'completed' && !showOldResults);
+  
   return (
     <>
-      {(!scanResults || scanResults.status === 'running') ? (
+      {shouldShowForm ? (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
           <header className="mb-8">
@@ -595,13 +674,29 @@ export default function SecurityDashboardPage() {
                 </p>
               </div>
 
-              <button
-                onClick={handleRunScan}
-                disabled={isScanning}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isScanning ? 'Starting Scan...' : 'Run Security Scan'}
-              </button>
+              <div className="space-y-4">
+                <button
+                  onClick={handleRunScan}
+                  disabled={isScanning}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isScanning ? 'Starting Scan...' : 'Run Security Scan'}
+                </button>
+
+                {scanResults && scanResults.status === 'completed' && (
+                  <div>
+                    <p className="text-gray-400 mb-2 text-sm">
+                      You have previous scan results. Would you like to view them?
+                    </p>
+                    <button
+                      onClick={() => setShowOldResults(true)}
+                      className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+                    >
+                      View Previous Results
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div className="mt-8 text-sm text-gray-500">
                 <p>Or use your existing scanner interface at:</p>
@@ -674,12 +769,24 @@ export default function SecurityDashboardPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleRunScan}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors ml-4"
-            >
-              New Scan
-            </button>
+            <div className="flex gap-3 ml-4">
+              <button
+                onClick={() => {
+                  setScanResults(null);
+                  setShowOldResults(false);
+                  setActiveScanId(null);
+                }}
+                className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+              >
+                Clear Results
+              </button>
+              <button
+                onClick={handleRunScan}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+              >
+                New Scan
+              </button>
+            </div>
           </div>
         </header>
 
@@ -726,10 +833,10 @@ export default function SecurityDashboardPage() {
               {['Critical', 'High', 'Medium', 'Low'].map((severity) => {
                 const isActive = severityFilters.has(severity);
                 const colorClasses = {
-                  Critical: 'bg-red-900 bg-opacity-30 border-red-600 text-red-300',
-                  High: 'bg-orange-900 bg-opacity-30 border-orange-600 text-orange-300',
-                  Medium: 'bg-yellow-900 bg-opacity-30 border-yellow-600 text-yellow-300',
-                  Low: 'bg-blue-900 bg-opacity-30 border-blue-600 text-blue-300',
+                  Critical: 'bg-critical/30 border-critical/60 text-critical',
+                  High: 'bg-high/30 border-high/60 text-high',
+                  Medium: 'bg-medium/30 border-medium/60 text-medium',
+                  Low: 'bg-low/30 border-low/60 text-low',
                 };
 
                 return (

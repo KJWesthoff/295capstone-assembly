@@ -1,7 +1,7 @@
 // Scanner API Client for Cedar Frontend
 // Connects to your existing Python scanner service
 
-import { ensureScannerAuth, getScannerAuthHeader } from './scannerAuth';
+import { ensureScannerAuth, getScannerAuthHeader, scannerAuth } from './scannerAuth';
 
 const SCANNER_SERVICE_URL = process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000';
 
@@ -143,6 +143,12 @@ export class ScannerApiClient {
    * Get scan status
    */
   async getScanStatus(scanId: string): Promise<ScanStatus> {
+    // Ensure we're authenticated before making the request
+    const authenticated = await ensureScannerAuth();
+    if (!authenticated) {
+      throw new Error('Failed to authenticate with scanner service');
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/api/scan/${scanId}/status`, {
         headers: {
@@ -151,7 +157,31 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to get scan status: ${response.status}`);
+        // If 403, try to re-authenticate and retry once
+        if (response.status === 403) {
+          console.warn('Authentication expired, re-authenticating...');
+          scannerAuth.logout();
+          const reAuthenticated = await ensureScannerAuth();
+          if (reAuthenticated) {
+            const retryResponse = await fetch(`${this.baseUrl}/api/scan/${scanId}/status`, {
+              headers: {
+                ...getScannerAuthHeader(),
+              },
+            });
+            if (!retryResponse.ok) {
+              const errorText = await retryResponse.text().catch(() => 'Unknown error');
+              throw new Error(`Failed to get scan status: ${retryResponse.status} - ${errorText}`);
+            }
+            return retryResponse.json();
+          }
+        }
+        // If 404, the scan doesn't exist - provide helpful error message
+        if (response.status === 404) {
+          const errorText = await response.text().catch(() => 'Scan not found');
+          throw new Error(`Scan ${scanId} not found (404). The scan may have been deleted or never created. ${errorText}`);
+        }
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Failed to get scan status: ${response.status} - ${errorText}`);
       }
 
       return response.json();
@@ -165,6 +195,12 @@ export class ScannerApiClient {
    * Get scan findings
    */
   async getFindings(scanId: string): Promise<FindingsResponse> {
+    // Ensure we're authenticated before making the request
+    const authenticated = await ensureScannerAuth();
+    if (!authenticated) {
+      throw new Error('Failed to authenticate with scanner service');
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/api/scan/${scanId}/findings`, {
         headers: {
@@ -173,6 +209,23 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
+        // If 403, try to re-authenticate and retry once
+        if (response.status === 403) {
+          console.warn('Authentication expired, re-authenticating...');
+          scannerAuth.logout();
+          const reAuthenticated = await ensureScannerAuth();
+          if (reAuthenticated) {
+            const retryResponse = await fetch(`${this.baseUrl}/api/scan/${scanId}/findings`, {
+              headers: {
+                ...getScannerAuthHeader(),
+              },
+            });
+            if (!retryResponse.ok) {
+              throw new Error(`Failed to get findings: ${retryResponse.status}`);
+            }
+            return retryResponse.json();
+          }
+        }
         throw new Error(`Failed to get findings: ${response.status}`);
       }
 
@@ -190,6 +243,12 @@ export class ScannerApiClient {
     available_scanners: string[];
     descriptions: Record<string, string>;
   }> {
+    // Ensure we're authenticated before making the request
+    const authenticated = await ensureScannerAuth();
+    if (!authenticated) {
+      throw new Error('Failed to authenticate with scanner service');
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/api/scanners`, {
         headers: {

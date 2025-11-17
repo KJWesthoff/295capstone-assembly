@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* VentiAPI Design System - UC Berkeley colors */
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
 
 @layer base {
   :root {
@@ -134,6 +136,10 @@
 }
 
 @layer base {
+  * {
+    @apply border-border;
+  }
+
   body {
     @apply bg-background text-foreground;
   }

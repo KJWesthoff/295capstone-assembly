@@ -9,6 +9,8 @@ import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { mockFindings } from "@/data/mockFindings";
 import type { Finding } from "@/types/finding";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
+import { useScanResultsState } from "@/app/cedar-os/scanState";
+import { transformVulnerabilityFindings } from "@/lib/transformFindings";
 
 interface DeveloperViewProps {
   selectedFindings?: Set<string>;
@@ -18,8 +20,16 @@ interface DeveloperViewProps {
 export const DeveloperView = ({ selectedFindings, onSelectionChange }: DeveloperViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
+  // Get actual scan results from Cedar state
+  const { scanResults } = useScanResultsState();
+
+  // Transform scanner results to Finding type for display
+  const actualFindings: Finding[] = scanResults?.findings
+    ? transformVulnerabilityFindings(scanResults.findings)
+    : mockFindings;
+
   // Register findings with Cedar for @mention functionality
-  const { findings } = useRegisterFindings(mockFindings);
+  const { findings } = useRegisterFindings(actualFindings);
 
   return (
     <div className="space-y-6">

@@ -4,10 +4,10 @@ export type Severity = 'Critical' | 'High' | 'Medium' | 'Low';
 
 export const SEVERITY_COLORS = {
   badge: {
-    Critical: "bg-destructive text-destructive-foreground",
-    High: "bg-destructive/80 text-destructive-foreground",
-    Medium: "bg-[hsl(var(--chart-3))] text-foreground font-semibold",
-    Low: "bg-muted text-foreground font-semibold",
+    Critical: "bg-critical text-white",
+    High: "bg-high text-white",
+    Medium: "bg-medium text-foreground font-semibold",
+    Low: "bg-low text-white",
   },
   border: {
     Critical: "bg-critical/20 text-critical border-critical/40",

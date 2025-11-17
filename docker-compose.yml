@@ -140,7 +140,7 @@ services:
       dockerfile: Dockerfile.nextjs
       args:
         - NEXT_PUBLIC_MASTRA_URL=http://localhost:4111
-        - NEXT_PUBLIC_SCANNER_SERVICE_URL=http://localhost:8000
+        - NEXT_PUBLIC_SCANNER_SERVICE_URL=http://localhost:3000
         - NEXT_PUBLIC_SCANNER_USERNAME=${ADMIN_USERNAME:-MICS295}
         - NEXT_PUBLIC_SCANNER_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
     container_name: cedar-frontend
