@@ -8,6 +8,42 @@ import { ScanConfigDialog, ScanConfig } from '@/components/security/ScanConfigDi
 import { scannerApi, ScanStatus } from '@/lib/scannerApi';
 import { useSecurityContext } from '@/app/cedar-os/context';
 
+type RoleRoute = {
+  role: 'executive' | 'security' | 'developer';
+  label: string;
+  description: string;
+  route: string;
+  icon: string;
+  accent: string;
+};
+
+const previousResultsOptions: RoleRoute[] = [
+  {
+    role: 'executive',
+    label: 'Executive Briefing',
+    description: 'KPIs, trends, and remediation commitments',
+    route: '/executive',
+    icon: '👔',
+    accent: 'border-orange-500/60 hover:border-orange-400 hover:bg-orange-500/10',
+  },
+  {
+    role: 'security',
+    label: 'Security Analyst View',
+    description: 'Full findings table with filters and context',
+    route: '/dashboard',
+    icon: '🛡️',
+    accent: 'border-blue-500/60 hover:border-blue-400 hover:bg-blue-500/10',
+  },
+  {
+    role: 'developer',
+    label: 'Developer Remediation',
+    description: 'PR-ready fixes, code snippets, and test plans',
+    route: '/developer',
+    icon: '💻',
+    accent: 'border-green-500/60 hover:border-green-400 hover:bg-green-500/10',
+  },
+];
+
 export default function SecurityDashboardPage() {
   const router = useRouter();
   const { scanResults, setScanResults } = useScanResultsState();
@@ -92,12 +128,19 @@ export default function SecurityDashboardPage() {
 
   // Poll scan status if there's an active scan
   useEffect(() => {
-    if (!activeScanId || scanResults?.status === 'completed') return;
+    if (!activeScanId) return;
 
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 5;
+    let isCompleted = false; // Track completion to prevent multiple calls
 
     const pollInterval = setInterval(async () => {
+      // Stop if already completed
+      if (isCompleted) {
+        clearInterval(pollInterval);
+        return;
+      }
+
       try {
         const status = await scannerApi.getScanStatus(activeScanId);
         
@@ -120,15 +163,19 @@ export default function SecurityDashboardPage() {
         setCurrentScanStatus(status);
 
         if (status.status === 'completed') {
+          // Mark as completed to prevent re-entry
+          isCompleted = true;
+          clearInterval(pollInterval);
+
           // Load findings
           const findings = await scannerApi.getFindings(activeScanId);
           loadScanResults(activeScanId, findings.findings);
           setIsScanning(false);
           setCurrentScanStatus(null);
-          clearInterval(pollInterval);
+          setActiveScanId(null); // Clear active scan ID to prevent re-polling
 
           // Navigate to role-specific dashboard after scan completes
-          const userRole = localStorage.getItem('userRole') || 'dashboard';
+          const userRole = typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'dashboard') : 'dashboard';
           const routeMap: Record<string, string> = {
             'executive': '/executive',
             'security': '/dashboard',
@@ -137,10 +184,12 @@ export default function SecurityDashboardPage() {
           };
           router.push(routeMap[userRole] || '/dashboard');
         } else if (status.status === 'failed') {
+          isCompleted = true;
+          clearInterval(pollInterval);
           alert('Scan failed: ' + (status.error || 'Unknown error'));
           setIsScanning(false);
           setCurrentScanStatus(null);
-          clearInterval(pollInterval);
+          setActiveScanId(null);
         }
       } catch (error) {
         consecutiveErrors++;
@@ -150,6 +199,7 @@ export default function SecurityDashboardPage() {
         // If 404, the scan doesn't exist - stop polling immediately
         if (errorMessage.includes('404') || errorMessage.includes('not found')) {
           console.error('Scan not found, stopping poll');
+          isCompleted = true;
           clearInterval(pollInterval);
           setIsScanning(false);
           setActiveScanId(null);
@@ -160,15 +210,19 @@ export default function SecurityDashboardPage() {
         // Stop polling after too many consecutive errors
         if (consecutiveErrors >= maxConsecutiveErrors) {
           console.error('Too many consecutive errors, stopping poll');
+          isCompleted = true;
           clearInterval(pollInterval);
           setIsScanning(false);
+          setActiveScanId(null);
           alert(`Failed to poll scan status after ${maxConsecutiveErrors} attempts. Error: ${errorMessage}. Please refresh the page and check the scan manually.`);
         }
       }
     }, 3000); // Poll every 3 seconds
 
-    return () => clearInterval(pollInterval);
-  }, [activeScanId, scanResults?.status]);
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, [activeScanId]); // Only depend on activeScanId, not scanResults.status
 
   const loadScanResults = (scanId: string, findings: any[]) => {
     // Reset added findings when loading new scan results
@@ -684,16 +738,37 @@ export default function SecurityDashboardPage() {
                 </button>
 
                 {scanResults && scanResults.status === 'completed' && (
-                  <div>
-                    <p className="text-gray-400 mb-2 text-sm">
-                      You have previous scan results. Would you like to view them?
-                    </p>
-                    <button
-                      onClick={() => setShowOldResults(true)}
-                      className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-                    >
-                      View Previous Results
-                    </button>
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">You have previous scan results.</p>
+                      <p className="text-xs text-gray-400">Choose the dashboard you want to open:</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {previousResultsOptions.map(option => (
+                        <button
+                          key={option.role}
+                          type="button"
+                          onClick={() => {
+                            try {
+                              if (typeof window !== 'undefined') {
+                                localStorage.setItem('userRole', option.role);
+                              }
+                            } catch (err) {
+                              console.warn('Unable to persist userRole', err);
+                            }
+                            setShowOldResults(true);
+                            router.push(option.route);
+                          }}
+                          className={`flex items-start gap-3 text-left p-3 rounded-lg border text-white transition-all ${option.accent}`}
+                        >
+                          <span className="text-2xl">{option.icon}</span>
+                          <div>
+                            <div className="font-semibold text-sm">{option.label}</div>
+                            <p className="text-xs text-gray-400">{option.description}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Search, Filter, Info, Shield, Globe, User, GitPullRequest, Plus, Copy, ExternalLink, FileText, Wrench } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,15 @@ export const DeveloperFindingsTable = ({
   const [filteredFindings, setFilteredFindings] = useState<Finding[]>(findings);
   const { addFindingToChat, addFindingsToChat } = useFindingActions();
   const { sendMessage } = useCedarActions();
+
+  // Memoize Select handlers to prevent infinite loops in Radix UI Select
+  const handleSeverityChange = useCallback((value: string) => {
+    setSelectedSeverity(value);
+  }, []);
+
+  const handleFrameworkChange = useCallback((value: string) => {
+    setSelectedFramework(value);
+  }, []);
 
   // Use controlled state if provided, otherwise use internal state
   const selectedFindings = controlledSelectedFindings ?? internalSelectedFindings;
@@ -128,38 +137,95 @@ export const DeveloperFindingsTable = ({
     addFindingToChat(finding, "finding", payload);
   };
 
-  const handleAddSelectedToChat = () => {
+  const handleAddSelectedToChat = useCallback(() => {
     const selected = filteredFindings.filter((f) => selectedFindings.has(f.id));
     addFindingsToChat(selected, "finding", cedarPayloadShapes.devMinimal);
-  };
+  }, [filteredFindings, selectedFindings, addFindingsToChat]);
 
-  const handleAddAllFilteredToChat = () => {
+  const handleAddAllFilteredToChat = useCallback(() => {
     addFindingsToChat(filteredFindings, "finding", cedarPayloadShapes.devMinimal);
-  };
+  }, [filteredFindings, addFindingsToChat]);
 
-  const handleCopyRepro = (finding: Finding) => {
+  const handleFilterBySeverity = useCallback((severity: string) => {
+    setSelectedSeverity(severity);
+    toast.success(`Filtered to ${severity} severity findings`);
+  }, []);
+
+  const handleCopyRepro = useCallback((finding: Finding) => {
     const curlCmd = `curl -X ${finding.endpoint.method} https://api.example.com${finding.endpoint.path}`;
     cedar.util.copy(curlCmd);
-  };
+  }, []);
 
-  const handleGenerateFixPR = (finding: Finding) => {
+  const handleGenerateFixPR = useCallback((finding: Finding) => {
     const payload = cedarPayloadShapes.devMinimal(finding);
     cedar.chat.send(
       payload,
       "Generate minimal, safe diff + unit/integration tests. Provide PR body and migration notes. Prefer non-breaking changes; if exploit present, include hot patch (gateway/header/rate limit)."
     );
-  };
+  }, []);
 
-  const handleMarkSelectedForPR = () => {
+  const handleMarkSelectedForPR = useCallback(() => {
     const selected = filteredFindings.filter((f) => selectedFindings.has(f.id));
     const payloads = selected.map(f => cedarPayloadShapes.devMinimal(f));
     cedar.chat.send(
       payloads,
       "For each selected finding generate: (1) minimal, safe code diff; (2) unit + integration tests; (3) a 48-hour hot patch (gateway/header/rate limit) and the long-term fix; (4) PR body referencing CVE/CWE/OWASP."
     );
-  };
+  }, [filteredFindings, selectedFindings]);
 
-  const frameworks = Array.from(new Set(findings.map((f) => f.framework).filter(Boolean)));
+  // Memoize frameworks to prevent Select from re-rendering infinitely
+  const frameworks = useMemo(() => {
+    return Array.from(new Set(findings.map((f) => f.framework).filter(Boolean)));
+  }, [findings]);
+
+  // Memoize SelectTrigger children to prevent Radix UI from detecting changes
+  const severityTriggerContent = useMemo(() => (
+    <>
+      <Filter className="h-4 w-4 mr-2" />
+      <SelectValue placeholder="Severity" />
+    </>
+  ), []);
+
+  const frameworkTriggerContent = useMemo(() => (
+    <>
+      <Filter className="h-4 w-4 mr-2" />
+      <SelectValue placeholder="Framework" />
+    </>
+  ), []);
+
+  // Memoize SelectContent children to prevent re-renders
+  const severitySelectItems = useMemo(() => (
+    <>
+      <SelectItem value="all">All Severities</SelectItem>
+      <SelectItem value="Critical">Critical</SelectItem>
+      <SelectItem value="High">High</SelectItem>
+      <SelectItem value="Medium">Medium</SelectItem>
+      <SelectItem value="Low">Low</SelectItem>
+    </>
+  ), []);
+
+  const frameworkSelectItems = useMemo(() => (
+    <>
+      <SelectItem value="all">All Frameworks</SelectItem>
+      {frameworks.map((fw) => (
+        <SelectItem key={fw} value={fw!}>
+          {fw}
+        </SelectItem>
+      ))}
+    </>
+  ), [frameworks]);
+
+  // Memoize className to prevent prop changes
+  const selectTriggerClassName = useMemo(() => "w-full sm:w-[180px]", []);
+
+  // Ensure selectedFramework is valid - reset to "all" if the selected framework no longer exists
+  // Only check when frameworks changes, not when selectedFramework changes (to avoid loops)
+  useEffect(() => {
+    if (selectedFramework !== "all" && !frameworks.includes(selectedFramework)) {
+      setSelectedFramework("all");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameworks]); // Only depend on frameworks, not selectedFramework
 
   // Keyboard shortcuts (CedarOS spec)
   useEffect(() => {
@@ -179,7 +245,7 @@ export const DeveloperFindingsTable = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedFindings, findings, onSelectFinding]);
+  }, [selectedFindings, findings, onSelectFinding, handleAddSelectedToChat, handleMarkSelectedForPR]);
 
   return (
     <Card className="p-6 bg-card border-border">
@@ -195,31 +261,23 @@ export const DeveloperFindingsTable = ({
               className="pl-10"
             />
           </div>
-          <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Severity" />
+          <Select value={selectedSeverity} onValueChange={handleSeverityChange}>
+            <SelectTrigger className={selectTriggerClassName}>
+              {severityTriggerContent}
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Severities</SelectItem>
-              <SelectItem value="Critical">Critical</SelectItem>
-              <SelectItem value="High">High</SelectItem>
-              <SelectItem value="Medium">Medium</SelectItem>
-              <SelectItem value="Low">Low</SelectItem>
+              {severitySelectItems}
             </SelectContent>
           </Select>
-          <Select value={selectedFramework} onValueChange={setSelectedFramework}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Framework" />
+          <Select
+            value={selectedFramework}
+            onValueChange={handleFrameworkChange}
+          >
+            <SelectTrigger className={selectTriggerClassName}>
+              {frameworkTriggerContent}
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Frameworks</SelectItem>
-              {frameworks.map((fw) => (
-                <SelectItem key={fw} value={fw!}>
-                  {fw}
-                </SelectItem>
-              ))}
+              {frameworkSelectItems}
             </SelectContent>
           </Select>
         </div>
@@ -376,7 +434,7 @@ export const DeveloperFindingsTable = ({
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <SeverityTooltip
                     severity={finding.severity}
                     onFilterBySeverity={() => {

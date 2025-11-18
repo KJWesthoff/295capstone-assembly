@@ -45,33 +45,75 @@ const fetchScanResultsStep = createStep({
       logger?.info(`🔍 Fetching scan results for ID: ${scanId}`);
 
       // First authenticate to get a token
-      const authResponse = await fetch(`${scannerUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      let authResponse;
+      try {
+        logger?.info(`Attempting to authenticate with scanner service at ${scannerUrl}/api/auth/login`);
+        // Add timeout to fetch requests (30 seconds)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        try {
+          authResponse = await fetch(`${scannerUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          throw fetchError;
+        }
+      } catch (fetchError) {
+        const errorDetails = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        const errorName = fetchError instanceof Error ? fetchError.name : 'Unknown';
+        logger?.error(`Failed to connect to scanner service: ${errorName} - ${errorDetails}`);
+        throw new Error(`Failed to connect to scanner service at ${scannerUrl}: ${errorName} - ${errorDetails}`);
+      }
 
       if (!authResponse.ok) {
-        throw new Error(`Authentication failed: ${authResponse.status}`);
+        const errorText = await authResponse.text().catch(() => 'Unknown error');
+        throw new Error(`Authentication failed: ${authResponse.status} - ${errorText}`);
       }
 
       const authData = await authResponse.json();
       const token = authData.access_token;
 
       // Now fetch the scan results
-      const resultsResponse = await fetch(`${scannerUrl}/api/scan/${scanId}/findings`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      let resultsResponse;
+      try {
+        logger?.info(`Fetching scan results from ${scannerUrl}/api/scan/${scanId}/findings`);
+        // Add timeout to fetch requests (30 seconds)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        try {
+          resultsResponse = await fetch(`${scannerUrl}/api/scan/${scanId}/findings`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          throw fetchError;
+        }
+      } catch (fetchError) {
+        const errorDetails = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        const errorName = fetchError instanceof Error ? fetchError.name : 'Unknown';
+        logger?.error(`Failed to fetch scan results: ${errorName} - ${errorDetails}`);
+        throw new Error(`Failed to fetch scan results: ${errorName} - ${errorDetails}`);
+      }
 
       if (!resultsResponse.ok) {
         if (resultsResponse.status === 404) {
           throw new Error(`Scan ID ${scanId} not found`);
         }
-        throw new Error(`Failed to fetch scan results: ${resultsResponse.status}`);
+        const errorText = await resultsResponse.text().catch(() => 'Unknown error');
+        throw new Error(`Failed to fetch scan results: ${resultsResponse.status} - ${errorText}`);
       }
 
       const scanResults = await resultsResponse.json();

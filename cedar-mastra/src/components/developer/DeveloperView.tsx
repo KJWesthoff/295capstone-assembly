@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DeveloperFindingsTable } from "./DeveloperFindingsTable";
 import { DeveloperDetailsDrawer } from "./DeveloperDetailsDrawer";
 import { ChatPresets } from "@/components/shared/ChatPresets";
@@ -24,9 +24,11 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
   const { scanResults } = useScanResultsState();
 
   // Transform scanner results to Finding type for display
-  const actualFindings: Finding[] = scanResults?.findings
-    ? transformVulnerabilityFindings(scanResults.findings)
-    : mockFindings;
+  // Memoize to prevent infinite re-renders when scanResults reference changes but content is the same
+  const actualFindings: Finding[] = useMemo(() => {
+    if (!scanResults?.findings) return mockFindings;
+    return transformVulnerabilityFindings(scanResults.findings);
+  }, [scanResults?.scanId]); // ONLY depend on scanId, not the findings array
 
   // Register findings with Cedar for @mention functionality
   const { findings } = useRegisterFindings(actualFindings);

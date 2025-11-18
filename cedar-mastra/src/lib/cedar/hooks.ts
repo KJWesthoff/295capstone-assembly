@@ -4,6 +4,7 @@ import { toast } from "sonner";
 export function useCedarActions() {
   // Use Zustand selector pattern to access addContextEntry
   const addContextEntry = useCedarStore(s => s.addContextEntry);
+  const cedarSendMessage = useCedarStore(s => s.sendMessage);
 
   const addToContext = (key: string, data: any, label: string, color?: string) => {
     addContextEntry(key, {
@@ -19,8 +20,11 @@ export function useCedarActions() {
     toast.success(`Added to Chat: ${label}`);
   };
 
+  const sendMessage = cedarSendMessage;
+
   return {
     addToContext,
+    sendMessage,
   };
 }
 

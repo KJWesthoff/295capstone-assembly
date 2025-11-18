@@ -23,14 +23,13 @@ ENV NEXT_PUBLIC_SCANNER_SERVICE_URL=${NEXT_PUBLIC_SCANNER_SERVICE_URL}
 ENV NEXT_PUBLIC_SCANNER_USERNAME=${NEXT_PUBLIC_SCANNER_USERNAME}
 ENV NEXT_PUBLIC_SCANNER_PASSWORD=${NEXT_PUBLIC_SCANNER_PASSWORD}
 
-# Build Next.js
-RUN npm run build
-
+# For development mode, we don't build - just run dev server
+# This enables full error messages and hot reloading
 EXPOSE 3000
 
 ENV PORT=3000
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Start Next.js
-CMD ["npm", "start"]
+# Start Next.js in development mode (use dev:next to skip Mastra backend)
+CMD ["npm", "run", "dev:next"]

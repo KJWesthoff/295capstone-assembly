@@ -1,6 +1,7 @@
 // Scan Results State Management for Cedar
 // Manages vulnerability findings and makes them accessible to the AI agent
 
+import React from 'react';
 import { useCedarState, useRegisterState } from 'cedar-os';
 
 export interface VulnerabilityFinding {
@@ -38,22 +39,28 @@ export interface ScanResultsState {
  * Similar to useRoadmapState but for security vulnerabilities
  */
 export function useScanResultsState() {
-  // Load initial value from localStorage if available
-  const getInitialValue = (): ScanResultsState | null => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const stored = localStorage.getItem('scanResults');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  };
-
+  // Always start with null to prevent hydration mismatches
+  // We'll load from localStorage after mount
   const [scanResults, setScanResults] = useCedarState<ScanResultsState | null>({
     stateKey: 'scanResults',
-    initialValue: getInitialValue(),
+    initialValue: null, // Always null initially to prevent hydration errors
     description: 'API security scan results with vulnerability findings',
   });
+
+  // Load from localStorage after mount (client-side only)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem('scanResults');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setScanResults(parsed);
+      }
+    } catch (error) {
+      console.error('Failed to load scan results from localStorage:', error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount - setScanResults is stable from useCedarState
 
   // Register state with custom setters for AI agent to manipulate
   useRegisterState({
@@ -67,13 +74,11 @@ export function useScanResultsState() {
         description: 'Load scan results from the scanner service',
         execute: async (currentState, setValue, args: { scanId: string }) => {
           const { scanId } = args;
-          
+
           try {
-            // Fetch from your existing scanner API
             const response = await fetch(`http://localhost:8000/api/scan/${scanId}/findings`);
             const data = await response.json();
-            
-            // Transform to our state format
+
             const findings: VulnerabilityFinding[] = data.findings.map((f: any) => ({
               id: f.id || `${f.endpoint}-${f.rule}`,
               rule: f.rule,
@@ -88,7 +93,6 @@ export function useScanResultsState() {
               evidence: f.evidence || {},
             }));
 
-            // Group by endpoint
             const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
             findings.forEach(finding => {
               const key = `${finding.method} ${finding.endpoint}`;
@@ -98,7 +102,6 @@ export function useScanResultsState() {
               groupedByEndpoint[key].push(finding);
             });
 
-            // Calculate summary
             const summary = {
               total: findings.length,
               critical: findings.filter(f => f.severity === 'Critical').length,
@@ -134,7 +137,6 @@ export function useScanResultsState() {
             f => f.severity.toLowerCase() === args.severity.toLowerCase()
           );
 
-          // Update with filtered results
           const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
           filtered.forEach(finding => {
             const key = `${finding.method} ${finding.endpoint}`;
@@ -186,7 +188,7 @@ export function useScanResultsState() {
   });
 
   // Wrapper to persist to localStorage whenever scan results change
-  const setScanResultsWithPersistence = (newState: ScanResultsState | null) => {
+  const setScanResultsWithPersistence = React.useCallback((newState: ScanResultsState | null) => {
     setScanResults(newState);
     if (typeof window !== 'undefined') {
       if (newState) {
@@ -195,7 +197,7 @@ export function useScanResultsState() {
         localStorage.removeItem('scanResults');
       }
     }
-  };
+  }, [setScanResults]);
 
   return {
     scanResults,

@@ -14,28 +14,24 @@ import { toast } from "sonner";
  */
 export const GlobalSpells: React.FC = () => {
   const { sendMessage } = useCedarActions();
-  const store = useCedarStore();
 
   // Get the selected finding from Cedar state (if available)
-  const getSelectedFinding = () => {
-    // Check if there's a finding in the Cedar context
-    const context = store.getState().activeCedarContext;
-    console.log('[GlobalSpells] Active Cedar Context:', context);
-    if (context) {
-      // Try to find a finding in the context
-      const findingKey = Object.keys(context).find(key => key.startsWith('finding-'));
-      if (findingKey) {
-        try {
-          return JSON.parse(context[findingKey]);
-        } catch (e) {
-          console.error('Failed to parse finding from context:', e);
-        }
-      }
-    }
-    return null;
-  };
+  const getSelectedFinding = React.useCallback(() => {
+    const context = (useCedarStore.getState() as any)?.activeCedarContext;
+    if (!context) return null;
 
-  console.log('[GlobalSpells] Component rendered');
+    const findingKey = Object.keys(context).find((key) => key.startsWith("finding-"));
+    if (!findingKey) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(context[findingKey]);
+    } catch (e) {
+      console.error("Failed to parse finding from context:", e);
+      return null;
+    }
+    }, []);
 
   return (
     <>
