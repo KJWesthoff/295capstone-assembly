@@ -29,7 +29,7 @@ export interface ChatPresetsProps {
 
 export const ChatPresets = ({
   presets,
-  title = "Quick AI Actions (CedarOS)",
+  title = "Quick AI Actions",
   subtitle,
   gridCols = { base: 1, md: 2, lg: 6 },
   variant = 'default',

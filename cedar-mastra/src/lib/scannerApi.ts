@@ -237,6 +237,52 @@ export class ScannerApiClient {
   }
 
   /**
+   * List all scans (paginated)
+   */
+  async listScans(limit: number = 10, offset: number = 0): Promise<{
+    scans: Array<{
+      scan_id: string;
+      status: string;
+      server_url: string;
+      spec_url?: string;
+      scanners: string[];
+      dangerous: boolean;
+      fuzz_auth: boolean;
+      progress: number;
+      findings_count: number;
+      created_at: string;
+      completed_at?: string;
+      error?: string;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    // Ensure we're authenticated before making the request
+    const authenticated = await ensureScannerAuth();
+    if (!authenticated) {
+      throw new Error('Failed to authenticate with scanner service');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/scans?limit=${limit}&offset=${offset}`, {
+        headers: {
+          ...getScannerAuthHeader(),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to list scans: ${response.status}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error listing scans:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get available scanners
    */
   async getAvailableScanners(): Promise<{

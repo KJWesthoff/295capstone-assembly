@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScanResultsState, getSeverityColor, VulnerabilityFinding } from '@/app/cedar-os/scanState';
 import { useCedarStore } from 'cedar-os';
 import { ScanConfigDialog, ScanConfig } from '@/components/security/ScanConfigDialog';
 import { scannerApi, ScanStatus } from '@/lib/scannerApi';
 import { useSecurityContext } from '@/app/cedar-os/context';
+import { useScanResultsPolling } from '@/hooks/useScanResultsPolling';
 
 type RoleRoute = {
   role: 'executive' | 'security' | 'developer';
@@ -58,9 +59,74 @@ export default function SecurityDashboardPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [currentScanStatus, setCurrentScanStatus] = useState<ScanStatus | null>(null);
-  
+
   // Track if we should show old results or force form view
   const [showOldResults, setShowOldResults] = useState(false);
+
+  // Store the API base URL in a ref to avoid stale closure in callback
+  const apiBaseUrlRef = useRef<string>('');
+
+  // Memoize callbacks to prevent infinite re-render loop
+  const handleScanCompleted = useCallback(async (scanId: string, findings: any[]) => {
+    console.log('[SecurityPage] ✅ handleScanCompleted ENTRY - scanId:', scanId, 'findings:', findings.length);
+
+    try {
+      console.log('[SecurityPage] Calling setScanResults...');
+      // Update scan results with completed status
+      setScanResults({
+        scanId,
+        findings,
+        scanDate: new Date().toISOString(),
+        apiBaseUrl: apiBaseUrlRef.current,
+        status: 'completed',
+        summary: {
+          total: findings.length,
+          critical: findings.filter((f: VulnerabilityFinding) => f.severity === 'Critical').length,
+          high: findings.filter((f: VulnerabilityFinding) => f.severity === 'High').length,
+          medium: findings.filter((f: VulnerabilityFinding) => f.severity === 'Medium').length,
+          low: findings.filter((f: VulnerabilityFinding) => f.severity === 'Low').length,
+        },
+        groupedByEndpoint: findings.reduce((acc, finding) => {
+          const key = `${finding.method} ${finding.endpoint}`;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(finding);
+          return acc;
+        }, {} as Record<string, VulnerabilityFinding[]>),
+      });
+      console.log('[SecurityPage] setScanResults completed');
+
+      console.log('[SecurityPage] Setting isScanning to false...');
+      setIsScanning(false);
+      setActiveScanId(null);
+      console.log('[SecurityPage] ✅ handleScanCompleted EXIT - all done');
+    } catch (error) {
+      console.error('[SecurityPage] ❌ Error in handleScanCompleted:', error);
+      throw error;
+    }
+  }, [setScanResults]); // Only depends on setScanResults (which is stable from Cedar hook)
+
+  const handleScanFailed = useCallback((message: string) => {
+    console.error('❌ Scan failed:', message);
+    alert('Scan failed: ' + message);
+    setIsScanning(false);
+    setActiveScanId(null);
+    setScanResults(null);
+  }, [setScanResults]);
+
+  // Poll scan status and update progress
+  const { status: pollingStatus } = useScanResultsPolling({
+    scanId: activeScanId,
+    enabled: !!activeScanId && scanResults?.status === 'running',
+    onCompleted: handleScanCompleted,
+    onFailed: handleScanFailed,
+  });
+
+  // Update currentScanStatus from polling hook
+  useEffect(() => {
+    if (pollingStatus) {
+      setCurrentScanStatus(pollingStatus);
+    }
+  }, [pollingStatus]);
   
   // On mount, check if we have completed scan results but don't auto-show them
   // Only show if user explicitly wants to view them or if scan is running
@@ -125,160 +191,6 @@ export default function SecurityDashboardPage() {
   };
 
   const filteredFindings = getFilteredFindings();
-
-  // Poll scan status if there's an active scan
-  useEffect(() => {
-    if (!activeScanId) return;
-
-    let consecutiveErrors = 0;
-    const maxConsecutiveErrors = 5;
-    let isCompleted = false; // Track completion to prevent multiple calls
-
-    const pollInterval = setInterval(async () => {
-      // Stop if already completed
-      if (isCompleted) {
-        clearInterval(pollInterval);
-        return;
-      }
-
-      try {
-        const status = await scannerApi.getScanStatus(activeScanId);
-        
-        // Reset error counter on success
-        consecutiveErrors = 0;
-
-        // Debug: Log the chunk_status data
-        if (status.chunk_status) {
-          console.log('Chunk status data:', status.chunk_status.map((chunk: any) => ({
-            id: chunk.chunk_id,
-            progress: chunk.progress,
-            status: chunk.status,
-            scanner: chunk.scanner,
-            endpoints_count: chunk.endpoints_count,
-            total_endpoints: chunk.total_endpoints,
-            scanned_endpoints: chunk.scanned_endpoints?.length
-          })));
-        }
-
-        setCurrentScanStatus(status);
-
-        if (status.status === 'completed') {
-          // Mark as completed to prevent re-entry
-          isCompleted = true;
-          clearInterval(pollInterval);
-
-          // Load findings
-          const findings = await scannerApi.getFindings(activeScanId);
-          loadScanResults(activeScanId, findings.findings);
-          setIsScanning(false);
-          setCurrentScanStatus(null);
-          setActiveScanId(null); // Clear active scan ID to prevent re-polling
-
-          // Navigate to role-specific dashboard after scan completes
-          const userRole = typeof window !== 'undefined' ? (localStorage.getItem('userRole') || 'dashboard') : 'dashboard';
-          const routeMap: Record<string, string> = {
-            'executive': '/executive',
-            'security': '/dashboard',
-            'developer': '/developer',
-            'dashboard': '/dashboard' // fallback
-          };
-          router.push(routeMap[userRole] || '/dashboard');
-        } else if (status.status === 'failed') {
-          isCompleted = true;
-          clearInterval(pollInterval);
-          alert('Scan failed: ' + (status.error || 'Unknown error'));
-          setIsScanning(false);
-          setCurrentScanStatus(null);
-          setActiveScanId(null);
-        }
-      } catch (error) {
-        consecutiveErrors++;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Error polling scan status (${consecutiveErrors}/${maxConsecutiveErrors}):`, errorMessage);
-        
-        // If 404, the scan doesn't exist - stop polling immediately
-        if (errorMessage.includes('404') || errorMessage.includes('not found')) {
-          console.error('Scan not found, stopping poll');
-          isCompleted = true;
-          clearInterval(pollInterval);
-          setIsScanning(false);
-          setActiveScanId(null);
-          alert(`Scan ${activeScanId} not found. It may have been deleted or the backend was restarted. Please start a new scan.`);
-          return;
-        }
-        
-        // Stop polling after too many consecutive errors
-        if (consecutiveErrors >= maxConsecutiveErrors) {
-          console.error('Too many consecutive errors, stopping poll');
-          isCompleted = true;
-          clearInterval(pollInterval);
-          setIsScanning(false);
-          setActiveScanId(null);
-          alert(`Failed to poll scan status after ${maxConsecutiveErrors} attempts. Error: ${errorMessage}. Please refresh the page and check the scan manually.`);
-        }
-      }
-    }, 3000); // Poll every 3 seconds
-
-    return () => {
-      clearInterval(pollInterval);
-    };
-  }, [activeScanId]); // Only depend on activeScanId, not scanResults.status
-
-  const loadScanResults = (scanId: string, findings: any[]) => {
-    // Reset added findings when loading new scan results
-    setAddedFindings(new Set());
-
-    // Debug: Log raw findings from API
-    console.log('Raw findings from scanner API:', JSON.stringify(findings, null, 2));
-
-    // Transform findings to our state format
-    const transformedFindings: VulnerabilityFinding[] = findings.map((f: any, index: number) => ({
-      id: `${scanId}-${f.endpoint || 'unknown'}-${f.rule || 'unknown'}-${index}`,
-      rule: f.rule || 'Unknown',
-      title: f.title || 'Unknown Issue',
-      severity: f.severity || 'Low',
-      score: f.score || 0,
-      endpoint: f.endpoint || 'Unknown',
-      method: f.method || 'GET',
-      description: f.description || 'No description available',
-      scanner: f.scanner || 'unknown',
-      scanner_description: f.scanner_description || '',
-      evidence: f.evidence || {},
-    }));
-
-    // Group by endpoint
-    const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
-    transformedFindings.forEach(finding => {
-      const key = `${finding.method} ${finding.endpoint}`;
-      if (!groupedByEndpoint[key]) {
-        groupedByEndpoint[key] = [];
-      }
-      groupedByEndpoint[key].push(finding);
-    });
-
-    // Calculate summary
-    const summary = {
-      total: transformedFindings.length,
-      critical: transformedFindings.filter(f => f.severity === 'Critical').length,
-      high: transformedFindings.filter(f => f.severity === 'High').length,
-      medium: transformedFindings.filter(f => f.severity === 'Medium').length,
-      low: transformedFindings.filter(f => f.severity === 'Low').length,
-    };
-
-    setScanResults({
-      scanId,
-      findings: transformedFindings,
-      scanDate: new Date().toISOString(),
-      apiBaseUrl: 'Unknown', // Will be updated when we get scan details
-      status: 'completed',
-      summary,
-      groupedByEndpoint,
-    });
-
-    // Note: We don't add individual findings to context automatically anymore
-    // The useSecurityContext hook will add just the summary
-    // Users can manually add specific findings they want to discuss
-  };
 
   const handleAddToContext = (finding: VulnerabilityFinding) => {
     try {
@@ -397,7 +309,10 @@ export default function SecurityDashboardPage() {
 
       console.log('✅ Scan started successfully with ID:', response.scan_id);
       setActiveScanId(response.scan_id);
-      
+
+      // Store API base URL in ref for use in completion callback
+      apiBaseUrlRef.current = config.serverUrl;
+
       // Show scanning state
       setScanResults({
         scanId: response.scan_id,
@@ -506,6 +421,35 @@ export default function SecurityDashboardPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* View Results Button - shown when scan is complete */}
+                    {currentScanStatus?.progress === 100 && scanResults?.status === 'completed' && (
+                      <div className="mt-6 pt-6 border-t border-gray-600">
+                        <div className="flex items-center justify-between">
+                          <div className="text-green-400 font-semibold flex items-center gap-2">
+                            <span className="text-2xl">✅</span>
+                            <span>Scan Complete! Found {scanResults.summary.total} vulnerabilities</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const role = typeof window !== 'undefined' ? localStorage.getItem('userRole') : null;
+                              // Map role to dashboard page
+                              // executive -> /executive (C-Suite risk overview)
+                              // developer -> /developer (Actionable remediation)
+                              // security -> /dashboard (Detailed security analysis)
+                              const targetPath = role === 'executive' ? '/executive'
+                                : role === 'developer' ? '/developer'
+                                : role === 'security' ? '/dashboard'
+                                : '/developer'; // Default to developer
+                              router.push(targetPath);
+                            }}
+                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                          >
+                            View Results →
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Scanner Containers Details */}

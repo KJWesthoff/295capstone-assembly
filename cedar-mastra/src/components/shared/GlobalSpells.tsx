@@ -1,42 +1,46 @@
 "use client";
 
 import React from "react";
-import RadialMenuSpell from "@/app/cedar-os/components/spells/RadialMenuSpell";
-import { ActivationMode, Hotkey } from "cedar-os";
-import { Sparkles, Copy, Search, Wrench, XCircle, FileText, Shield, TrendingDown } from "lucide-react";
-import { useCedarStore } from "cedar-os";
-import { useCedarActions } from "@/lib/cedar/hooks";
-import { toast } from "sonner";
+// import RadialMenuSpell from "@/app/cedar-os/components/spells/RadialMenuSpell";
+// import { ActivationMode, Hotkey } from "cedar-os";
+// import { Sparkles, Copy, Search, Wrench, XCircle, FileText, Shield, TrendingDown } from "lucide-react";
+// import { useCedarStore } from "cedar-os";
+// import { useCedarActions } from "@/lib/cedar/hooks";
+// import { toast } from "sonner";
 
 /**
  * Global spell instances that are available throughout the application
  * These provide context menus and keyboard shortcuts for common actions
+ *
+ * NOTE: Right-click spell disabled due to performance issues
  */
-export const GlobalSpells: React.FC = () => {
-  const { sendMessage } = useCedarActions();
+export const GlobalSpells: React.FC = React.memo(() => {
+  // Disabled - causing infinite render loop
+  // const { sendMessage } = useCedarActions();
+  // const store = useCedarStore();
 
   // Get the selected finding from Cedar state (if available)
-  const getSelectedFinding = React.useCallback(() => {
-    const context = (useCedarStore.getState() as any)?.activeCedarContext;
-    if (!context) return null;
-
-    const findingKey = Object.keys(context).find((key) => key.startsWith("finding-"));
-    if (!findingKey) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(context[findingKey]);
-    } catch (e) {
-      console.error("Failed to parse finding from context:", e);
-      return null;
-    }
-    }, []);
+  // const getSelectedFinding = () => {
+  //   // Check if there's a finding in the Cedar context
+  //   const context = store.getState().activeCedarContext;
+  //   if (context) {
+  //     // Try to find a finding in the context
+  //     const findingKey = Object.keys(context).find(key => key.startsWith('finding-'));
+  //     if (findingKey) {
+  //       try {
+  //         return JSON.parse(context[findingKey]);
+  //       } catch (e) {
+  //         console.error('Failed to parse finding from context:', e);
+  //       }
+  //     }
+  //   }
+  //   return null;
+  // };
 
   return (
     <>
-      {/* Radial Menu for Vulnerability Findings */}
-      <RadialMenuSpell
+      {/* Radial Menu for Vulnerability Findings - DISABLED */}
+      {/* <RadialMenuSpell
         spellId="vulnerability-actions"
         activationConditions={{
           events: ['right-click' as any],
@@ -141,8 +145,10 @@ export const GlobalSpells: React.FC = () => {
               }
             },
           },
-        ]}
-      />
+        ]} */}
+      {/* /> */}
     </>
   );
-};
+});
+
+GlobalSpells.displayName = 'GlobalSpells';
