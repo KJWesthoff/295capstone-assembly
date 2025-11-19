@@ -103,10 +103,9 @@ deploy/.aws/
 
 # Database dumps (exclude all by default, use Git LFS for specific dumps)
 database/dumps/*.sql
-database/dumps/*.sql.gz
 database/dumps/*.dump
-# Exception: You can commit specific dumps with Git LFS or by removing this line
-# !database/dumps/rag_db_latest.sql.gz
+# Exception: Allow .gz files (tracked with Git LFS)
+!database/dumps/*.sql.gz
 
 # Database initialization scripts (keep .example files)
 database/init/*.sql
