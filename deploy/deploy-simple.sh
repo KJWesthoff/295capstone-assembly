@@ -372,12 +372,60 @@ LOG_FILE=/var/log/ventiapi/app.log
 ENVEOF
     fi
     
+    # Update Cedar .env file with public IP and actual values
+    print_status "Configuring Cedar environment with public IP: $PUBLIC_IP"
+    if [ -f "$TEMP_DIR/cedar-mastra/.env" ]; then
+        # Read OpenAI key from local cedar-mastra/.env
+        OPENAI_KEY=$(grep "^OPENAI_API_KEY=" cedar-mastra/.env | cut -d'=' -f2)
+        GITHUB_TOKEN=$(grep "^GITHUB_TOKEN=" cedar-mastra/.env | cut -d'=' -f2 || echo "")
+        MISTRAL_KEY=$(grep "^MISTRAL_API_KEY=" cedar-mastra/.env | cut -d'=' -f2 || echo "")
+
+        # Create production cedar-mastra/.env with correct URLs
+        cat > "$TEMP_DIR/cedar-mastra/.env" << CEDAREOF
+# OpenAI API Key
+OPENAI_API_KEY=${OPENAI_KEY}
+
+# Model configuration
+MODEL=gpt-4o-mini
+
+# Mistral (optional)
+MISTRAL_API_KEY=${MISTRAL_KEY}
+
+# GitHub Token (for advisory ingestion - higher rate limits)
+GITHUB_TOKEN=${GITHUB_TOKEN}
+
+# Database configuration (SSL enabled for security)
+DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db?sslmode=require
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=rag_pass
+POSTGRES_DB=rag_db
+
+# Scanner service URL (for Mastra backend - uses internal Docker network)
+SCANNER_SERVICE_URL=http://web-api:8000
+
+# Scanner credentials (for Mastra backend tools)
+SCANNER_USERNAME=MICS295
+SCANNER_PASSWORD=MaryMcHale
+
+# Scanner service URL for frontend (uses public IP)
+NEXT_PUBLIC_SCANNER_SERVICE_URL=http://${PUBLIC_IP}:8000
+NEXT_PUBLIC_SCANNER_USERNAME=MICS295
+NEXT_PUBLIC_SCANNER_PASSWORD=MaryMcHale
+
+# Mastra backend URL (uses public IP)
+NEXT_PUBLIC_MASTRA_URL=http://${PUBLIC_IP}:4111
+CEDAREOF
+        print_success "Updated cedar-mastra/.env with IP: $PUBLIC_IP"
+    else
+        print_warning "cedar-mastra/.env not found in deployment package"
+    fi
+
     # Upload the application files
     scp -r -i ~/.ssh/${KEY_PAIR_NAME}.pem -o StrictHostKeyChecking=no "$TEMP_DIR/"* ec2-user@$PUBLIC_IP:/opt/ventiapi/
-    
+
     # Clean up temp directory
     rm -rf "$TEMP_DIR"
-    
+
     print_status "Deploying application on remote server..."
     
     # Create and execute deployment script on remote server
@@ -511,17 +559,62 @@ docker-compose up -d
 
 # Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL to be ready..."
-sleep 30
-docker-compose exec -T postgres pg_isready -U rag_user -d rag_db || echo "PostgreSQL not ready yet, continuing..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if docker-compose exec -T postgres pg_isready -U rag_user -d rag_db > /dev/null 2>&1; then
+        echo "✅ PostgreSQL is ready!"
+        break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo "   Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
+    sleep 2
+done
 
-# Restore database if dump exists
-if [ -f "database-restore.sh" ]; then
-    echo "Restoring database..."
-    chmod +x database-restore.sh
-    ./database-restore.sh || echo "Database restore failed, continuing with empty database"
-else
-    echo "No database-restore.sh found, starting with empty database"
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ PostgreSQL failed to become ready"
+    exit 1
 fi
+
+# Step 1: Run migrations (create scanner schema)
+echo ""
+echo "📊 Step 1/2: Running database migrations..."
+if [ -f "database/init/01-create-scanner-schema.sql" ]; then
+    echo "   Applying 01-create-scanner-schema.sql..."
+    docker-compose exec -T postgres psql -U rag_user -d rag_db < database/init/01-create-scanner-schema.sql
+    echo "   ✅ Scanner schema created"
+else
+    echo "   ⚠️  Migration file not found: database/init/01-create-scanner-schema.sql"
+fi
+
+# Step 2: Restore database dumps
+echo ""
+echo "📥 Step 2/2: Restoring database from dumps..."
+if [ -d "database/dumps" ] && [ -f "database/dumps/rag_db_latest.sql.gz" ]; then
+    echo "   Found database dump: database/dumps/rag_db_latest.sql.gz"
+    DUMP_SIZE=$(ls -lh database/dumps/rag_db_latest.sql.gz | awk '{print $5}')
+    echo "   Dump size: $DUMP_SIZE"
+    echo "   Decompressing and restoring (this may take a few minutes)..."
+
+    gunzip -c database/dumps/rag_db_latest.sql.gz | docker-compose exec -T postgres psql -U rag_user -d rag_db > /dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Database restored successfully!"
+
+        # Show table count
+        echo ""
+        echo "   📋 Restored tables:"
+        docker-compose exec -T postgres psql -U rag_user -d rag_db -c "\dt" | head -20
+    else
+        echo "   ⚠️  Database restore encountered errors (may be due to existing data)"
+    fi
+else
+    echo "   ℹ️  No database dump found, starting with fresh database"
+    echo "   Expected location: database/dumps/rag_db_latest.sql.gz"
+fi
+
+echo ""
+echo "✅ Database setup complete!"
 
 DOCKEREOF
 
