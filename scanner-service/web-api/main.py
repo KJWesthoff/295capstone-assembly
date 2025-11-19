@@ -31,6 +31,14 @@ from security import (
 # Import multi-scanner support
 from scanner_engines import multi_scanner
 
+# Import database module
+from database import (
+    database, connect_db, disconnect_db,
+    create_scan, get_scan, update_scan_status,
+    insert_findings, get_findings, get_findings_count,
+    upsert_chunk_status, get_chunk_status, get_scan_summary
+)
+
 # Configuration
 SHARED_RESULTS = Path("/shared/results")
 SHARED_SPECS = Path("/shared/specs")
@@ -81,14 +89,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Startup event disabled - using direct execution mode
-# @app.on_event("startup")
-# async def startup_event():
-#     """Initialize connections on startup"""
-#     job_queue.connect()
-#     print("✅ Job queue connected to Redis")
+# Startup/shutdown events for database connection
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database connection on startup"""
+    await connect_db()
+    print("✅ Database connected")
 
-# In-memory scan tracking (replace with Redis in production)
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close database connection on shutdown"""
+    await disconnect_db()
+    print("✅ Database disconnected")
+
+# Legacy in-memory scan tracking (deprecated - use database)
+# Kept for backward compatibility during migration
 scans: Dict[str, Dict] = {}
 
 # Models
@@ -273,7 +288,42 @@ async def start_scan(
                 detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
             )
         
-        # Initialize scan data
+        # Create scan in database
+        await create_scan(
+            scan_id=scan_id,
+            server_url=server_url,
+            spec_url=spec_location or target_url,
+            scanners=scanner_list,
+            dangerous=dangerous,
+            fuzz_auth=fuzz_auth,
+            rps=rps,
+            max_requests=max_requests,
+            user_id=user.get('username')
+        )
+
+        # Initialize chunk status in database
+        for i, scanner in enumerate(scanner_list):
+            await upsert_chunk_status(
+                scan_id=scan_id,
+                chunk_id=i,
+                scanner=scanner,
+                status="pending",
+                progress=0,
+                endpoints_count=0,
+                total_endpoints=0
+            )
+
+        # Update scan to running status
+        await update_scan_status(
+            scan_id=scan_id,
+            status="pending",
+            current_phase="Initializing scan",
+            total_chunks=len(scanner_list),
+            completed_chunks=0,
+            parallel_mode=True
+        )
+
+        # Keep legacy in-memory store for backward compatibility (temporary)
         scans[scan_id] = {
             "status": "pending",
             "progress": 0,
@@ -489,82 +539,157 @@ async def monitor_scan_jobs(scan_id: str):
             await asyncio.sleep(5)
 
 @app.get("/api/scan/{scan_id}/status", response_model=ScanStatus)
-async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
-    """Get current scan status with job queue information"""
-    
-    if scan_id not in scans:
-        raise HTTPException(status_code=404, detail="Scan not found")
-    
-    scan_data = scans[scan_id]
-    
-    # Get chunk statuses directly from scan data
-    chunk_status = scan_data.get("chunk_status", [])
-    
+async def get_scan_status_endpoint(scan_id: str, user: Dict = Depends(verify_token)):
+    """Get current scan status from database"""
+
+    # Try to get from database first
+    scan_data = await get_scan(scan_id)
+
+    if not scan_data:
+        # Fallback to in-memory store for backward compatibility
+        if scan_id not in scans:
+            raise HTTPException(status_code=404, detail="Scan not found")
+        scan_data = scans[scan_id]
+
+        # Return legacy format
+        chunk_status = scan_data.get("chunk_status", [])
+        queue_stats = {'queue_length': 0, 'active_workers': 0, 'processing_workers': 0, 'waiting_workers': 0}
+
+        return ScanStatus(
+            scan_id=scan_id,
+            status=scan_data.get("status", "unknown"),
+            progress=scan_data.get("progress", 0),
+            current_phase=scan_data.get("current_phase", "Unknown"),
+            findings_count=scan_data.get("findings_count", 0),
+            parallel_mode=scan_data.get("parallel_mode", False),
+            total_chunks=scan_data.get("total_chunks", 1),
+            completed_chunks=scan_data.get("completed_chunks", 0),
+            chunk_status=chunk_status,
+            job_ids=scan_data.get("job_ids", []),
+            queue_stats=queue_stats
+        )
+
+    # Get chunk statuses from database
+    chunk_status_list = await get_chunk_status(scan_id)
+
+    # Convert database chunk status to API format
+    chunk_status = []
+    for chunk in chunk_status_list:
+        chunk_status.append({
+            "chunk_id": chunk["chunk_id"],
+            "scanner": chunk["scanner"],
+            "status": chunk["status"],
+            "progress": chunk["progress"],
+            "current_endpoint": chunk["current_endpoint"],
+            "endpoints_count": chunk["endpoints_count"],
+            "total_endpoints": chunk["total_endpoints"],
+            "endpoints": chunk["endpoints"],
+            "scanned_endpoints": chunk["scanned_endpoints"],
+            "scan_type": chunk["scan_type"],
+            "error": chunk["error"]
+        })
+
     # Get queue statistics (disabled for direct execution mode)
     queue_stats = {'queue_length': 0, 'active_workers': 0, 'processing_workers': 0, 'waiting_workers': 0}
-    
+
     return ScanStatus(
         scan_id=scan_id,
-        status=scan_data.get("status", "unknown"),
-        progress=scan_data.get("progress", 0),
+        status=scan_data["status"],
+        progress=scan_data["progress"],
         current_phase=scan_data.get("current_phase", "Unknown"),
-        findings_count=scan_data.get("findings_count", 0),
+        findings_count=scan_data["findings_count"],
         parallel_mode=scan_data.get("parallel_mode", False),
         total_chunks=scan_data.get("total_chunks", 1),
         completed_chunks=scan_data.get("completed_chunks", 0),
         chunk_status=chunk_status,
-        job_ids=scan_data.get("job_ids", []),
+        job_ids=[],  # Legacy field, not used
         queue_stats=queue_stats
     )
 
 @app.get("/api/scan/{scan_id}/findings")
-async def get_scan_findings(
+async def get_scan_findings_endpoint(
     scan_id: str,
     offset: int = 0,
-    limit: int = 50,
+    limit: int = 1000,  # Increased default limit for multi-scanner results
     user: Dict = Depends(verify_token)
 ):
-    """Get scan findings from actual scanner output files"""
+    """Get scan findings from database"""
 
-    if scan_id not in scans:
-        raise HTTPException(status_code=404, detail="Scan not found")
+    # Try to get from database first
+    scan_data = await get_scan(scan_id)
 
-    scan_data = scans[scan_id]
+    if not scan_data:
+        # Fallback to legacy file-based parsing for backward compatibility
+        if scan_id not in scans:
+            raise HTTPException(status_code=404, detail="Scan not found")
 
-    if scan_data.get("status") != "completed":
+        scan_data_legacy = scans[scan_id]
+
+        if scan_data_legacy.get("status") != "completed":
+            return {
+                "scan_id": scan_id,
+                "total": 0,
+                "offset": offset,
+                "limit": limit,
+                "findings": []
+            }
+
+        all_findings = []
+        scanner_list = scan_data_legacy.get("scanners", ["ventiapi"])
+
+        # Parse VentiAPI results
+        if "ventiapi" in scanner_list:
+            ventiapi_findings = parse_ventiapi_results(scan_id)
+            all_findings.extend(ventiapi_findings)
+            print(f"✅ Loaded {len(ventiapi_findings)} findings from VentiAPI (legacy)")
+
+        # Parse ZAP results
+        if "zap" in scanner_list:
+            zap_findings = parse_zap_results(scan_id, scan_data_legacy.get("server_url", ""))
+            all_findings.extend(zap_findings)
+            print(f"✅ Loaded {len(zap_findings)} findings from ZAP (legacy)")
+
+        # Apply pagination
+        total_findings = len(all_findings)
+        paginated_findings = all_findings[offset:offset + limit]
+
         return {
             "scan_id": scan_id,
-            "total": 0,
+            "total": total_findings,
             "offset": offset,
             "limit": limit,
-            "findings": []
+            "findings": paginated_findings
         }
 
-    all_findings = []
-    scanner_list = scan_data.get("scanners", ["ventiapi"])
+    # Query findings from database
+    findings_list = await get_findings(scan_id, offset=offset, limit=limit)
+    total_findings = await get_findings_count(scan_id)
 
-    # Parse VentiAPI results
-    if "ventiapi" in scanner_list:
-        ventiapi_findings = parse_ventiapi_results(scan_id)
-        all_findings.extend(ventiapi_findings)
-        print(f"✅ Loaded {len(ventiapi_findings)} findings from VentiAPI")
+    # Convert database findings to API format
+    api_findings = []
+    for finding in findings_list:
+        api_findings.append({
+            "id": str(finding["id"]),
+            "rule": finding["rule"],
+            "title": finding["title"],
+            "severity": finding["severity"],
+            "score": finding["score"],
+            "endpoint": finding["endpoint"],
+            "method": finding["method"],
+            "description": finding["description"],
+            "scanner": finding["scanner"],
+            "scanner_description": finding["scanner_description"],
+            "evidence": finding["evidence"]
+        })
 
-    # Parse ZAP results
-    if "zap" in scanner_list:
-        zap_findings = parse_zap_results(scan_id, scan_data.get("server_url", ""))
-        all_findings.extend(zap_findings)
-        print(f"✅ Loaded {len(zap_findings)} findings from ZAP")
-
-    # Apply pagination
-    total_findings = len(all_findings)
-    paginated_findings = all_findings[offset:offset + limit]
+    print(f"✅ Loaded {len(api_findings)} findings from database for scan {scan_id}")
 
     return {
         "scan_id": scan_id,
         "total": total_findings,
         "offset": offset,
         "limit": limit,
-        "findings": paginated_findings
+        "findings": api_findings
     }
 
 def parse_ventiapi_results(scan_id: str) -> List[Dict]:
@@ -891,9 +1016,72 @@ async def get_scan_report_html(
     return Response(content=html_template, media_type="text/html")
 
 @app.get("/api/scans")
-async def list_scans(user: Dict = Depends(verify_token)):
-    """List all scans for the user"""
-    return {"scans": list(scans.values())}
+async def list_scans(
+    limit: int = 10,
+    offset: int = 0,
+    user: Dict = Depends(verify_token)
+):
+    """List recent scans for the user, ordered by most recent first"""
+    try:
+        # Fetch scans from database, ordered by created_at descending
+        query = """
+            SELECT
+                scan_id,
+                status,
+                server_url,
+                spec_url,
+                scanners,
+                dangerous,
+                fuzz_auth,
+                progress,
+                findings_count,
+                created_at,
+                completed_at,
+                error
+            FROM scans
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+        """
+
+        scans_list = await database.fetch_all(
+            query=query,
+            values={"limit": limit, "offset": offset}
+        )
+
+        # Get total count
+        count_query = "SELECT COUNT(*) as total FROM scans"
+        total_result = await database.fetch_one(query=count_query)
+        total = total_result["total"] if total_result else 0
+
+        # Convert to dict format
+        scans_data = [
+            {
+                "scan_id": row["scan_id"],
+                "status": row["status"],
+                "server_url": row["server_url"],
+                "spec_url": row["spec_url"],
+                "scanners": row["scanners"],
+                "dangerous": row["dangerous"],
+                "fuzz_auth": row["fuzz_auth"],
+                "progress": row["progress"],
+                "findings_count": row["findings_count"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
+                "error": row["error"],
+            }
+            for row in scans_list
+        ]
+
+        return {
+            "scans": scans_data,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        print(f"Error fetching scans from database: {e}")
+        # Fallback to in-memory scans if database fails
+        return {"scans": list(scans.values()), "total": len(scans), "limit": limit, "offset": offset}
 
 @app.delete("/api/scan/{scan_id}")
 async def delete_scan(scan_id: str, user: Dict = Depends(verify_token)):
@@ -1008,21 +1196,74 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
             scan_data["error"] = "All scanner engines failed"
             scan_data["progress"] = 100
             print(f"❌ Multi-scan {scan_id} failed - overall_status: {results.get('overall_status')}")
-        
+
         # Update chunk status based on individual scanner results
         for i, scanner_name in enumerate(scanner_list):
             scanner_result = results["results"].get(scanner_name, {})
             chunk = scan_data["chunk_status"][i]
-            
+
             if scanner_result.get("status") == "completed":
                 chunk["status"] = "completed"
                 chunk["progress"] = 100
             else:
                 chunk["status"] = "failed"
                 chunk["progress"] = 100
-        
+
+            # Update chunk status in database
+            await upsert_chunk_status(
+                scan_id=scan_id,
+                chunk_id=i,
+                scanner=scanner_name,
+                status=chunk["status"],
+                progress=chunk["progress"],
+                endpoints_count=chunk.get("endpoints_count", 0),
+                total_endpoints=chunk.get("total_endpoints", 0)
+            )
+
         # Store detailed results
         scan_data["scanner_results"] = results
+
+        # Parse findings from scanner output files and write to database
+        if scan_data["status"] == "completed":
+            all_findings = []
+
+            # Parse VentiAPI results
+            if "ventiapi" in scanner_list:
+                ventiapi_findings = parse_ventiapi_results(scan_id)
+                all_findings.extend(ventiapi_findings)
+                print(f"✅ Parsed {len(ventiapi_findings)} findings from VentiAPI")
+
+            # Parse ZAP results
+            if "zap" in scanner_list:
+                zap_findings = parse_zap_results(scan_id, server_url)
+                all_findings.extend(zap_findings)
+                print(f"✅ Parsed {len(zap_findings)} findings from ZAP")
+
+            # Write all findings to database
+            if all_findings:
+                inserted_count = await insert_findings(scan_id, all_findings)
+                print(f"✅ Inserted {inserted_count} findings into database for scan {scan_id}")
+
+            # Update scan status in database with findings count
+            await update_scan_status(
+                scan_id=scan_id,
+                status="completed",
+                progress=100,
+                current_phase=scan_data["current_phase"],
+                findings_count=len(all_findings),
+                completed_chunks=len(scanner_list)
+            )
+
+            scan_data["findings_count"] = len(all_findings)
+        else:
+            # Update failed scan status in database
+            await update_scan_status(
+                scan_id=scan_id,
+                status="failed",
+                progress=100,
+                current_phase=scan_data["current_phase"],
+                error=scan_data.get("error")
+            )
         
     except Exception as e:
         import traceback

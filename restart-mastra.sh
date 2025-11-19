@@ -15,6 +15,16 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Clear Next.js cache to avoid stale builds
+NEXT_CACHE_DIR="cedar-mastra/.next"
+echo -e "${BLUE}Clearing Next.js cache at ${NEXT_CACHE_DIR}...${NC}"
+if [ -d "$NEXT_CACHE_DIR" ]; then
+  rm -rf "$NEXT_CACHE_DIR"
+  echo -e "${GREEN}Next.js cache cleared.${NC}"
+else
+  echo -e "${YELLOW}No Next.js cache directory found (skipping).${NC}"
+fi
+
 # Stop existing containers
 echo -e "${BLUE}Stopping existing Mastra containers...${NC}"
 docker compose stop cedar-mastra cedar-frontend
