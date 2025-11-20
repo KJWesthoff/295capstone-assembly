@@ -85,49 +85,137 @@ class VentiAPIScanner(ScannerEngine):
             
         return cmd
     
-    async def scan(self, scan_id: str, spec_path: str, target_url: str, 
+    async def scan(self, scan_id: str, spec_path: str, target_url: str,
                    options: Dict[str, Any]) -> Dict[str, Any]:
         """Execute VentiAPI scan"""
         cmd = self.get_docker_command(scan_id, spec_path, target_url, options)
-        
+        container_name = f'ventiapi-scanner-{scan_id}'
+
         try:
             # Debug: Print command elements to find None values
             print(f"Debug VentiAPI command elements: {cmd}")
             for i, element in enumerate(cmd):
                 if element is None:
                     print(f"Found None at position {i}")
-            
+
             logger.info(f"🔍 Starting VentiAPI scan: {' '.join(cmd)}")
-            
+
+            # Start the container in detached mode by removing --rm and adding -d
+            cmd_detached = [c for c in cmd if c != '--rm']
+            # Find the image name index and insert -d before it
+            image_idx = cmd_detached.index(self.image)
+            cmd_detached.insert(image_idx, '-d')
+
             process = await asyncio.create_subprocess_exec(
-                *cmd,
+                *cmd_detached,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             stdout, stderr = await process.communicate()
 
-            result = {
+            if process.returncode != 0:
+                logger.error(f"Failed to start VentiAPI scanner container")
+                logger.error(f"stderr: {stderr.decode() if stderr else 'No stderr'}")
+                return {
+                    "engine": self.name,
+                    "scan_id": scan_id,
+                    "status": "failed",
+                    "error": f"Failed to start container: {stderr.decode() if stderr else 'Unknown error'}"
+                }
+
+            logger.info(f"✅ VentiAPI scanner container {container_name} started")
+
+            # Monitor container status until completion
+            max_wait = 300  # 5 minutes max
+            wait_interval = 2  # Check every 2 seconds
+            elapsed = 0
+
+            while elapsed < max_wait:
+                # Check container status using docker inspect
+                check_cmd = ['docker', 'inspect', '-f', '{{.State.Status}}', container_name]
+                check_process = await asyncio.create_subprocess_exec(
+                    *check_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                check_stdout, check_stderr = await check_process.communicate()
+
+                if check_process.returncode != 0:
+                    # Container doesn't exist anymore - it completed
+                    logger.info(f"✅ VentiAPI container {container_name} completed and was removed")
+                    break
+
+                status = check_stdout.decode().strip()
+                if status == 'exited':
+                    # Container finished - get exit code
+                    exit_code_cmd = ['docker', 'inspect', '-f', '{{.State.ExitCode}}', container_name]
+                    exit_process = await asyncio.create_subprocess_exec(
+                        *exit_code_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    exit_stdout, _ = await exit_process.communicate()
+                    exit_code = int(exit_stdout.decode().strip())
+
+                    # Get container logs
+                    logs_cmd = ['docker', 'logs', container_name]
+                    logs_process = await asyncio.create_subprocess_exec(
+                        *logs_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    container_stdout, container_stderr = await logs_process.communicate()
+
+                    # Remove the container
+                    rm_cmd = ['docker', 'rm', container_name]
+                    await asyncio.create_subprocess_exec(*rm_cmd)
+
+                    result = {
+                        "engine": self.name,
+                        "scan_id": scan_id,
+                        "status": "completed" if exit_code == 0 else "failed",
+                        "return_code": exit_code,
+                        "stdout": container_stdout.decode() if container_stdout else "",
+                        "stderr": container_stderr.decode() if container_stderr else "",
+                        "result_path": self.get_result_path(scan_id)
+                    }
+
+                    if exit_code != 0:
+                        logger.error(f"VentiAPI scan failed with return code {exit_code}")
+                        logger.error(f"stderr: {result['stderr'][:500]}")
+                    else:
+                        logger.info(f"✅ VentiAPI scan {scan_id} completed successfully")
+
+                    return result
+
+                await asyncio.sleep(wait_interval)
+                elapsed += wait_interval
+
+            # Timeout - kill the container
+            logger.error(f"VentiAPI scan {scan_id} timed out after {max_wait} seconds")
+            kill_cmd = ['docker', 'kill', container_name]
+            await asyncio.create_subprocess_exec(*kill_cmd)
+            rm_cmd = ['docker', 'rm', container_name]
+            await asyncio.create_subprocess_exec(*rm_cmd)
+
+            return {
                 "engine": self.name,
                 "scan_id": scan_id,
-                "status": "completed" if process.returncode == 0 else "failed",
-                "return_code": process.returncode,
-                "stdout": stdout.decode() if stdout else "",
-                "stderr": stderr.decode() if stderr else "",
-                "result_path": self.get_result_path(scan_id)
+                "status": "failed",
+                "error": f"Scan timed out after {max_wait} seconds"
             }
 
-            # Log result for debugging
-            if process.returncode != 0:
-                logger.error(f"VentiAPI scan failed with return code {process.returncode}")
-                logger.error(f"stderr: {result['stderr'][:500]}")
-            else:
-                logger.info(f"✅ VentiAPI scan {scan_id} completed successfully")
-
-            return result
-            
         except Exception as e:
             logger.error(f"VentiAPI scan failed: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            # Try to clean up container if it exists
+            try:
+                rm_cmd = ['docker', 'rm', '-f', container_name]
+                await asyncio.create_subprocess_exec(*rm_cmd)
+            except:
+                pass
             return {
                 "engine": self.name,
                 "scan_id": scan_id,

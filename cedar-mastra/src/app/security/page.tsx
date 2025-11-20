@@ -124,6 +124,7 @@ export default function SecurityDashboardPage() {
   // Update currentScanStatus from polling hook
   useEffect(() => {
     if (pollingStatus) {
+      console.log('[SecurityPage] Updating currentScanStatus with progress:', pollingStatus.progress);
       setCurrentScanStatus(pollingStatus);
     }
   }, [pollingStatus]);

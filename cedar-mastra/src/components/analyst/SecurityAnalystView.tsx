@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { mockFindings } from "@/data/mockFindings";
 import { Finding } from "@/types/finding";
 import { FindingsTable } from "./FindingsTable";
 import { FindingDetailsDrawer } from "./FindingDetailsDrawer";
@@ -26,9 +25,10 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
   const { scanResults } = useScanResultsState();
 
   // Transform scanner results to Finding type for display
+  // If no scan results, show empty array (no mock data)
   const actualFindings: Finding[] = scanResults?.findings
     ? transformVulnerabilityFindings(scanResults.findings)
-    : mockFindings;
+    : [];
 
   // Register findings with Cedar for @mention functionality
   const { findings } = useRegisterFindings(actualFindings);

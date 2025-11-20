@@ -2,7 +2,6 @@
 
 import { X, Copy, Plus } from "lucide-react";
 import { Finding } from "@/types/finding";
-import { mockEvidence } from "@/data/mockFindings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,7 +22,8 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
 
   if (!finding) return null;
 
-  const evidence = mockEvidence[finding.evidenceId];
+  // Evidence is now embedded directly in the finding from the scanner API
+  const evidence = finding.evidence;
 
   const handleCopyCode = (code: string) => {
     cedar.util.copy(code);
@@ -44,7 +44,7 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
         break;
       case "evidence":
         payload = cedarPayloadShapes.evidenceLite(evidence);
-        label = `Evidence: ${finding.evidenceId}`;
+        label = `Evidence: ${finding.id}`;
         break;
       case "compliance":
         payload = cedarPayloadShapes.complianceOnly(finding);

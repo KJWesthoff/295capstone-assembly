@@ -29,8 +29,14 @@ const Hero = () => {
     // Clear any stale scan results from previous sessions
     localStorage.removeItem('scanResults');
     setShowDropdown(false);
-    // Navigate to scanner page
-    router.push('/security');
+    // Navigate to the appropriate dashboard based on role
+    if (role === 'executive') {
+      router.push('/executive');
+    } else if (role === 'developer') {
+      router.push('/developer');
+    } else {
+      router.push('/security');
+    }
   };
 
   return (

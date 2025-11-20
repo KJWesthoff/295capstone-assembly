@@ -8,7 +8,6 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { toast } from "sonner";
-import { mockEvidence } from "@/data/mockFindings";
 import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
 import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import type { Finding } from "@/types/finding";
@@ -23,7 +22,8 @@ export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDra
 
   if (!finding) return null;
 
-  const evidence = mockEvidence[finding.evidenceId];
+  // Evidence is now embedded directly in the finding from the scanner API
+  const evidence = finding.evidence;
 
   const handleCopyCode = (code: string) => {
     cedar.util.copy(code);

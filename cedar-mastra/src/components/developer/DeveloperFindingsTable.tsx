@@ -409,7 +409,7 @@ export const DeveloperFindingsTable = ({
                 <TableCell>
                   <div className="space-y-1">
                     <div className="font-semibold text-foreground">
-                      {finding.endpoint.service} · {finding.repo || "N/A"}
+                      {finding.title || finding.owasp || "No Title"}
                     </div>
                     <div className="text-sm text-muted-foreground font-mono">
                       {finding.endpoint.method} {finding.endpoint.path}
@@ -419,13 +419,13 @@ export const DeveloperFindingsTable = ({
                     )}
                     {/* Signal chips */}
                     <div className="flex flex-wrap items-center gap-1 mt-1">
-                      {finding.flags.isNew && (
+                      {finding.flags?.isNew && (
                         <Badge variant="destructive" className="text-xs px-1.5 py-0">NEW</Badge>
                       )}
-                      {finding.flags.isRegressed && (
+                      {finding.flags?.isRegressed && (
                         <Badge variant="outline" className="text-xs px-1.5 py-0 border-destructive/60 text-destructive font-semibold">REG</Badge>
                       )}
-                      {finding.exposure >= 8 && (
+                      {finding.exposure && finding.exposure >= 8 && (
                         <Globe className="h-3 w-3 text-primary" aria-label="Internet-facing" />
                       )}
                       {finding.exploitPresent && (

@@ -52,15 +52,15 @@ def get_allowed_origins():
         "http://localhost:3001",
         "http://localhost:3002"
     ]
-    
+
     frontend_url = os.getenv("FRONTEND_URL")
     if frontend_url:
         origins.append(frontend_url)
-    
+
     additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS")
     if additional_origins:
         origins.extend([origin.strip() for origin in additional_origins.split(",")])
-    
+
     return origins
 
 # FastAPI app with security middleware
@@ -580,13 +580,8 @@ async def get_scan_status_endpoint(scan_id: str, user: Dict = Depends(verify_tok
             "scanner": chunk["scanner"],
             "status": chunk["status"],
             "progress": chunk["progress"],
-            "current_endpoint": chunk["current_endpoint"],
             "endpoints_count": chunk["endpoints_count"],
-            "total_endpoints": chunk["total_endpoints"],
-            "endpoints": chunk["endpoints"],
-            "scanned_endpoints": chunk["scanned_endpoints"],
-            "scan_type": chunk["scan_type"],
-            "error": chunk["error"]
+            "total_endpoints": chunk["total_endpoints"]
         })
 
     # Get queue statistics (disabled for direct execution mode)
@@ -699,8 +694,23 @@ def parse_ventiapi_results(scan_id: str) -> List[Dict]:
         result_dir = SHARED_RESULTS / f"{scan_id}_ventiapi"
         findings_file = result_dir / "findings.json"
 
+        print(f"🔍 Parsing VentiAPI results for scan {scan_id}")
+        print(f"   Looking in directory: {result_dir}")
+        print(f"   Directory exists: {result_dir.exists()}")
+
+        if result_dir.exists():
+            files = list(result_dir.glob("*"))
+            print(f"   Files in directory: {[f.name for f in files]}")
+
+        print(f"   Findings file path: {findings_file}")
+        print(f"   Findings file exists: {findings_file.exists()}")
+
         if not findings_file.exists():
             print(f"⚠️ VentiAPI results not found at {findings_file}")
+            # List what IS in the shared results directory
+            if SHARED_RESULTS.exists():
+                all_dirs = list(SHARED_RESULTS.glob(f"{scan_id}*"))
+                print(f"   Directories matching scan_id: {[d.name for d in all_dirs]}")
             return []
 
         with open(findings_file, 'r') as f:
@@ -709,6 +719,8 @@ def parse_ventiapi_results(scan_id: str) -> List[Dict]:
         # Data is a direct array of findings
         findings = []
         findings_list = data if isinstance(data, list) else data.get("findings", [])
+
+        print(f"✅ Found {len(findings_list)} raw findings in file")
 
         for finding in findings_list:
             findings.append({
@@ -724,10 +736,13 @@ def parse_ventiapi_results(scan_id: str) -> List[Dict]:
                 "evidence": finding.get("evidence", {})
             })
 
+        print(f"✅ Parsed {len(findings)} findings successfully")
         return findings
 
     except Exception as e:
         print(f"❌ Error parsing VentiAPI results: {e}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
         return []
 
 def parse_zap_results(scan_id: str, server_url: str) -> List[Dict]:
@@ -1148,10 +1163,12 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         spec_location = scan_data["spec_location"]
         
         # Determine volume prefix (for environment compatibility)
-        volume_prefix = "scannerapp"  # Default for local docker-compose
-        if "ventiapi" in str(spec_location):  # AWS environment detection
-            volume_prefix = "ventiapi"
-        
+        # Check if running in production by checking hostname or environment variable
+        import socket
+        hostname = socket.gethostname()
+        volume_prefix = "ventiapi" if "ventiapi" in hostname.lower() or os.getenv("ENVIRONMENT") == "production" else "scannerapp"
+        print(f"🔧 Volume prefix detection: hostname={hostname}, volume_prefix={volume_prefix}")
+
         # Prepare scanner options
         scanner_options = {
             'rps': rps,

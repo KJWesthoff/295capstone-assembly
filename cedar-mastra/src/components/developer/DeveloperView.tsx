@@ -6,7 +6,6 @@ import { DeveloperDetailsDrawer } from "./DeveloperDetailsDrawer";
 import { ChatPresets } from "@/components/shared/ChatPresets";
 import { developerPresets } from "@/config/chatPresets";
 import { DashboardHeader } from "@/components/shared/DashboardHeader";
-import { mockFindings } from "@/data/mockFindings";
 import type { Finding } from "@/types/finding";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 import { scannerApi } from "@/lib/scannerApi";
@@ -64,19 +63,45 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
 
   // Transform scanner findings to Finding type for display
   const actualFindings: Finding[] = useMemo(() => {
-    if (!scanFindings || scanFindings.length === 0) return mockFindings;
+    if (!scanFindings || scanFindings.length === 0) return [];
 
     return scanFindings.map((f: any) => ({
       id: f.id || `${f.endpoint}-${f.rule}`,
       title: f.title,
       severity: f.severity as 'Critical' | 'High' | 'Medium' | 'Low',
-      endpoint: f.endpoint,
-      method: f.method,
+      endpoint: {
+        method: f.method || 'GET',
+        path: f.endpoint || '/',
+        service: f.scanner || 'unknown',
+      },
       description: f.description,
       recommendation: f.recommendation || 'No recommendation available',
       impact: f.impact || f.description,
       scanner: f.scanner || 'unknown',
       evidence: f.evidence || {},
+      // Add default values for missing fields
+      cvss: f.score || 0,
+      exploitSignal: 0,
+      exploitPresent: false,
+      owasp: f.rule || '',
+      cwe: [],
+      cve: [],
+      scanners: [f.scanner || 'unknown'],
+      status: 'New' as const,
+      evidenceId: f.id || '',
+      exposure: 0,
+      recencyTrend: 0,
+      blastRadius: 0,
+      priorityScore: 0,
+      firstSeen: f.created_at || new Date().toISOString(),
+      lastSeen: f.created_at || new Date().toISOString(),
+      owner: '',
+      slaDue: '',
+      flags: {
+        isNew: true,
+        isRegressed: false,
+        isResolved: false,
+      },
     }));
   }, [scanFindings]);
 

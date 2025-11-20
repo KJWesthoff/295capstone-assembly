@@ -2,8 +2,16 @@
 
 # VentiAPI Scanner - Simple AWS Deployment Script
 # This script creates an EC2 instance directly without CloudFormation
+#
+# Usage: ./deploy-simple.sh [AWS_PROFILE]
+#   AWS_PROFILE: Optional AWS CLI profile name (e.g., 'ventiapi', 'production')
+#                If not provided, uses AWS_PROFILE environment variable or 'default'
 
 set -e
+
+# Parse arguments
+AWS_PROFILE_ARG="${1:-${AWS_PROFILE:-default}}"
+export AWS_PROFILE="$AWS_PROFILE_ARG"
 
 # Configuration
 REGION="us-west-1"
@@ -30,21 +38,32 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
 # Check AWS CLI
 check_aws_cli() {
     print_status "Checking AWS CLI configuration..."
-    
+    print_status "Using AWS Profile: ${AWS_PROFILE}"
+
     if ! command -v aws &> /dev/null; then
         print_error "AWS CLI is not installed"
         exit 1
     fi
-    
+
     if ! aws sts get-caller-identity &> /dev/null; then
-        print_error "AWS CLI is not configured"
+        print_error "AWS CLI is not configured for profile '${AWS_PROFILE}'"
+        print_error "Run: aws configure --profile ${AWS_PROFILE}"
         exit 1
     fi
-    
-    print_success "AWS CLI is configured"
+
+    # Show which AWS account we're deploying to
+    ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+    USER_ARN=$(aws sts get-caller-identity --query 'Arn' --output text)
+    print_success "AWS CLI configured"
+    print_status "Account: ${ACCOUNT_ID}"
+    print_status "Identity: ${USER_ARN}"
 }
 
 # Create security group
@@ -261,15 +280,19 @@ EOF
         --region $REGION \
         --instance-id $INSTANCE_ID \
         --allocation-id $ALLOCATION_ID
-    
+
+    # Wait for Elastic IP association to propagate
+    print_status "Waiting for Elastic IP association to propagate..."
+    sleep 60
+
     # Get public IP
     PUBLIC_IP=$(aws ec2 describe-addresses \
         --region $REGION \
         --allocation-ids $ALLOCATION_ID \
         --query 'Addresses[0].PublicIp' \
         --output text)
-    
-    print_success "Elastic IP allocated: $PUBLIC_IP"
+
+    print_success "Elastic IP allocated and associated: $PUBLIC_IP"
 }
 
 # Deploy application
@@ -721,25 +744,40 @@ cleanup() {
 # Handle script arguments
 case "${1:-}" in
     --help|-h)
-        echo "Usage: $0 [options]"
+        echo "Usage: $0 [AWS_PROFILE] [options]"
+        echo
+        echo "Arguments:"
+        echo "  AWS_PROFILE   AWS CLI profile name (default: 'default' or \$AWS_PROFILE env var)"
         echo
         echo "Options:"
         echo "  --help, -h    Show this help message"
-        echo "  --cleanup     Cleanup created resources"
+        echo "  --cleanup     Show cleanup commands"
+        echo
+        echo "Examples:"
+        echo "  $0 ventiapi              # Deploy using 'ventiapi' profile"
+        echo "  $0                        # Deploy using default profile"
+        echo "  AWS_PROFILE=prod $0      # Deploy using 'prod' profile from env"
         exit 0
         ;;
     --cleanup)
-        print_status "This will cleanup AWS resources. Make sure you have the IDs."
-        echo "Manual cleanup commands:"
+        print_status "Manual cleanup commands for AWS resources:"
+        echo
+        echo "# List all VentiAPI Scanner instances:"
         echo "aws ec2 describe-instances --region $REGION --filters 'Name=tag:Name,Values=VentiAPI-Scanner' --query 'Reservations[].Instances[].[InstanceId,PublicIpAddress,State.Name]' --output table"
+        echo
+        echo "# Terminate instance (replace INSTANCE_ID):"
+        echo "aws ec2 terminate-instances --region $REGION --instance-ids INSTANCE_ID"
+        echo
+        echo "# Release Elastic IP (replace ALLOCATION_ID):"
+        echo "aws ec2 release-address --region $REGION --allocation-id ALLOCATION_ID"
+        echo
+        echo "# Delete security group:"
+        echo "aws ec2 delete-security-group --region $REGION --group-name ventiapi-scanner"
         exit 0
         ;;
-    "")
+    *)
+        # Anything else is treated as a profile name or triggers main()
         main
         trap cleanup EXIT
-        ;;
-    *)
-        print_error "Unknown option: $1"
-        exit 1
         ;;
 esac
