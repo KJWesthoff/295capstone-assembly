@@ -28,7 +28,7 @@ export const DashboardHeader = ({
     <div className={cn("flex items-center justify-between", className)}>
       <div>
         <h2 className={cn(
-          "font-serif font-bold text-foreground",
+          "font-bold text-foreground",
           size === 'md' ? "font-semibold mb-2" : "",
           titleSizes[size]
         )}>

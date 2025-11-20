@@ -38,7 +38,7 @@ export const ExecutiveOwnershipTable = ({ owners, onAddToReport }: ExecutiveOwne
       `owner-${owner.owner}`,
       payload,
       label,
-      "#003262"
+      "hsl(210 100% 19%)" // UC Berkeley Blue from brand colors
     );
   };
 

@@ -87,7 +87,7 @@ export const ChatPresets = ({
           {title && (
             <h3 className={variant === 'card-wrapped'
               ? "text-sm font-semibold text-foreground uppercase tracking-wide"
-              : "text-lg font-serif font-semibold text-foreground mb-1"
+              : "text-lg font-semibold text-foreground mb-1"
             }>
               {title}
             </h3>

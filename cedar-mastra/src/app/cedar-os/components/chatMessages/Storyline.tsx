@@ -158,7 +158,7 @@ const Storyline: React.FC<StorylineProps> = ({ message }) => {
                 initial="hidden"
                 animate="visible"
               >
-                <motion.p className="text-sm font-serif text-[#141413]" variants={textVariants}>
+                <motion.p className="text-sm text-[#141413]" variants={textVariants}>
                   {section}
                 </motion.p>
               </motion.div>
@@ -193,7 +193,7 @@ const Storyline: React.FC<StorylineProps> = ({ message }) => {
                       </motion.div>
                     </div>
                     <motion.div
-                      className="font-serif text-[#141413] text-sm"
+                      className="text-[#141413] text-sm"
                       variants={textVariants}
                     >
                       {section.description}
@@ -232,7 +232,7 @@ const Storyline: React.FC<StorylineProps> = ({ message }) => {
       >
         {/* First render the base message text */}
         <motion.div
-          className="mb-4 font-serif"
+          className="mb-4"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}

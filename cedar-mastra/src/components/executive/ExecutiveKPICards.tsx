@@ -37,7 +37,7 @@ export const ExecutiveKPICards = ({ summary, onAddToReport }: ExecutiveKPICardsP
       "exec-kpi-summary",
       payload,
       label,
-      "#003262"
+      "hsl(210 100% 19%)" // UC Berkeley Blue from brand colors
     );
   };
 

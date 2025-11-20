@@ -55,9 +55,9 @@ const getEvidenceQuality = (finding: Finding): { label: string; icon: React.Reac
   const hasExploit = finding.exploitPresent;
 
   if (hasEvidence && hasExploit) {
-    return { label: "Complete", icon: <CheckCircle2 className="h-3 w-3" />, color: "text-green-600" };
+    return { label: "Complete", icon: <CheckCircle2 className="h-3 w-3" />, color: "text-success" };
   } else if (hasEvidence) {
-    return { label: "Partial", icon: <AlertCircle className="h-3 w-3" />, color: "text-yellow-600" };
+    return { label: "Partial", icon: <AlertCircle className="h-3 w-3" />, color: "text-medium" };
   } else {
     return { label: "Missing", icon: <HelpCircle className="h-3 w-3" />, color: "text-muted-foreground" };
   }
@@ -124,9 +124,7 @@ export const FindingsTable = ({
       `finding-${finding.id}`,
       payload,
       label,
-      finding.severity === "Critical" ? "#dc2626" :
-      finding.severity === "High" ? "#ea580c" :
-      finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
+      getSeverityColor(finding.severity as Severity, 'hex')
     );
 
     // Mark this finding as added
@@ -368,7 +366,7 @@ export const FindingsTable = ({
                 <Badge variant="outline" className="ml-1 bg-high/10 text-high border-high/40">
                   {diffCounts.regressed}
                 </Badge>
-                <Badge variant="outline" className="ml-1 bg-green-100 text-green-700 border-green-300">
+                <Badge variant="outline" className="ml-1 bg-success/10 text-success border-success/30">
                   {diffCounts.resolved}
                 </Badge>
               </span>
@@ -559,7 +557,7 @@ export const FindingsTable = ({
                         className={cn(
                           "h-7 text-xs transition-all",
                           addedFindings.has(finding.id)
-                            ? "bg-green-600/20 hover:bg-green-600/30 text-green-600 cursor-default"
+                            ? "bg-success/20 hover:bg-success/30 text-success cursor-default"
                             : "bg-primary/10 hover:bg-primary/20 text-primary"
                         )}
                         title={addedFindings.has(finding.id) ? "Added to chat context" : "Add to chat context"}

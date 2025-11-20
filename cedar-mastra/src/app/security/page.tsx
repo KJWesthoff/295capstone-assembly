@@ -8,6 +8,7 @@ import { ScanConfigDialog, ScanConfig } from '@/components/security/ScanConfigDi
 import { scannerApi, ScanStatus } from '@/lib/scannerApi';
 import { useSecurityContext } from '@/app/cedar-os/context';
 import { useScanResultsPolling } from '@/hooks/useScanResultsPolling';
+import { getSeverityColor as getSeverityColorUtil, Severity } from '@/lib/utils/severity';
 
 type RoleRoute = {
   role: 'executive' | 'security' | 'developer';
@@ -33,7 +34,7 @@ const previousResultsOptions: RoleRoute[] = [
     description: 'Full findings table with filters and context',
     route: '/dashboard',
     icon: '🛡️',
-    accent: 'border-blue-500/60 hover:border-blue-400 hover:bg-blue-500/10',
+    accent: 'border-primary/60 hover:border-primary/80 hover:bg-primary/10',
   },
   {
     role: 'developer',
@@ -326,9 +327,7 @@ export default function SecurityDashboardPage() {
           label: `${severityIcon} ${finding.title}`,
           icon: '🔍',
           severity: finding.severity,
-          color: finding.severity === 'Critical' ? '#EF4444' :
-                 finding.severity === 'High' ? '#F97316' :
-                 finding.severity === 'Medium' ? '#EAB308' : '#3B82F6',
+          color: getSeverityColorUtil(finding.severity as Severity, 'hex'),
           showInChat: true,
         },
       });
@@ -372,9 +371,7 @@ export default function SecurityDashboardPage() {
             label: `${severityIcon} ${finding.title}`,
             icon: '🔍',
             severity: finding.severity,
-            color: finding.severity === 'Critical' ? '#EF4444' :
-                   finding.severity === 'High' ? '#F97316' :
-                   finding.severity === 'Medium' ? '#EAB308' : '#3B82F6',
+            color: getSeverityColorUtil(finding.severity as Severity, 'hex'),
             showInChat: true,
             order: finding.severity === 'Critical' ? 1 :
                    finding.severity === 'High' ? 2 :
@@ -787,7 +784,7 @@ export default function SecurityDashboardPage() {
                 <button
                   onClick={handleRunScan}
                   disabled={isScanning}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-8 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isScanning ? 'Starting Scan...' : 'Run Security Scan'}
                 </button>
@@ -906,12 +903,12 @@ export default function SecurityDashboardPage() {
                           metadata: {
                             label: `🔍 Scan ${scanResults.scanId.slice(0, 8)}...`,
                             icon: '🔍',
-                            color: '#3B82F6',
+                            color: 'hsl(210 100% 19%)', // UC Berkeley Blue from brand colors
                             showInChat: true,
                           },
                         });
                       }}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-full transition-colors"
+                      className="px-3 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-full transition-colors"
                       title="Add Scan ID to Cedar Context"
                     >
                       + Add to Context
@@ -944,7 +941,7 @@ export default function SecurityDashboardPage() {
               </button>
               <button
                 onClick={handleRunScan}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2 px-6 rounded-lg transition-colors"
               >
                 New Scan
               </button>
@@ -1185,7 +1182,7 @@ function VulnerabilityCard({
           className={`w-8 h-8 text-white text-lg font-bold rounded-full transition-all flex items-center justify-center ${
             isAdded
               ? 'bg-green-600 cursor-default'
-              : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+              : 'bg-primary hover:bg-primary/90 cursor-pointer'
           }`}
           title={isAdded ? 'Added to chat context' : 'Add to chat context'}
         >

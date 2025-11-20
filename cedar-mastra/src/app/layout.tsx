@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { CedarCopilot, ProviderConfig } from 'cedar-os';
 import { FloatingCedarChat } from '@/app/cedar-os/components/chatComponents/FloatingCedarChat';
@@ -15,6 +16,34 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+});
+
+// Berkeley Mono font family
+const berkeleyMono = localFont({
+  src: [
+    {
+      path: '../fonts/BerkeleyMono-Regular.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/BerkeleyMono-Bold.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/BerkeleyMono-Oblique.woff2',
+      weight: '400',
+      style: 'italic',
+    },
+    {
+      path: '../fonts/BerkeleyMono-Bold-Oblique.woff2',
+      weight: '700',
+      style: 'italic',
+    },
+  ],
+  variable: '--font-berkeley-mono',
+  display: 'swap',
 });
 
 export default function RootLayout({
@@ -35,7 +64,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${berkeleyMono.variable} antialiased`}>
         {/* [STEP 1]: We register the main CedarCopilot wrapper at the root of the app with a Mastra provider. */}
         <CedarCopilot llmProvider={llmProvider}>
           {children}

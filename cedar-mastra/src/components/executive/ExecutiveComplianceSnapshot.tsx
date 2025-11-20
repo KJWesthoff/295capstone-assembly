@@ -28,7 +28,7 @@ export const ExecutiveComplianceSnapshot = ({ compliance, onAddToReport }: Execu
       "exec-compliance",
       payload,
       label,
-      "#003262"
+      "hsl(210 100% 19%)" // UC Berkeley Blue from brand colors
     );
   };
 

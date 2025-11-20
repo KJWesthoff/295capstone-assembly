@@ -6,6 +6,7 @@ import { ContextBasketProvider } from "@/contexts/ContextBasketContext";
 import { Shield } from "lucide-react";
 import { useScanResultsState } from "@/app/cedar-os/scanState";
 import { useCedarStore } from "cedar-os";
+import { PageHeader } from "@/components/shared/PageHeader";
 
 export default function DashboardPage() {
   const [selectedFindingIds, setSelectedFindingIds] = useState<Set<string>>(new Set());
@@ -18,25 +19,11 @@ export default function DashboardPage() {
           Use "Add to Chat" buttons to manually add findings to Cedar context. */}
 
       <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-card sticky top-0 z-10 shadow-sm">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded bg-primary flex items-center justify-center">
-                  <Shield className="h-7 w-7 text-primary-foreground" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-serif font-semibold text-foreground">
-                    VentiAPI Security Dashboard
-                  </h1>
-                  <p className="text-xs text-muted-foreground font-sans">
-                    Security Analyst View - Vulnerability Analysis & Remediation
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
+        <PageHeader
+          icon={Shield}
+          title="VentiAPI Security Dashboard"
+          description="Security Analyst View - Vulnerability Analysis & Remediation"
+        />
 
         <main className="container mx-auto px-6 py-12">
           {/* Scan ID Section */}
@@ -65,7 +52,7 @@ export default function DashboardPage() {
                       metadata: {
                         label: `🔍 Scan ${scanResults.scanId.slice(0, 8)}...`,
                         icon: '🔍',
-                        color: '#3B82F6',
+                        color: 'hsl(210 100% 19%)', // UC Berkeley Blue from brand colors
                         showInChat: true,
                       },
                     });

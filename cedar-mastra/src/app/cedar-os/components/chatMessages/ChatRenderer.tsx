@@ -45,7 +45,7 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({ message }) => {
 			'prose prose-sm inline-block rounded-xl py-2 relative text-sm w-fit [&>*+*]:mt-3 [&>ol>li+li]:mt-2 [&>ul>li+li]:mt-2 [&>ol>li>p]:mb-1 [&>ul>li>p]:mb-1';
 		const roleClasses =
 			role === 'bot' || role === 'assistant'
-				? `font-serif dark:text-gray-100 text-[#141413] w-full`
+				? `dark:text-gray-100 text-[#141413] w-full`
 				: 'text-[white] px-3';
 
 		const style =
