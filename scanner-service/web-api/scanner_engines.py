@@ -294,9 +294,9 @@ class ZAPScanner(ScannerEngine):
         if options.get('timeout', None):
             cmd.extend(['-T', str(options['timeout'])])  # Max time in minutes
 
-        # Safe mode (passive scan only) - recommended for initial testing
-        if options.get('safe_mode', True):
-            cmd.extend(['-S'])
+        # Note: ZAP baseline doesn't support -S flag for safe mode
+        # Safe mode is the default behavior of zap-baseline.py
+        # If you need passive-only scanning, use zap-api-scan.py with appropriate options
 
         return cmd
     
@@ -390,15 +390,16 @@ class NucleiScanner(ScannerEngine):
             '-no-color'
         ]
         
-        # Add severity filter
-        severity = options.get('severity', 'critical,high,medium')
+        # Add severity filter (include low and info for more comprehensive scanning)
+        severity = options.get('severity', 'critical,high,medium,low')
         if severity:
             cmd.extend(['-severity', severity])
             
-        # Add template filters for API-specific vulnerabilities
+        # Add template filters for API-specific vulnerabilities (less restrictive)
         api_templates = options.get('api_templates', True)
         if api_templates:
-            cmd.extend(['-tags', 'api,exposure,disclosure,jwt,sql'])
+            # Use broader tags to catch more vulnerabilities
+            cmd.extend(['-tags', 'api,exposure,disclosure,jwt,sql,xss,ssrf,xxe,idor,oauth'])
             
         # Rate limiting
         rate_limit = options.get('rate_limit', 150)
@@ -410,8 +411,9 @@ class NucleiScanner(ScannerEngine):
         if concurrency:
             cmd.extend(['-c', str(concurrency)])
             
-        # Update templates before scanning
-        if options.get('update_templates', True):
+        # Update templates before scanning (disable by default to speed up scans)
+        # Templates should be updated periodically, not on every scan
+        if options.get('update_templates', False):
             cmd.extend(['-update-templates'])
             
         return cmd
@@ -533,23 +535,42 @@ class NucleiScanner(ScannerEngine):
             if not spec_path:
                 return []
 
-            # Convert container path to host path
-            # spec_path is like "/shared/specs/abc123_openapi.json"
-            # We need to check if it exists on the host filesystem
-            if spec_path.startswith('/shared/specs/'):
-                # Extract just the filename and reconstruct the path
-                filename = spec_path.split('/')[-1]
-                local_spec_path = Path(f"/shared/specs/{filename}")
+            spec_content = None
+            
+            # Handle URL-based specs
+            if spec_path.startswith('http://') or spec_path.startswith('https://'):
+                import aiohttp
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(spec_path, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                            if response.status == 200:
+                                spec_content = await response.text()
+                                logger.info(f"📋 Fetched spec from URL: {spec_path}")
+                            else:
+                                logger.warning(f"Failed to fetch spec from URL: {spec_path} (status: {response.status})")
+                                return []
+                except Exception as e:
+                    logger.error(f"Error fetching spec from URL {spec_path}: {e}")
+                    return []
             else:
-                local_spec_path = Path(spec_path)
+                # Handle local file paths
+                if spec_path.startswith('/shared/specs/'):
+                    # Extract just the filename and reconstruct the path
+                    filename = spec_path.split('/')[-1]
+                    local_spec_path = Path(f"/shared/specs/{filename}")
+                else:
+                    local_spec_path = Path(spec_path)
 
-            if not local_spec_path.exists():
-                logger.warning(f"Spec file not found: {local_spec_path}")
+                if not local_spec_path.exists():
+                    logger.warning(f"Spec file not found: {local_spec_path}")
+                    return []
+
+                # Read and parse spec file
+                with open(local_spec_path, 'r') as f:
+                    spec_content = f.read()
+
+            if not spec_content:
                 return []
-
-            # Read and parse spec file
-            with open(local_spec_path, 'r') as f:
-                spec_content = f.read()
 
             # Try JSON first, then YAML
             try:

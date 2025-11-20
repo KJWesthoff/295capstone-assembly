@@ -307,7 +307,7 @@ async def start_scan(
                 scan_id=scan_id,
                 chunk_id=i,
                 scanner=scanner,
-                status="pending",
+                status="preparing",  # Changed from "pending" to match database constraint
                 progress=0,
                 endpoints_count=0,
                 total_endpoints=0
@@ -338,7 +338,7 @@ async def start_scan(
             "total_chunks": len(scanner_list),
             "completed_chunks": 0,
             "chunk_status": [
-                {"chunk_id": i, "scanner": scanner_list[i], "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
+                {"chunk_id": i, "scanner": scanner_list[i], "status": "preparing", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
                 for i in range(len(scanner_list))
             ],
             "job_ids": [],
@@ -572,16 +572,30 @@ async def get_scan_status_endpoint(scan_id: str, user: Dict = Depends(verify_tok
     # Get chunk statuses from database
     chunk_status_list = await get_chunk_status(scan_id)
 
-    # Convert database chunk status to API format
+    # Also check in-memory store for real-time progress updates (current_endpoint, scanned_endpoints)
+    in_memory_chunks = {}
+    if scan_id in scans and scans[scan_id].get("chunk_status"):
+        for chunk in scans[scan_id]["chunk_status"]:
+            chunk_id = chunk.get("chunk_id")
+            if chunk_id is not None:
+                in_memory_chunks[chunk_id] = chunk
+
+    # Convert database chunk status to API format, merging with in-memory data for real-time updates
     chunk_status = []
     for chunk in chunk_status_list:
+        chunk_id = chunk["chunk_id"]
+        in_memory_chunk = in_memory_chunks.get(chunk_id, {})
+        
         chunk_status.append({
-            "chunk_id": chunk["chunk_id"],
+            "chunk_id": chunk_id,
             "scanner": chunk["scanner"],
-            "status": chunk["status"],
-            "progress": chunk["progress"],
+            "status": in_memory_chunk.get("status", chunk["status"]),  # Prefer in-memory status
+            "progress": in_memory_chunk.get("progress", chunk["progress"]),  # Prefer in-memory progress
             "endpoints_count": chunk["endpoints_count"],
-            "total_endpoints": chunk["total_endpoints"]
+            "total_endpoints": chunk["total_endpoints"],
+            "current_endpoint": in_memory_chunk.get("current_endpoint"),  # Only in in-memory
+            "scanned_endpoints": in_memory_chunk.get("scanned_endpoints", in_memory_chunk.get("endpoints", [])),  # Only in in-memory
+            "endpoints": in_memory_chunk.get("endpoints", []),  # Only in in-memory
         })
 
     # Get queue statistics (disabled for direct execution mode)
@@ -657,35 +671,46 @@ async def get_scan_findings_endpoint(
         }
 
     # Query findings from database
-    findings_list = await get_findings(scan_id, offset=offset, limit=limit)
-    total_findings = await get_findings_count(scan_id)
+    try:
+        findings_list = await get_findings(scan_id, offset=offset, limit=limit)
+        total_findings = await get_findings_count(scan_id)
 
-    # Convert database findings to API format
-    api_findings = []
-    for finding in findings_list:
-        api_findings.append({
-            "id": str(finding["id"]),
-            "rule": finding["rule"],
-            "title": finding["title"],
-            "severity": finding["severity"],
-            "score": finding["score"],
-            "endpoint": finding["endpoint"],
-            "method": finding["method"],
-            "description": finding["description"],
-            "scanner": finding["scanner"],
-            "scanner_description": finding["scanner_description"],
-            "evidence": finding["evidence"]
-        })
+        # Convert database findings to API format
+        api_findings = []
+        for finding in findings_list:
+            try:
+                # Ensure all required fields have defaults
+                api_findings.append({
+                    "id": str(finding.get("id", "")),
+                    "rule": finding.get("rule", ""),
+                    "title": finding.get("title", ""),
+                    "severity": finding.get("severity", "Low"),
+                    "score": finding.get("score", 0),
+                    "endpoint": finding.get("endpoint", ""),
+                    "method": finding.get("method", "GET"),
+                    "description": finding.get("description", ""),
+                    "scanner": finding.get("scanner", "unknown"),
+                    "scanner_description": finding.get("scanner_description") or finding.get("scanner", "unknown"),
+                    "evidence": finding.get("evidence", {})
+                })
+            except Exception as e:
+                print(f"⚠️ Error processing finding {finding.get('id', 'unknown')}: {e}")
+                continue
 
-    print(f"✅ Loaded {len(api_findings)} findings from database for scan {scan_id}")
+        print(f"✅ Loaded {len(api_findings)} findings from database for scan {scan_id}")
 
-    return {
-        "scan_id": scan_id,
-        "total": total_findings,
-        "offset": offset,
-        "limit": limit,
-        "findings": api_findings
-    }
+        return {
+            "scan_id": scan_id,
+            "total": total_findings,
+            "offset": offset,
+            "limit": limit,
+            "findings": api_findings
+        }
+    except Exception as e:
+        print(f"❌ Error fetching findings from database for scan {scan_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch findings: {str(e)}")
 
 def parse_ventiapi_results(scan_id: str) -> List[Dict]:
     """Parse VentiAPI JSON output"""
@@ -813,6 +838,64 @@ def parse_zap_results(scan_id: str, server_url: str) -> List[Dict]:
 
     except Exception as e:
         print(f"❌ Error parsing ZAP results: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return []
+
+def parse_nuclei_results(scan_id: str) -> List[Dict]:
+    """Parse Nuclei JSON results from file"""
+    try:
+        # Nuclei results are stored in the shared results directory
+        result_path = SHARED_RESULTS / f"{scan_id}_nuclei.json"
+        if not result_path.exists():
+            print(f"⚠️ Nuclei results not found at {result_path}")
+            return []
+
+        findings = []
+        with open(result_path, 'r') as f:
+            content = f.read().strip()
+            if content:
+                # Nuclei outputs JSONL format (one JSON object per line)
+                for line in content.split('\n'):
+                    if line.strip():
+                        try:
+                            finding = json.loads(line)
+                            # Convert to standard format
+                            from urllib.parse import urlparse
+                            url = finding.get("matched-at", "")
+                            parsed = urlparse(url)
+                            endpoint = parsed.path or "/"
+                            
+                            # Map severity
+                            severity_raw = finding.get("info", {}).get("severity", "info")
+                            severity = severity_raw.title() if isinstance(severity_raw, str) else "Informational"
+                            if severity == "Info":
+                                severity = "Informational"
+                            
+                            # Map severity to score
+                            severity_scores = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Informational": 1}
+                            score = severity_scores.get(severity, 1)
+                            
+                            findings.append({
+                                "rule": finding.get("template-id", "unknown"),
+                                "title": finding.get("info", {}).get("name", "Unknown Vulnerability"),
+                                "severity": severity,
+                                "score": score,
+                                "endpoint": endpoint,
+                                "method": "GET",  # Nuclei doesn't specify method in output
+                                "description": finding.get("info", {}).get("description", ""),
+                                "url": url,
+                                "template": finding.get("template-id", ""),
+                                "scanner": "nuclei",
+                                "scanner_description": "Nuclei - Community-powered vulnerability scanner"
+                            })
+                        except json.JSONDecodeError:
+                            continue
+
+        return findings
+
+    except Exception as e:
+        print(f"❌ Error parsing Nuclei results: {e}")
         import traceback
         print(traceback.format_exc())
         return []
@@ -1162,12 +1245,36 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         target_url = scan_data["target_url"]
         spec_location = scan_data["spec_location"]
         
-        # Determine volume prefix (for environment compatibility)
-        # Check if running in production by checking hostname or environment variable
+        # Determine volume prefix by inspecting actual mounted volumes
+        # This ensures scanner containers use the SAME volume as web-api
         import socket
+        import subprocess
         hostname = socket.gethostname()
-        volume_prefix = "ventiapi" if "ventiapi" in hostname.lower() or os.getenv("ENVIRONMENT") == "production" else "scannerapp"
-        print(f"🔧 Volume prefix detection: hostname={hostname}, volume_prefix={volume_prefix}")
+
+        # Try to auto-detect volume prefix from mounted volumes
+        try:
+            result = subprocess.run(
+                ['docker', 'inspect', '--format', '{{json .Mounts}}', hostname],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                import json
+                mounts = json.loads(result.stdout)
+                for mount in mounts:
+                    if mount.get('Destination') == '/shared/results':
+                        volume_name = mount.get('Name', '')
+                        if volume_name:
+                            # Extract prefix from volume name (e.g., "295capstone-assembly_shared-results" -> "295capstone-assembly")
+                            volume_prefix = volume_name.replace('_shared-results', '').replace('_shared-specs', '')
+                            print(f"🔧 Volume prefix auto-detected from mount: {volume_prefix}")
+                            break
+            else:
+                raise Exception("Docker inspect failed")
+        except Exception as e:
+            # Fallback to old hostname-based detection
+            print(f"⚠️ Could not auto-detect volume prefix ({e}), falling back to hostname detection")
+            volume_prefix = "ventiapi" if "ventiapi" in hostname.lower() or os.getenv("ENVIRONMENT") == "production" else "scannerapp"
+            print(f"🔧 Volume prefix (fallback): hostname={hostname}, volume_prefix={volume_prefix}")
 
         # Prepare scanner options
         scanner_options = {
@@ -1203,10 +1310,11 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
             scan_data["progress"] = 100
             print(f"✅ Multi-scan {scan_id} completed successfully")
         elif results["overall_status"] == "partial":
-            scan_data["status"] = "completed"
+            scan_data["status"] = "completed"  # Still parse findings even if some scanners failed
             scan_data["current_phase"] = "Scan completed with some failures"
             scan_data["progress"] = 100
             print(f"⚠️ Multi-scan {scan_id} completed with some failures")
+            print(f"⚠️ Some scanners may have failed, but parsing findings from successful ones...")
         else:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan failed"
@@ -1243,23 +1351,114 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         # Parse findings from scanner output files and write to database
         if scan_data["status"] == "completed":
             all_findings = []
+            print(f"🔍 Starting to parse findings for scan {scan_id} with scanners: {scanner_list}")
 
             # Parse VentiAPI results
             if "ventiapi" in scanner_list:
-                ventiapi_findings = parse_ventiapi_results(scan_id)
-                all_findings.extend(ventiapi_findings)
-                print(f"✅ Parsed {len(ventiapi_findings)} findings from VentiAPI")
+                try:
+                    ventiapi_findings = parse_ventiapi_results(scan_id)
+                    all_findings.extend(ventiapi_findings)
+                    print(f"✅ Parsed {len(ventiapi_findings)} findings from VentiAPI")
+                except Exception as e:
+                    print(f"❌ Error parsing VentiAPI results: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Parse ZAP results
             if "zap" in scanner_list:
-                zap_findings = parse_zap_results(scan_id, server_url)
-                all_findings.extend(zap_findings)
-                print(f"✅ Parsed {len(zap_findings)} findings from ZAP")
+                try:
+                    zap_findings = parse_zap_results(scan_id, server_url)
+                    all_findings.extend(zap_findings)
+                    print(f"✅ Parsed {len(zap_findings)} findings from ZAP")
+                except Exception as e:
+                    print(f"❌ Error parsing ZAP results: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Extract Nuclei findings from results dict (Nuclei returns findings directly in results)
+            if "nuclei" in scanner_list:
+                try:
+                    nuclei_result = results.get("results", {}).get("nuclei", {})
+                    print(f"🔍 Nuclei result keys: {list(nuclei_result.keys()) if nuclei_result else 'None'}")
+                    nuclei_findings_raw = nuclei_result.get("findings", [])
+                    print(f"🔍 Nuclei findings from results dict: {len(nuclei_findings_raw)}")
+                    
+                    # If no findings in results dict, try parsing from file
+                    if not nuclei_findings_raw:
+                        print(f"🔍 No findings in results dict, trying to parse from file...")
+                        nuclei_findings_raw = parse_nuclei_results(scan_id)
+                        print(f"🔍 Nuclei findings from file: {len(nuclei_findings_raw)}")
+                except Exception as e:
+                    print(f"❌ Error extracting Nuclei findings: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    nuclei_findings_raw = []
+                
+                # Convert Nuclei findings to standard format
+                nuclei_findings = []
+                for finding in nuclei_findings_raw:
+                    try:
+                        # Extract endpoint and method from URL
+                        from urllib.parse import urlparse
+                        url = finding.get("url", finding.get("matched-at", ""))
+                        if url:
+                            parsed = urlparse(url)
+                            endpoint = parsed.path or "/"
+                            # Try to extract method from finding, default to GET
+                            method = finding.get("method", "GET")
+                        else:
+                            endpoint = "/"
+                            method = "GET"
+                        
+                        # Map severity to standard format (Nuclei uses lowercase)
+                        severity_raw = finding.get("severity", "info")
+                        if isinstance(severity_raw, str):
+                            severity = severity_raw.title()
+                            if severity == "Info":
+                                severity = "Informational"
+                        else:
+                            severity = "Informational"
+                        
+                        # Map severity to score
+                        severity_scores = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Informational": 1}
+                        score = severity_scores.get(severity, 1)
+                        
+                        nuclei_findings.append({
+                            "rule": finding.get("rule", finding.get("template-id", finding.get("template", "unknown"))),
+                            "title": finding.get("title", "Unknown Vulnerability"),
+                            "severity": severity,
+                            "score": score,
+                            "endpoint": endpoint,
+                            "method": method,
+                            "description": finding.get("description", ""),
+                            "scanner": "nuclei",
+                            "scanner_description": "Nuclei - Community-powered vulnerability scanner",
+                            "evidence": {
+                                "url": url,
+                                "template": finding.get("template-id", finding.get("template", "")),
+                                "matched_at": finding.get("matched-at", url)
+                            }
+                        })
+                    except Exception as e:
+                        print(f"⚠️ Error processing Nuclei finding: {e}")
+                        print(f"   Finding data: {finding}")
+                        continue
+                
+                all_findings.extend(nuclei_findings)
+                print(f"✅ Extracted {len(nuclei_findings)} findings from Nuclei")
 
             # Write all findings to database
+            print(f"📊 Total findings to insert: {len(all_findings)} (VentiAPI: {sum(1 for f in all_findings if f.get('scanner') == 'ventiapi')}, ZAP: {sum(1 for f in all_findings if f.get('scanner') == 'zap')}, Nuclei: {sum(1 for f in all_findings if f.get('scanner') == 'nuclei')})")
             if all_findings:
-                inserted_count = await insert_findings(scan_id, all_findings)
-                print(f"✅ Inserted {inserted_count} findings into database for scan {scan_id}")
+                try:
+                    inserted_count = await insert_findings(scan_id, all_findings)
+                    print(f"✅ Inserted {inserted_count} findings into database for scan {scan_id}")
+                except Exception as e:
+                    print(f"❌ Error inserting findings into database: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"⚠️ No findings to insert for scan {scan_id}")
 
             # Update scan status in database with findings count
             await update_scan_status(
@@ -1529,7 +1728,11 @@ async def monitor_scan_progress(scan_id: str):
                     continue
                     
                 chunk = scan_data["chunk_status"][chunk_idx]
-                scanner_info = scanner_endpoints.get(scanner_name, {"endpoints": ["/"], "description": "Unknown Scanner"})
+                scanner_info = scanner_endpoints.get(scanner_name, {
+                    "endpoints": ["/"], 
+                    "description": "Unknown Scanner",
+                    "scan_type": "baseline_url"
+                })
                 
                 # Different progress patterns for different scanners
                 if scanner_name == "ventiapi":
@@ -1556,10 +1759,24 @@ async def monitor_scan_progress(scan_id: str):
                         chunk["endpoints_count"] = len(chunk["endpoints"])
                     
                     # Add comprehensive scanner-specific metadata
-                    chunk["scanner_description"] = scanner_info["description"]
-                    chunk["scan_type"] = scanner_info["scan_type"]
+                    chunk["scanner_description"] = scanner_info.get("description", "Unknown Scanner")
+                    chunk["scan_type"] = scanner_info.get("scan_type", "baseline_url")
                     chunk["total_endpoints"] = len(endpoints)
                     chunk["scanned_endpoints"] = endpoints[:endpoint_idx + 1] if endpoint_idx < len(endpoints) else endpoints
+                    
+                    # Update chunk status in database with real-time progress
+                    try:
+                        await upsert_chunk_status(
+                            scan_id=scan_id,
+                            chunk_id=chunk_idx,
+                            scanner=scanner_name,
+                            status="running",
+                            progress=chunk_progress,
+                            endpoints_count=len(chunk.get("endpoints", [])),
+                            total_endpoints=len(endpoints)
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Failed to update chunk status in database: {e}")
             
             # Calculate overall progress
             if scan_data["chunk_status"]:

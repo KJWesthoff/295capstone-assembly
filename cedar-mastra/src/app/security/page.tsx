@@ -63,6 +63,11 @@ export default function SecurityDashboardPage() {
   // Track if we should show old results or force form view
   const [showOldResults, setShowOldResults] = useState(false);
 
+  // Database scan retrieval state (like developer view)
+  const [scans, setScans] = useState<any[]>([]);
+  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const [isLoadingScans, setIsLoadingScans] = useState(true);
+
   // Store the API base URL in a ref to avoid stale closure in callback
   const apiBaseUrlRef = useRef<string>('');
 
@@ -129,10 +134,115 @@ export default function SecurityDashboardPage() {
     }
   }, [pollingStatus]);
   
+  // Fetch recent scans from database on mount (like developer view)
+  useEffect(() => {
+    const fetchScans = async () => {
+      try {
+        const response = await scannerApi.listScans(10, 0);
+        setScans(response.scans);
+        setIsLoadingScans(false);
+      } catch (error) {
+        console.error('Error fetching scans:', error);
+        setIsLoadingScans(false);
+      }
+    };
+
+    fetchScans();
+  }, []);
+
+  // Fetch findings when a scan is selected from the database
+  useEffect(() => {
+    if (!selectedScanId) return;
+
+    const fetchFindings = async () => {
+      try {
+        // Find the scan details first
+        const scan = scans.find(s => s.scan_id === selectedScanId);
+        
+        // Only fetch findings if scan is completed
+        if (scan && scan.status !== 'completed') {
+          console.warn(`Scan ${selectedScanId} is not completed yet (status: ${scan.status})`);
+          alert(`Scan is not completed yet. Current status: ${scan.status}`);
+          return;
+        }
+        
+        const response = await scannerApi.getFindings(selectedScanId);
+        
+        // Validate response structure
+        if (!response || typeof response !== 'object') {
+          throw new Error('Invalid response format from API');
+        }
+        
+        const findings = response.findings || [];
+        
+        // Transform findings to VulnerabilityFinding format with error handling
+        const vulnerabilityFindings: VulnerabilityFinding[] = findings
+          .filter((f: any) => f != null) // Filter out null/undefined findings
+          .map((f: any) => {
+            try {
+              return {
+                id: f.id || `${f.endpoint || ''}-${f.rule || ''}` || `finding-${Math.random()}`,
+                title: f.title || 'Untitled Finding',
+                severity: (f.severity || 'Low') as 'Critical' | 'High' | 'Medium' | 'Low',
+                endpoint: f.endpoint || '/',
+                method: f.method || 'GET',
+                description: f.description || '',
+                rule: f.rule || '',
+                score: f.score || 0,
+                scanner: f.scanner || 'unknown',
+                scanner_description: f.scanner_description || f.scanner || 'unknown',
+                evidence: f.evidence || {},
+              };
+            } catch (err) {
+              console.error('Error transforming finding:', f, err);
+              return null;
+            }
+          })
+          .filter((f: VulnerabilityFinding | null): f is VulnerabilityFinding => f !== null);
+
+        // Update scan results with database findings
+        setScanResults({
+          scanId: selectedScanId,
+          findings: vulnerabilityFindings,
+          scanDate: scan?.created_at || new Date().toISOString(),
+          apiBaseUrl: scan?.server_url || '',
+          status: 'completed',
+          summary: {
+            total: vulnerabilityFindings.length,
+            critical: vulnerabilityFindings.filter(f => f.severity === 'Critical').length,
+            high: vulnerabilityFindings.filter(f => f.severity === 'High').length,
+            medium: vulnerabilityFindings.filter(f => f.severity === 'Medium').length,
+            low: vulnerabilityFindings.filter(f => f.severity === 'Low').length,
+          },
+          groupedByEndpoint: vulnerabilityFindings.reduce((acc, finding) => {
+            const key = `${finding.method} ${finding.endpoint}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(finding);
+            return acc;
+          }, {} as Record<string, VulnerabilityFinding[]>),
+        });
+
+        // Show the results
+        setShowOldResults(true);
+      } catch (error) {
+        console.error('Error fetching findings:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('Full error details:', {
+          error,
+          selectedScanId,
+          scan: scans.find(s => s.scan_id === selectedScanId),
+        });
+        alert(`Failed to load scan findings from database: ${errorMessage}`);
+      }
+    };
+
+    fetchFindings();
+  }, [selectedScanId, scans, setScanResults]);
+
   // On mount, check if we have completed scan results but don't auto-show them
   // Only show if user explicitly wants to view them or if scan is running
   useEffect(() => {
-    if (scanResults && scanResults.status === 'completed' && !activeScanId) {
+    if (scanResults && scanResults.status === 'completed' && !activeScanId && !selectedScanId) {
       // Don't auto-show completed results - user must click to view them
       setShowOldResults(false);
     } else if (scanResults && scanResults.status === 'running' && !activeScanId) {
@@ -352,8 +462,8 @@ export default function SecurityDashboardPage() {
 
   // Render everything in one return with conditional content
   // Show form/running view if: no scan results OR scan is running OR (completed but user hasn't chosen to view)
-  // Show results view if: scan is completed AND user chose to view them
-  const shouldShowForm = !scanResults || scanResults.status === 'running' || (scanResults.status === 'completed' && !showOldResults);
+  // Show results view if: scan is completed AND user chose to view them (either from localStorage or database selection)
+  const shouldShowForm = !scanResults || scanResults.status === 'running' || (scanResults.status === 'completed' && !showOldResults && !selectedScanId);
   
   return (
     <>
@@ -681,6 +791,38 @@ export default function SecurityDashboardPage() {
                 >
                   {isScanning ? 'Starting Scan...' : 'Run Security Scan'}
                 </button>
+
+                {/* Scan Selector from Database */}
+                {!isScanning && scans.length > 0 && (
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white mb-2">Or view existing scan results:</p>
+                    </div>
+                    <select
+                      value={selectedScanId || ''}
+                      onChange={(e) => {
+                        const scanId = e.target.value || null;
+                        setSelectedScanId(scanId);
+                        if (scanId) {
+                          setShowOldResults(false); // Will be set to true when findings load
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select a scan from database...</option>
+                      {scans.map((scan) => (
+                        <option key={scan.scan_id} value={scan.scan_id}>
+                          {new Date(scan.created_at).toLocaleString()} - {scan.server_url} ({scan.status}) - {scan.findings_count || 0} findings
+                        </option>
+                      ))}
+                    </select>
+                    {isLoadingScans && (
+                      <div className="text-center py-2 text-gray-400 text-sm">
+                        Loading scans...
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {scanResults && scanResults.status === 'completed' && (
                   <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-3">

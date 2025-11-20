@@ -221,12 +221,14 @@ export class ScannerApiClient {
               },
             });
             if (!retryResponse.ok) {
-              throw new Error(`Failed to get findings: ${retryResponse.status}`);
+              const errorText = await retryResponse.text().catch(() => 'Unknown error');
+              throw new Error(`Failed to get findings: ${retryResponse.status} - ${errorText}`);
             }
             return retryResponse.json();
           }
         }
-        throw new Error(`Failed to get findings: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Failed to get findings: ${response.status} - ${errorText}`);
       }
 
       return response.json();

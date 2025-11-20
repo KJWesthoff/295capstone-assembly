@@ -70,6 +70,31 @@ fi
 echo ""
 echo "✅ Database restored successfully!"
 echo ""
+
+# Run migrations from database folder
+echo "🔄 Running database migrations..."
+MIGRATIONS_DIR="./database"
+MIGRATION_FILES=$(find "${MIGRATIONS_DIR}" -name "*.sql" -type f | grep -v "/dumps/" | sort)
+
+if [ -z "${MIGRATION_FILES}" ]; then
+    echo "⚠️  No migration files found in ${MIGRATIONS_DIR}"
+else
+    MIGRATION_COUNT=0
+    for migration_file in ${MIGRATION_FILES}; do
+        MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
+        echo "   [${MIGRATION_COUNT}] Running: ${migration_file}"
+        if docker-compose exec -T postgres psql -U rag_user -d rag_db < "${migration_file}"; then
+            echo "      ✅ Migration applied successfully"
+        else
+            echo "      ❌ Migration failed: ${migration_file}"
+            echo "      ⚠️  Continuing with remaining migrations..."
+        fi
+    done
+    echo ""
+    echo "✅ Completed ${MIGRATION_COUNT} migration(s)"
+fi
+
+echo ""
 echo "📊 Database Info:"
 docker-compose exec postgres psql -U rag_user -d rag_db -c "\dt" || true
 echo ""
