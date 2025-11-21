@@ -58,8 +58,8 @@ export const ExecutiveKPICards = ({ summary, onAddToReport }: ExecutiveKPICardsP
           </h3>
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
-                <Info className="h-4 w-4 text-muted-foreground" />
+              <TooltipTrigger asChild>
+                <span><Info className="h-4 w-4 text-muted-foreground" /></span>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <p className="text-xs">
