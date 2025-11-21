@@ -1,0 +1,35 @@
+# =============================================================================
+# Local Terraform Variables (TEMPLATE)
+# =============================================================================
+# Copy this file to terraform.tfvars.local and fill in your values.
+# This file is gitignored and will not be committed.
+#
+# Usage:
+#   cp terraform.tfvars.local.example terraform.tfvars.local
+#   # Edit terraform.tfvars.local with your actual values
+#   terraform apply -var-file="prod.tfvars" -var-file="terraform.tfvars.local"
+# =============================================================================
+
+# Required: OpenAI API key for Cedar/Mastra AI features
+openai_api_key = "sk-proj-your-openai-api-key-here"
+
+# Required: Admin password for scanner authentication
+admin_password = "YourSecureAdminPassword123!"
+
+# Optional: JWT secret (leave empty to auto-generate)
+jwt_secret = ""
+
+# Optional: Mistral API key for alternative AI model
+mistral_api_key = ""
+
+# Optional: GitHub token for advisory ingestion (if private repo)
+github_token = ""
+
+# =============================================================================
+# Alternative: Set via environment variables instead of this file
+# =============================================================================
+# export TF_VAR_openai_api_key="sk-proj-..."
+# export TF_VAR_admin_password="YourSecurePassword"
+# export TF_VAR_jwt_secret="your-32-char-jwt-secret"
+# export TF_VAR_mistral_api_key="..."
+# export TF_VAR_github_token="ghp_..."
