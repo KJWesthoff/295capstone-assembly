@@ -208,7 +208,7 @@ echo "Environment files generated"
 echo "=== Building Docker images ==="
 cd /opt/ventiapi
 
-# Export NEXT_PUBLIC vars for docker-compose (required for ${VAR:-default} syntax)
+# Export NEXT_PUBLIC vars for docker-compose (required for $${VAR:-default} syntax)
 export NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
 export NEXT_PUBLIC_SCANNER_USERNAME=$ADMIN_USERNAME
 export NEXT_PUBLIC_SCANNER_PASSWORD=$ADMIN_PASSWORD
