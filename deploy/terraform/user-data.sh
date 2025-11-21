@@ -253,10 +253,17 @@ if [ -f "database/init/01-create-scanner-schema.sql" ]; then
     docker-compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB < database/init/01-create-scanner-schema.sql || true
 fi
 
-# Restore database dump if available
-if [ -f "database/dumps/rag_db_latest.sql.gz" ]; then
+# Download and restore database dump from S3
+echo "Downloading database dump from S3..."
+mkdir -p database/dumps
+aws s3 cp s3://ventiapi-database-dumps/rag_db_migration_20251012_221658.sql.gz database/dumps/ --region "$AWS_REGION" || true
+
+if [ -f "database/dumps/rag_db_migration_20251012_221658.sql.gz" ]; then
     echo "Restoring database dump..."
-    gunzip -c database/dumps/rag_db_latest.sql.gz | docker-compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB > /dev/null 2>&1 || true
+    gunzip -c database/dumps/rag_db_migration_20251012_221658.sql.gz | docker-compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB > /dev/null 2>&1 || true
+    echo "Database restore complete"
+else
+    echo "No database dump found, skipping restore"
 fi
 
 # =============================================================================

@@ -165,6 +165,17 @@ resource "aws_iam_role_policy" "secrets_access" {
         Resource = [
           aws_secretsmanager_secret.app_secrets.arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::ventiapi-database-dumps",
+          "arn:aws:s3:::ventiapi-database-dumps/*"
+        ]
       }
     ]
   })
