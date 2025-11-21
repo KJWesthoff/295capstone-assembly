@@ -152,6 +152,12 @@ LOG_FORMAT=json
 
 # CORS
 ADDITIONAL_CORS_ORIGINS=http://$PUBLIC_IP:3001,http://$PUBLIC_IP:3000
+
+# Frontend public URLs (for cedar-frontend container)
+NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
+NEXT_PUBLIC_SCANNER_USERNAME=$ADMIN_USERNAME
+NEXT_PUBLIC_SCANNER_PASSWORD=$ADMIN_PASSWORD
+NEXT_PUBLIC_MASTRA_URL=http://$PUBLIC_IP:4111
 EOF
 
 # Cedar/Mastra .env
@@ -201,6 +207,12 @@ echo "Environment files generated"
 
 echo "=== Building Docker images ==="
 cd /opt/ventiapi
+
+# Export NEXT_PUBLIC vars for docker-compose (required for ${VAR:-default} syntax)
+export NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
+export NEXT_PUBLIC_SCANNER_USERNAME=$ADMIN_USERNAME
+export NEXT_PUBLIC_SCANNER_PASSWORD=$ADMIN_PASSWORD
+export NEXT_PUBLIC_MASTRA_URL=http://$PUBLIC_IP:4111
 
 # Build all services
 docker-compose build
