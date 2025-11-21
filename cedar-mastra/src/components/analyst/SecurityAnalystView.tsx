@@ -11,6 +11,8 @@ import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 import { useScanResultsState } from "@/app/cedar-os/scanState";
 import { transformVulnerabilityFindings } from "@/lib/transformFindings";
+import { useScanManager } from "@/hooks/useScanManager";
+import { ScanLauncher, ScanSelector, ScanProgressTracker } from "@/components/scanner";
 
 interface SecurityAnalystViewProps {
   selectedFindings?: Set<string>;
@@ -20,6 +22,19 @@ interface SecurityAnalystViewProps {
 export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: SecurityAnalystViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [showDiffModal, setShowDiffModal] = useState(false);
+
+  // Use centralized scan manager
+  const {
+    isScanning,
+    currentScanStatus,
+    activeScanId,
+    scans,
+    selectedScanId,
+    isLoadingScans,
+    startScan,
+    selectScan,
+    refreshScans,
+  } = useScanManager();
 
   // Get actual scan results from Cedar state
   const { scanResults } = useScanResultsState();
@@ -47,6 +62,34 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
         description="Prioritized by exploitability, CVSS, exposure, and recency. Click any row for full details."
         size="md"
       />
+
+      {/* Scanner Controls */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex-1 w-full sm:w-auto">
+            <ScanSelector
+              scans={scans}
+              selectedScanId={selectedScanId}
+              onSelectScan={selectScan}
+              isLoading={isLoadingScans}
+              onRefresh={refreshScans}
+            />
+          </div>
+          <ScanLauncher
+            onStartScan={startScan}
+            isScanning={isScanning}
+            variant="secondary"
+          />
+        </div>
+      </div>
+
+      {/* Scan Progress Tracker */}
+      {isScanning && currentScanStatus && (
+        <ScanProgressTracker
+          scanStatus={currentScanStatus}
+          scanId={activeScanId ?? undefined}
+        />
+      )}
 
       <FindingsTable
         findings={findings}

@@ -9,6 +9,8 @@ import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import type { Finding } from "@/types/finding";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 import { scannerApi } from "@/lib/scannerApi";
+import { useScanManager } from "@/hooks/useScanManager";
+import { ScanLauncher, ScanSelector, ScanProgressTracker } from "@/components/scanner";
 
 interface DeveloperViewProps {
   selectedFindings?: Set<string>;
@@ -17,32 +19,20 @@ interface DeveloperViewProps {
 
 export const DeveloperView = ({ selectedFindings, onSelectionChange }: DeveloperViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
-  const [scans, setScans] = useState<any[]>([]);
-  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
   const [scanFindings, setScanFindings] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch recent scans on mount
-  useEffect(() => {
-    const fetchScans = async () => {
-      try {
-        const response = await scannerApi.listScans(10, 0);
-        setScans(response.scans);
-
-        // Auto-select the most recent completed scan
-        const mostRecent = response.scans.find(s => s.status === 'completed');
-        if (mostRecent) {
-          setSelectedScanId(mostRecent.scan_id);
-        }
-      } catch (error) {
-        console.error('Error fetching scans:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchScans();
-  }, []);
+  // Use centralized scan manager
+  const {
+    isScanning,
+    currentScanStatus,
+    activeScanId,
+    scans,
+    selectedScanId,
+    isLoadingScans,
+    startScan,
+    selectScan,
+    refreshScans,
+  } = useScanManager();
 
   // Fetch findings when selected scan changes
   useEffect(() => {
@@ -115,31 +105,32 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
         description="Fast-track vulnerabilities to safe PRs with staged remediation plans"
       />
 
-      {/* Scan Selector */}
-      {scans.length > 0 && (
-        <div className="bg-card border border-border rounded-lg p-4">
-          <label htmlFor="scan-select" className="block text-sm font-medium text-foreground mb-2">
-            Select Scan
-          </label>
-          <select
-            id="scan-select"
-            value={selectedScanId || ''}
-            onChange={(e) => setSelectedScanId(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            {scans.map((scan) => (
-              <option key={scan.scan_id} value={scan.scan_id}>
-                {new Date(scan.created_at).toLocaleString()} - {scan.server_url} ({scan.status}) - {scan.findings_count} findings
-              </option>
-            ))}
-          </select>
+      {/* Scanner Controls */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="flex-1 w-full sm:w-auto">
+            <ScanSelector
+              scans={scans}
+              selectedScanId={selectedScanId}
+              onSelectScan={selectScan}
+              isLoading={isLoadingScans}
+              onRefresh={refreshScans}
+            />
+          </div>
+          <ScanLauncher
+            onStartScan={startScan}
+            isScanning={isScanning}
+            variant="secondary"
+          />
         </div>
-      )}
+      </div>
 
-      {isLoading && (
-        <div className="text-center py-8 text-muted-foreground">
-          Loading scans...
-        </div>
+      {/* Scan Progress Tracker */}
+      {isScanning && currentScanStatus && (
+        <ScanProgressTracker
+          scanStatus={currentScanStatus}
+          scanId={activeScanId ?? undefined}
+        />
       )}
 
       <ChatPresets presets={developerPresets} />
