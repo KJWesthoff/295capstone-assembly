@@ -1,3 +1,12 @@
+# =============================================================================
+# VentiAPI Scanner - Docker Compose Configuration
+# =============================================================================
+# Environment files:
+#   - Local development: Uses .env.local (referenced in env_file directives below)
+#   - Production/Remote: Use --env-file .env.remote flag when running docker-compose
+#     Example: docker-compose --env-file .env.remote up -d
+# =============================================================================
+
 services:
   # Nginx Reverse Proxy (API Gateway for Scanner Service)
   # Note: This ONLY proxies the scanner API, not the frontend
