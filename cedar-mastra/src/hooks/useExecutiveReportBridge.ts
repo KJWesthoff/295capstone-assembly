@@ -1,5 +1,5 @@
 import { useCedarStore } from "cedar-os";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 interface ReportItem {
   type: "kpis" | "topRisks" | "compliance" | "ownership";
@@ -26,19 +26,19 @@ export function useExecutiveReportBridge({
   complianceSnapshot,
   ownershipRows
 }: UseExecutiveReportBridgeProps = {}) {
-  // Local state for report configuration
-  const [reportItems, setReportItems] = useState<ReportItem[]>([
-    { type: "kpis", data: kpis },
-    { type: "topRisks", data: topRiskCards },
-    { type: "compliance", data: complianceSnapshot },
-    { type: "ownership", data: ownershipRows }
-  ]);
-
   const [reportMeta, setReportMeta] = useState<ReportMeta>({
     tone: "Board",
     length: 150,
     window: "30d"
   });
+
+  // Memoize reportItems to prevent recreation on every render
+  const reportItems = useMemo<ReportItem[]>(() => [
+    { type: "kpis", data: kpis },
+    { type: "topRisks", data: topRiskCards },
+    { type: "compliance", data: complianceSnapshot },
+    { type: "ownership", data: ownershipRows }
+  ], [kpis, topRiskCards, complianceSnapshot, ownershipRows]);
 
   // Add items manually to Cedar context
   const { addContextEntry } = useCedarStore();
