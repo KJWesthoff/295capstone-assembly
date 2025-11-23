@@ -49,14 +49,14 @@ export const ExecutiveKPICards = ({ summary, onAddToReport }: ExecutiveKPICardsP
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-      {/* Overall Risk Score */}
-      <Card className="p-6 bg-card border-border hover:shadow-md transition-shadow">
-        <div className="flex items-start justify-between mb-2">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Overall Risk
-          </h3>
-          <TooltipProvider>
+    <TooltipProvider>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {/* Overall Risk Score */}
+        <Card className="p-6 bg-card border-border hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Overall Risk
+            </h3>
             <Tooltip>
               <TooltipTrigger asChild>
                 <span><Info className="h-4 w-4 text-muted-foreground" /></span>
@@ -67,8 +67,7 @@ export const ExecutiveKPICards = ({ summary, onAddToReport }: ExecutiveKPICardsP
                 </p>
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-        </div>
+          </div>
         <div className={`text-4xl font-bold ${getRiskColor(summary.riskScore)}`}>
           {summary.riskScore.toFixed(1)}
         </div>
@@ -165,6 +164,7 @@ export const ExecutiveKPICards = ({ summary, onAddToReport }: ExecutiveKPICardsP
           Add to Chat
         </Button>
       </Card>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
