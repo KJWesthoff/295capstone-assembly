@@ -51,6 +51,7 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-MICS295}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - ADDITIONAL_CORS_ORIGINS=${ADDITIONAL_CORS_ORIGINS}
     depends_on:
       - redis
 
