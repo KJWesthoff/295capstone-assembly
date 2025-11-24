@@ -66,6 +66,9 @@ docker compose down --remove-orphans
 echo "🔨 Building scanner images..."
 docker compose --profile build-only build scanner zap
 
+echo "🧹 Cleaning up unused Docker resources (images, containers, networks)..."
+docker system prune -f
+
 # Build and start all services
 echo "🏗️  Building and starting all services..."
 docker compose up --build -d

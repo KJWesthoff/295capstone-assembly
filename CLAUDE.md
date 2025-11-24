@@ -439,3 +439,4 @@ The project includes database setup for RAG:
 - `SECRETS.md`: Secrets management guide
 - `MULTI_SCANNER_GUIDE.md`: Multi-scanner configuration
 - `development-log.md`: Recent fixes and changes
+- You can communicate with your code reviewer via the text files found in `.quibbler/`

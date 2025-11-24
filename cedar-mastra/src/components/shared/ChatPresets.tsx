@@ -52,7 +52,7 @@ export const ChatPresets = ({
       tokens,
     });
 
-    toast.success(`Added "${preset.label}" preset to Context Basket (≈${tokens} tokens)`);
+    toast.success(`Added "${preset.label}" preset to chat context`);
   };
 
   // Build grid class using conditional logic (Tailwind requires full class names)

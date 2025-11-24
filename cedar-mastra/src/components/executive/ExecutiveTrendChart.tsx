@@ -30,7 +30,7 @@ export const ExecutiveTrendChart = ({ trend, isSLA = false }: ExecutiveTrendChar
       data: payload,
       tokens,
     });
-    toast.success(`${isSLA ? "SLA data" : "Trend data"} added to Context Basket (≈${tokens} tokens)`);
+    toast.success(`${isSLA ? "SLA data" : "Trend data"} added to chat context`);
   };
 
   if (isSLA) {

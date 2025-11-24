@@ -91,6 +91,13 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
         />
       )}
 
+      <ChatPresets
+        presets={analystPresets}
+        title="Quick AI Actions"
+        subtitle="Pre-configured prompts for common security analyst workflows"
+        gridCols={{ base: 1, md: 2, lg: 4 }}
+      />
+      
       <FindingsTable
         findings={findings}
         onRowClick={setSelectedFinding}
@@ -98,13 +105,6 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
         diffCounts={diffCounts}
         selectedFindings={selectedFindings}
         onSelectionChange={onSelectionChange}
-      />
-
-      <ChatPresets
-        presets={analystPresets}
-        title="Quick AI Actions"
-        subtitle="Pre-configured prompts for common security analyst workflows"
-        gridCols={{ base: 1, md: 2, lg: 4 }}
       />
 
       <FindingDetailsDrawer finding={selectedFinding} onClose={() => setSelectedFinding(null)} />

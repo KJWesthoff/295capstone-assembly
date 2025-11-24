@@ -149,7 +149,8 @@ export function useScanManager(): UseScanManagerReturn {
 
   useEffect(() => {
     refreshScans();
-  }, [refreshScans]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Load findings when a scan is selected from database
   useEffect(() => {
@@ -209,7 +210,8 @@ export function useScanManager(): UseScanManagerReturn {
     };
 
     fetchFindings();
-  }, [selectedScanId, scans, setScanResults]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedScanId]); // Only re-fetch when scan selection changes
 
   // Start a new scan
   const startScan = useCallback(async (config: ScanConfig) => {

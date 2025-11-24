@@ -145,6 +145,7 @@ services:
         - NEXT_PUBLIC_SCANNER_SERVICE_URL=${NEXT_PUBLIC_SCANNER_SERVICE_URL:-http://localhost:8000}
         - NEXT_PUBLIC_SCANNER_USERNAME=${ADMIN_USERNAME:-MICS295}
         - NEXT_PUBLIC_SCANNER_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
+    image: ventiapi-cedar-frontend:latest
     container_name: cedar-frontend
     ports:
       - "3001:3000"  # Different port to avoid conflict with existing frontend
@@ -170,6 +171,7 @@ services:
     build:
       context: ./cedar-mastra
       dockerfile: Dockerfile.mastra
+    image: ventiapi-cedar-mastra:latest
     container_name: cedar-mastra
     ports:
       - "4111:4111"
