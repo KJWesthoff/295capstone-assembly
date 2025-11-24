@@ -208,7 +208,12 @@ echo "Environment files generated"
 echo "=== Building Docker images ==="
 cd /opt/ventiapi
 
+# Create symlink for docker-compose compatibility
+# (docker-compose loads .env.local from service definitions even with --env-file)
+ln -sf .env.remote .env.local
+
 # Load .env.remote into current shell for docker-compose build
+# This makes NEXT_PUBLIC_* vars available as build args
 set -a
 source /opt/ventiapi/.env.remote
 set +a
@@ -217,8 +222,8 @@ set +a
 docker-compose --env-file .env.remote build
 
 # Build scanner images (critical for scans to work)
-docker-compose --env-file .env.remote --profile build-only build scanner || true
-docker-compose --env-file .env.remote --profile build-only build zap || true
+docker-compose --env-file .env.remote --profile build-only build scanner
+docker-compose --env-file .env.remote --profile build-only build zap
 
 echo "=== Starting services ==="
 docker-compose --env-file .env.remote up -d

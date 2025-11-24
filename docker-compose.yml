@@ -2,9 +2,10 @@
 # VentiAPI Scanner - Docker Compose Configuration
 # =============================================================================
 # Environment files:
-#   - Local development: Uses .env.local (referenced in env_file directives below)
-#   - Production/Remote: Use --env-file .env.remote flag when running docker-compose
-#     Example: docker-compose --env-file .env.remote up -d
+#   - Local development: docker-compose --env-file .env.local up -d
+#   - Production/Remote: docker-compose --env-file .env.remote up -d
+#
+# Note: cedar-mastra service also loads ./cedar-mastra/.env for additional config
 # =============================================================================
 
 services:
@@ -45,8 +46,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Access to Docker daemon
     networks:
       - scanner-network
-    env_file:
-      - .env.local
     environment:
       - PYTHONUNBUFFERED=1
     depends_on:
@@ -151,8 +150,6 @@ services:
       - "3001:3000"  # Different port to avoid conflict with existing frontend
     networks:
       - scanner-network
-    env_file:
-      - .env.local
     environment:
       - NEXT_PUBLIC_MASTRA_URL=${NEXT_PUBLIC_MASTRA_URL:-http://localhost:4111}
       - MASTRA_API_URL=http://cedar-mastra:4111
@@ -179,7 +176,6 @@ services:
       - scanner-network
     env_file:
       - ./cedar-mastra/.env
-      - .env.local
     environment:
       - SCANNER_SERVICE_URL=http://web-api:8000
       - SCANNER_USERNAME=${ADMIN_USERNAME:-MICS295}
