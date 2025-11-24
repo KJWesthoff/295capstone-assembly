@@ -41,7 +41,7 @@ export function useExecutiveReportBridge({
   ], [kpis, topRiskCards, complianceSnapshot, ownershipRows]);
 
   // Add items manually to Cedar context
-  const { addContextEntry } = useCedarStore();
+  const addContextEntry = useCedarStore(s => s.addContextEntry);
   const addCardToReport = useCallback((label: string, payload: any) => {
     addContextEntry("exec_report", {
       id: crypto.randomUUID(),
