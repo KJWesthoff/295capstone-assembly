@@ -49,12 +49,39 @@ chmod +x /usr/local/bin/docker-compose
 
 # =============================================================================
 # Get Public IP (with IMDSv2 support)
+# Wait for EIP to be attached before proceeding
 # =============================================================================
 
 echo "=== Getting instance metadata ==="
 TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
-echo "Public IP: $PUBLIC_IP"
+
+# Wait for EIP to be attached (Terraform attaches it after instance creation)
+echo "Waiting for Elastic IP to be attached..."
+MAX_EIP_WAIT=60
+EIP_WAIT_COUNT=0
+INITIAL_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+PUBLIC_IP=$INITIAL_IP
+
+while [ $EIP_WAIT_COUNT -lt $MAX_EIP_WAIT ]; do
+    sleep 5
+    CURRENT_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+
+    # If IP changed from initial IP, EIP has been attached
+    if [ "$CURRENT_IP" != "$INITIAL_IP" ]; then
+        PUBLIC_IP=$CURRENT_IP
+        echo "EIP attached! Public IP: $PUBLIC_IP"
+        break
+    fi
+
+    EIP_WAIT_COUNT=$((EIP_WAIT_COUNT + 1))
+    echo "Still waiting for EIP... ($EIP_WAIT_COUNT/$MAX_EIP_WAIT)"
+done
+
+if [ "$PUBLIC_IP" = "$INITIAL_IP" ]; then
+    echo "Warning: EIP may not have been attached, using initial IP: $PUBLIC_IP"
+else
+    echo "Public IP confirmed: $PUBLIC_IP"
+fi
 
 # =============================================================================
 # Fetch Secrets from AWS Secrets Manager
