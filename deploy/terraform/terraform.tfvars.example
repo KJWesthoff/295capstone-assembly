@@ -2,7 +2,7 @@
 
 aws_region      = "us-west-1"
 aws_profile     = "ventiapi"
-instance_type   = "t3.medium"
+instance_type   = "t3.xlarge"
 key_pair_name   = "ventiapi-key"  # Without .pem extension
 openai_api_key  = "sk-proj-..."   # Your OpenAI API key
 admin_username  = "MICS295"
