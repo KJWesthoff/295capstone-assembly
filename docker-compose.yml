@@ -48,6 +48,9 @@ services:
       - scanner-network
     environment:
       - PYTHONUNBUFFERED=1
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-MICS295}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-MaryMcHale}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
     depends_on:
       - redis
 
