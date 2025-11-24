@@ -35,7 +35,7 @@ const Hero = () => {
     } else if (role === 'developer') {
       router.push('/developer');
     } else {
-      router.push('/security');
+      router.push('/dashboard');
     }
   };
 
@@ -154,7 +154,7 @@ const Hero = () => {
                 )}
               </div>
 
-              <Link href="/security">
+              <Link href="/dashboard">
                 <Button
                   size="lg"
                   variant="outline"
@@ -168,7 +168,7 @@ const Hero = () => {
             {/* Sign In Link */}
             <p className="text-sm text-primary-foreground/80 text-center lg:text-left">
               Ready to scan?{" "}
-              <Link href="/security" className="text-accent hover:text-accent/80 underline font-medium">
+              <Link href="/dashboard" className="text-accent hover:text-accent/80 underline font-medium">
                 Go to Dashboard
               </Link>
             </p>
