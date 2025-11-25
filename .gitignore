@@ -14,6 +14,7 @@ dist/
 # Environment files
 .env
 .env.local
+.env.remote
 .env.deploy
 .env.development.local
 .env.test.local
@@ -100,3 +101,21 @@ deploy-to-ecr.sh
 deploy/*.pem
 deploy/aws-credentials
 deploy/.aws/
+
+# Database dumps (exclude all by default, use Git LFS for specific dumps)
+database/dumps/*.sql
+database/dumps/*.sql.gz
+database/dumps/*.dump
+# Exception: You can commit specific dumps with Git LFS or by removing this line
+# !database/dumps/rag_db_latest.sql.gz
+
+# Database initialization scripts (keep .example files)
+database/init/*.sql
+!database/init/*.example.sql
+!database/init/README.md
+
+# SQLite databases (if using locally)
+*.db
+*.sqlite
+*.sqlite3
+!Data_Breach_Chronology_sample.db  # Exception: Sample data

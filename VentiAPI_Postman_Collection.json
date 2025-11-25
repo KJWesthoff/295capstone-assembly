@@ -1,0 +1,536 @@
+{
+  "info": {
+    "name": "VentiAPI Scanner - Complete API",
+    "description": "Complete API collection for VentiAPI Scanner and Mastra AI Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "ventiapi"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "mastra_url",
+      "value": "http://localhost:4111",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "scan_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "MICS295",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "MaryMcHale",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "    console.log('Token saved:', jsonData.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Authenticate and receive JWT token. Token is automatically saved to collection variable."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Check service health. No authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Queue Stats",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/queue/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "queue", "stats"]
+            },
+            "description": "Get job queue statistics"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Available Scanners",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scanners",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scanners"]
+            },
+            "description": "List available scanner engines"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Scans",
+      "item": [
+        {
+          "name": "Start Scan (File Upload)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('scan_id', jsonData.scan_id);",
+                  "    console.log('Scan ID saved:', jsonData.scan_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/openapi.yaml",
+                  "description": "OpenAPI specification file"
+                },
+                {
+                  "key": "target_url",
+                  "value": "https://api.example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "dangerous_mode",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "fuzz_auth",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "max_requests",
+                  "value": "1000",
+                  "type": "text"
+                },
+                {
+                  "key": "parallel_mode",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "scanners",
+                  "value": "[\"ventiapi\", \"zap\"]",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/scan/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "start"]
+            },
+            "description": "Start a new scan with OpenAPI spec file upload"
+          },
+          "response": []
+        },
+        {
+          "name": "Start Scan (Spec URL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('scan_id', jsonData.scan_id);",
+                  "    console.log('Scan ID saved:', jsonData.scan_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "spec_url",
+                  "value": "https://petstore3.swagger.io/api/v3/openapi.json",
+                  "type": "text"
+                },
+                {
+                  "key": "target_url",
+                  "value": "https://petstore3.swagger.io",
+                  "type": "text"
+                },
+                {
+                  "key": "dangerous_mode",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "max_requests",
+                  "value": "500",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/scan/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "start"]
+            },
+            "description": "Start scan using OpenAPI spec URL (great for testing with Petstore API)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Scan Status",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scan/{{scan_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "{{scan_id}}", "status"]
+            },
+            "description": "Get current status of a scan (queued, running, completed, failed)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Scan Findings",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scan/{{scan_id}}/findings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "{{scan_id}}", "findings"]
+            },
+            "description": "Get all vulnerability findings for a completed scan"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Scan Report (JSON)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scan/{{scan_id}}/report",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "{{scan_id}}", "report"]
+            },
+            "description": "Get comprehensive JSON report with OWASP/CWE mappings"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Scan Report (HTML)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scan/{{scan_id}}/report/html",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "{{scan_id}}", "report", "html"]
+            },
+            "description": "Get HTML-formatted report (for download)"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Scans",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scans",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scans"]
+            },
+            "description": "Get list of all scans"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Scan",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scan/{{scan_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan", "{{scan_id}}"]
+            },
+            "description": "Delete scan results and associated files"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Mastra AI",
+      "item": [
+        {
+          "name": "Chat (Non-Streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Explain what a BOLA vulnerability is and how to prevent it\",\n  \"temperature\": 0.7,\n  \"maxTokens\": 2000,\n  \"systemPrompt\": \"You are a security expert specializing in API security\",\n  \"resourceId\": \"user-123\"\n}"
+            },
+            "url": {
+              "raw": "{{mastra_url}}/chat",
+              "host": ["{{mastra_url}}"],
+              "path": ["chat"]
+            },
+            "description": "Send chat request and get complete response"
+          },
+          "response": []
+        },
+        {
+          "name": "Chat (Streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Analyze this BOLA vulnerability and provide step-by-step remediation\",\n  \"temperature\": 0.7,\n  \"additionalContext\": {\n    \"vulnerability\": {\n      \"severity\": \"HIGH\",\n      \"title\": \"BOLA on /api/users/{userId}\",\n      \"description\": \"Endpoint allows unauthorized access to user data\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{mastra_url}}/chat/stream",
+              "host": ["{{mastra_url}}"],
+              "path": ["chat", "stream"]
+            },
+            "description": "Stream chat responses in real-time (Server-Sent Events)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Threads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mastra_url}}/threads?userId=user-123",
+              "host": ["{{mastra_url}}"],
+              "path": ["threads"],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "user-123"
+                }
+              ]
+            },
+            "description": "Get all chat threads for a user"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Thread Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mastra_url}}/threads/thread-id-123?userId=user-123",
+              "host": ["{{mastra_url}}"],
+              "path": ["threads", "thread-id-123"],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "user-123"
+                }
+              ]
+            },
+            "description": "Get messages for a specific thread"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

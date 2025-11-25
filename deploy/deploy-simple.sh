@@ -2,8 +2,16 @@
 
 # VentiAPI Scanner - Simple AWS Deployment Script
 # This script creates an EC2 instance directly without CloudFormation
+#
+# Usage: ./deploy-simple.sh [AWS_PROFILE]
+#   AWS_PROFILE: Optional AWS CLI profile name (e.g., 'ventiapi', 'production')
+#                If not provided, uses AWS_PROFILE environment variable or 'default'
 
 set -e
+
+# Parse arguments
+AWS_PROFILE_ARG="${1:-${AWS_PROFILE:-default}}"
+export AWS_PROFILE="$AWS_PROFILE_ARG"
 
 # Configuration
 REGION="us-west-1"
@@ -30,21 +38,32 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
 # Check AWS CLI
 check_aws_cli() {
     print_status "Checking AWS CLI configuration..."
-    
+    print_status "Using AWS Profile: ${AWS_PROFILE}"
+
     if ! command -v aws &> /dev/null; then
         print_error "AWS CLI is not installed"
         exit 1
     fi
-    
+
     if ! aws sts get-caller-identity &> /dev/null; then
-        print_error "AWS CLI is not configured"
+        print_error "AWS CLI is not configured for profile '${AWS_PROFILE}'"
+        print_error "Run: aws configure --profile ${AWS_PROFILE}"
         exit 1
     fi
-    
-    print_success "AWS CLI is configured"
+
+    # Show which AWS account we're deploying to
+    ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+    USER_ARN=$(aws sts get-caller-identity --query 'Arn' --output text)
+    print_success "AWS CLI configured"
+    print_status "Account: ${ACCOUNT_ID}"
+    print_status "Identity: ${USER_ARN}"
 }
 
 # Create security group
@@ -94,6 +113,20 @@ create_security_group() {
             --group-id $SG_ID \
             --protocol tcp \
             --port 80 \
+            --cidr 0.0.0.0/0
+        
+        aws ec2 authorize-security-group-ingress \
+            --region $REGION \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 3001 \
+            --cidr 0.0.0.0/0
+        
+        aws ec2 authorize-security-group-ingress \
+            --region $REGION \
+            --group-id $SG_ID \
+            --protocol tcp \
+            --port 4111 \
             --cidr 0.0.0.0/0
         
         print_success "Created security group: $SG_ID"
@@ -203,7 +236,7 @@ mkdir -p /opt/ventiapi
 chown ec2-user:ec2-user /opt/ventiapi
 
 # Create data directories
-mkdir -p /opt/ventiapi/data/{results,specs,redis}
+mkdir -p /opt/ventiapi/data/{results,specs,redis,postgres}
 chown -R ec2-user:ec2-user /opt/ventiapi/data
 
 # Create log directory
@@ -247,15 +280,19 @@ EOF
         --region $REGION \
         --instance-id $INSTANCE_ID \
         --allocation-id $ALLOCATION_ID
-    
+
+    # Wait for Elastic IP association to propagate
+    print_status "Waiting for Elastic IP association to propagate..."
+    sleep 60
+
     # Get public IP
     PUBLIC_IP=$(aws ec2 describe-addresses \
         --region $REGION \
         --allocation-ids $ALLOCATION_ID \
         --query 'Addresses[0].PublicIp' \
         --output text)
-    
-    print_success "Elastic IP allocated: $PUBLIC_IP"
+
+    print_success "Elastic IP allocated and associated: $PUBLIC_IP"
 }
 
 # Deploy application
@@ -317,6 +354,15 @@ JWT_EXPIRES_IN=24h
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=change-this-password
 
+# OpenAI Configuration (required for Cedar AI features)
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Database Configuration
+DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=rag_pass
+POSTGRES_DB=rag_db
+
 # Application Configuration
 APP_NAME=VentiAPI Scanner
 APP_VERSION=1.0.0
@@ -349,12 +395,60 @@ LOG_FILE=/var/log/ventiapi/app.log
 ENVEOF
     fi
     
+    # Update Cedar .env file with public IP and actual values
+    print_status "Configuring Cedar environment with public IP: $PUBLIC_IP"
+    if [ -f "$TEMP_DIR/cedar-mastra/.env" ]; then
+        # Read OpenAI key from local cedar-mastra/.env
+        OPENAI_KEY=$(grep "^OPENAI_API_KEY=" cedar-mastra/.env | cut -d'=' -f2)
+        GITHUB_TOKEN=$(grep "^GITHUB_TOKEN=" cedar-mastra/.env | cut -d'=' -f2 || echo "")
+        MISTRAL_KEY=$(grep "^MISTRAL_API_KEY=" cedar-mastra/.env | cut -d'=' -f2 || echo "")
+
+        # Create production cedar-mastra/.env with correct URLs
+        cat > "$TEMP_DIR/cedar-mastra/.env" << CEDAREOF
+# OpenAI API Key
+OPENAI_API_KEY=${OPENAI_KEY}
+
+# Model configuration
+MODEL=gpt-4o-mini
+
+# Mistral (optional)
+MISTRAL_API_KEY=${MISTRAL_KEY}
+
+# GitHub Token (for advisory ingestion - higher rate limits)
+GITHUB_TOKEN=${GITHUB_TOKEN}
+
+# Database configuration (SSL enabled for security)
+DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db?sslmode=require
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=rag_pass
+POSTGRES_DB=rag_db
+
+# Scanner service URL (for Mastra backend - uses internal Docker network)
+SCANNER_SERVICE_URL=http://web-api:8000
+
+# Scanner credentials (for Mastra backend tools)
+SCANNER_USERNAME=MICS295
+SCANNER_PASSWORD=MaryMcHale
+
+# Scanner service URL for frontend (uses public IP)
+NEXT_PUBLIC_SCANNER_SERVICE_URL=http://${PUBLIC_IP}:8000
+NEXT_PUBLIC_SCANNER_USERNAME=MICS295
+NEXT_PUBLIC_SCANNER_PASSWORD=MaryMcHale
+
+# Mastra backend URL (uses public IP)
+NEXT_PUBLIC_MASTRA_URL=http://${PUBLIC_IP}:4111
+CEDAREOF
+        print_success "Updated cedar-mastra/.env with IP: $PUBLIC_IP"
+    else
+        print_warning "cedar-mastra/.env not found in deployment package"
+    fi
+
     # Upload the application files
     scp -r -i ~/.ssh/${KEY_PAIR_NAME}.pem -o StrictHostKeyChecking=no "$TEMP_DIR/"* ec2-user@$PUBLIC_IP:/opt/ventiapi/
-    
+
     # Clean up temp directory
     rm -rf "$TEMP_DIR"
-    
+
     print_status "Deploying application on remote server..."
     
     # Create and execute deployment script on remote server
@@ -394,6 +488,15 @@ JWT_EXPIRES_IN=24h
 # Admin User
 ADMIN_USERNAME=MICS295
 ADMIN_PASSWORD=MaryMcHale
+
+# OpenAI Configuration (required for Cedar AI features)
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Database Configuration
+DATABASE_URL=postgresql://rag_user:rag_pass@postgres:5432/rag_db
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=rag_pass
+POSTGRES_DB=rag_db
 
 # Application Configuration
 APP_NAME=VentiAPI Scanner
@@ -444,6 +547,9 @@ echo "Building and starting Docker services..."
 newgrp docker << 'DOCKEREOF'
 cd /opt/ventiapi
 docker-compose down || true
+
+# Build all services including Cedar components
+echo "Building all services..."
 docker-compose build
 
 # Build scanner images explicitly (required for scans to work)
@@ -470,7 +576,69 @@ echo "Testing scanner images..."
 timeout 10s docker run --rm ventiapi-scanner --help >/dev/null 2>&1 && echo "✅ VentiAPI scanner working" || echo "❌ VentiAPI scanner failed"
 timeout 10s docker run --rm ventiapi-zap --help >/dev/null 2>&1 && echo "✅ ZAP scanner working" || echo "❌ ZAP scanner failed"
 
+# Start all services
+echo "Starting all services..."
 docker-compose up -d
+
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL to be ready..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if docker-compose exec -T postgres pg_isready -U rag_user -d rag_db > /dev/null 2>&1; then
+        echo "✅ PostgreSQL is ready!"
+        break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo "   Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
+    sleep 2
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ PostgreSQL failed to become ready"
+    exit 1
+fi
+
+# Step 1: Run migrations (create scanner schema)
+echo ""
+echo "📊 Step 1/2: Running database migrations..."
+if [ -f "database/init/01-create-scanner-schema.sql" ]; then
+    echo "   Applying 01-create-scanner-schema.sql..."
+    docker-compose exec -T postgres psql -U rag_user -d rag_db < database/init/01-create-scanner-schema.sql
+    echo "   ✅ Scanner schema created"
+else
+    echo "   ⚠️  Migration file not found: database/init/01-create-scanner-schema.sql"
+fi
+
+# Step 2: Restore database dumps
+echo ""
+echo "📥 Step 2/2: Restoring database from dumps..."
+if [ -d "database/dumps" ] && [ -f "database/dumps/rag_db_latest.sql.gz" ]; then
+    echo "   Found database dump: database/dumps/rag_db_latest.sql.gz"
+    DUMP_SIZE=$(ls -lh database/dumps/rag_db_latest.sql.gz | awk '{print $5}')
+    echo "   Dump size: $DUMP_SIZE"
+    echo "   Decompressing and restoring (this may take a few minutes)..."
+
+    gunzip -c database/dumps/rag_db_latest.sql.gz | docker-compose exec -T postgres psql -U rag_user -d rag_db > /dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "   ✅ Database restored successfully!"
+
+        # Show table count
+        echo ""
+        echo "   📋 Restored tables:"
+        docker-compose exec -T postgres psql -U rag_user -d rag_db -c "\dt" | head -20
+    else
+        echo "   ⚠️  Database restore encountered errors (may be due to existing data)"
+    fi
+else
+    echo "   ℹ️  No database dump found, starting with fresh database"
+    echo "   Expected location: database/dumps/rag_db_latest.sql.gz"
+fi
+
+echo ""
+echo "✅ Database setup complete!"
+
 DOCKEREOF
 
 # Wait a moment for services to start
@@ -511,9 +679,17 @@ show_final_info() {
     echo "  SSH Command: ssh -i ~/.ssh/${KEY_PAIR_NAME}.pem ec2-user@$PUBLIC_IP"
     echo
     echo "Application Access:"
-    echo "  🌐 Application URL: http://$PUBLIC_IP:3000"
+    echo "  🌐 Scanner Application: http://$PUBLIC_IP:3000"
+    echo "  🤖 Cedar AI Dashboard: http://$PUBLIC_IP:3001"
+    echo "  🔧 Mastra AI Backend: http://$PUBLIC_IP:4111"
     echo "  📚 API Documentation: http://$PUBLIC_IP:3000/api/docs"
     echo "  🔑 Admin Login: $ADMIN_USER / $ADMIN_PASS"
+    echo
+    echo "⚠️  IMPORTANT: Configure OpenAI API Key for Cedar AI Features:"
+    echo "  ssh -i ~/.ssh/${KEY_PAIR_NAME}.pem ec2-user@$PUBLIC_IP"
+    echo "  cd /opt/ventiapi && nano .env.local"
+    echo "  # Set OPENAI_API_KEY=your-actual-api-key"
+    echo "  docker-compose restart cedar-mastra"
     echo
     echo "Management Commands:"
     echo "  # Check application status"
@@ -568,25 +744,40 @@ cleanup() {
 # Handle script arguments
 case "${1:-}" in
     --help|-h)
-        echo "Usage: $0 [options]"
+        echo "Usage: $0 [AWS_PROFILE] [options]"
+        echo
+        echo "Arguments:"
+        echo "  AWS_PROFILE   AWS CLI profile name (default: 'default' or \$AWS_PROFILE env var)"
         echo
         echo "Options:"
         echo "  --help, -h    Show this help message"
-        echo "  --cleanup     Cleanup created resources"
+        echo "  --cleanup     Show cleanup commands"
+        echo
+        echo "Examples:"
+        echo "  $0 ventiapi              # Deploy using 'ventiapi' profile"
+        echo "  $0                        # Deploy using default profile"
+        echo "  AWS_PROFILE=prod $0      # Deploy using 'prod' profile from env"
         exit 0
         ;;
     --cleanup)
-        print_status "This will cleanup AWS resources. Make sure you have the IDs."
-        echo "Manual cleanup commands:"
+        print_status "Manual cleanup commands for AWS resources:"
+        echo
+        echo "# List all VentiAPI Scanner instances:"
         echo "aws ec2 describe-instances --region $REGION --filters 'Name=tag:Name,Values=VentiAPI-Scanner' --query 'Reservations[].Instances[].[InstanceId,PublicIpAddress,State.Name]' --output table"
+        echo
+        echo "# Terminate instance (replace INSTANCE_ID):"
+        echo "aws ec2 terminate-instances --region $REGION --instance-ids INSTANCE_ID"
+        echo
+        echo "# Release Elastic IP (replace ALLOCATION_ID):"
+        echo "aws ec2 release-address --region $REGION --allocation-id ALLOCATION_ID"
+        echo
+        echo "# Delete security group:"
+        echo "aws ec2 delete-security-group --region $REGION --group-name ventiapi-scanner"
         exit 0
         ;;
-    "")
+    *)
+        # Anything else is treated as a profile name or triggers main()
         main
         trap cleanup EXIT
-        ;;
-    *)
-        print_error "Unknown option: $1"
-        exit 1
         ;;
 esac

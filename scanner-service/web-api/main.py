@@ -31,6 +31,14 @@ from security import (
 # Import multi-scanner support
 from scanner_engines import multi_scanner
 
+# Import database module
+from database import (
+    database, connect_db, disconnect_db,
+    create_scan, get_scan, update_scan_status,
+    insert_findings, get_findings, get_findings_count,
+    upsert_chunk_status, get_chunk_status, get_scan_summary
+)
+
 # Configuration
 SHARED_RESULTS = Path("/shared/results")
 SHARED_SPECS = Path("/shared/specs")
@@ -41,17 +49,18 @@ def get_allowed_origins():
     """Get allowed CORS origins based on environment"""
     origins = [
         "http://localhost:3000",
-        "http://localhost:3001"
+        "http://localhost:3001",
+        "http://localhost:3002"
     ]
-    
+
     frontend_url = os.getenv("FRONTEND_URL")
     if frontend_url:
         origins.append(frontend_url)
-    
+
     additional_origins = os.getenv("ADDITIONAL_CORS_ORIGINS")
     if additional_origins:
         origins.extend([origin.strip() for origin in additional_origins.split(",")])
-    
+
     return origins
 
 # FastAPI app with security middleware
@@ -80,14 +89,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Startup event disabled - using direct execution mode
-# @app.on_event("startup")
-# async def startup_event():
-#     """Initialize connections on startup"""
-#     job_queue.connect()
-#     print("✅ Job queue connected to Redis")
+# Startup/shutdown events for database connection
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database connection on startup"""
+    await connect_db()
+    print("✅ Database connected")
 
-# In-memory scan tracking (replace with Redis in production)
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close database connection on shutdown"""
+    await disconnect_db()
+    print("✅ Database disconnected")
+
+# Legacy in-memory scan tracking (deprecated - use database)
+# Kept for backward compatibility during migration
 scans: Dict[str, Dict] = {}
 
 # Models
@@ -208,22 +224,27 @@ async def start_scan(
     
     try:
         print("DEBUG: Scan request received")
-        print(f"DEBUG: server_url={server_url}")
-        print(f"DEBUG: target_url={target_url}")
+        print(f"DEBUG: server_url={server_url!r}")
+        print(f"DEBUG: target_url={target_url!r}")
         print(f"DEBUG: rps={rps}")
         print(f"DEBUG: max_requests={max_requests}")
         print(f"DEBUG: dangerous={dangerous}")
         print(f"DEBUG: fuzz_auth={fuzz_auth}")
         print(f"DEBUG: scanners={scanners}")
         print(f"DEBUG: spec_file={spec_file}")
+        if spec_file:
+            print(f"DEBUG: spec_file.filename={spec_file.filename}")
+            print(f"DEBUG: spec_file.content_type={spec_file.content_type}")
         print(f"DEBUG: user={user}")
-        
+
         # Validate scan parameters
         validate_scan_params(rps, max_requests)
-        
+
         # Validate URLs
+        print(f"DEBUG: Validating server_url: {server_url!r}")
         validate_url(server_url, allow_localhost=True)
         if target_url:
+            print(f"DEBUG: Validating target_url: {target_url!r}")
             validate_url(target_url, allow_localhost=True)
         
         # Only admins can run dangerous scans
@@ -267,7 +288,42 @@ async def start_scan(
                 detail=f"Invalid scanner engines: {invalid_scanners}. Available: {available_scanners}"
             )
         
-        # Initialize scan data
+        # Create scan in database
+        await create_scan(
+            scan_id=scan_id,
+            server_url=server_url,
+            spec_url=spec_location or target_url,
+            scanners=scanner_list,
+            dangerous=dangerous,
+            fuzz_auth=fuzz_auth,
+            rps=rps,
+            max_requests=max_requests,
+            user_id=user.get('username')
+        )
+
+        # Initialize chunk status in database
+        for i, scanner in enumerate(scanner_list):
+            await upsert_chunk_status(
+                scan_id=scan_id,
+                chunk_id=i,
+                scanner=scanner,
+                status="preparing",  # Changed from "pending" to match database constraint
+                progress=0,
+                endpoints_count=0,
+                total_endpoints=0
+            )
+
+        # Update scan to running status
+        await update_scan_status(
+            scan_id=scan_id,
+            status="pending",
+            current_phase="Initializing scan",
+            total_chunks=len(scanner_list),
+            completed_chunks=0,
+            parallel_mode=True
+        )
+
+        # Keep legacy in-memory store for backward compatibility (temporary)
         scans[scan_id] = {
             "status": "pending",
             "progress": 0,
@@ -282,7 +338,7 @@ async def start_scan(
             "total_chunks": len(scanner_list),
             "completed_chunks": 0,
             "chunk_status": [
-                {"chunk_id": i, "scanner": scanner_list[i], "status": "pending", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
+                {"chunk_id": i, "scanner": scanner_list[i], "status": "preparing", "progress": 0, "current_endpoint": None, "endpoints_count": 0, "endpoints": []}
                 for i in range(len(scanner_list))
             ],
             "job_ids": [],
@@ -483,200 +539,366 @@ async def monitor_scan_jobs(scan_id: str):
             await asyncio.sleep(5)
 
 @app.get("/api/scan/{scan_id}/status", response_model=ScanStatus)
-async def get_scan_status(scan_id: str, user: Dict = Depends(verify_token)):
-    """Get current scan status with job queue information"""
-    
-    if scan_id not in scans:
-        raise HTTPException(status_code=404, detail="Scan not found")
-    
-    scan_data = scans[scan_id]
-    
-    # Get chunk statuses directly from scan data
-    chunk_status = scan_data.get("chunk_status", [])
-    
+async def get_scan_status_endpoint(scan_id: str, user: Dict = Depends(verify_token)):
+    """Get current scan status from database"""
+
+    # Try to get from database first
+    scan_data = await get_scan(scan_id)
+
+    if not scan_data:
+        # Fallback to in-memory store for backward compatibility
+        if scan_id not in scans:
+            raise HTTPException(status_code=404, detail="Scan not found")
+        scan_data = scans[scan_id]
+
+        # Return legacy format
+        chunk_status = scan_data.get("chunk_status", [])
+        queue_stats = {'queue_length': 0, 'active_workers': 0, 'processing_workers': 0, 'waiting_workers': 0}
+
+        return ScanStatus(
+            scan_id=scan_id,
+            status=scan_data.get("status", "unknown"),
+            progress=scan_data.get("progress", 0),
+            current_phase=scan_data.get("current_phase", "Unknown"),
+            findings_count=scan_data.get("findings_count", 0),
+            parallel_mode=scan_data.get("parallel_mode", False),
+            total_chunks=scan_data.get("total_chunks", 1),
+            completed_chunks=scan_data.get("completed_chunks", 0),
+            chunk_status=chunk_status,
+            job_ids=scan_data.get("job_ids", []),
+            queue_stats=queue_stats
+        )
+
+    # Get chunk statuses from database
+    chunk_status_list = await get_chunk_status(scan_id)
+
+    # Also check in-memory store for real-time progress updates (current_endpoint, scanned_endpoints)
+    in_memory_chunks = {}
+    if scan_id in scans and scans[scan_id].get("chunk_status"):
+        for chunk in scans[scan_id]["chunk_status"]:
+            chunk_id = chunk.get("chunk_id")
+            if chunk_id is not None:
+                in_memory_chunks[chunk_id] = chunk
+
+    # Convert database chunk status to API format, merging with in-memory data for real-time updates
+    chunk_status = []
+    for chunk in chunk_status_list:
+        chunk_id = chunk["chunk_id"]
+        in_memory_chunk = in_memory_chunks.get(chunk_id, {})
+        
+        chunk_status.append({
+            "chunk_id": chunk_id,
+            "scanner": chunk["scanner"],
+            "status": in_memory_chunk.get("status", chunk["status"]),  # Prefer in-memory status
+            "progress": in_memory_chunk.get("progress", chunk["progress"]),  # Prefer in-memory progress
+            "endpoints_count": chunk["endpoints_count"],
+            "total_endpoints": chunk["total_endpoints"],
+            "current_endpoint": in_memory_chunk.get("current_endpoint"),  # Only in in-memory
+            "scanned_endpoints": in_memory_chunk.get("scanned_endpoints", in_memory_chunk.get("endpoints", [])),  # Only in in-memory
+            "endpoints": in_memory_chunk.get("endpoints", []),  # Only in in-memory
+        })
+
     # Get queue statistics (disabled for direct execution mode)
     queue_stats = {'queue_length': 0, 'active_workers': 0, 'processing_workers': 0, 'waiting_workers': 0}
-    
+
     return ScanStatus(
         scan_id=scan_id,
-        status=scan_data.get("status", "unknown"),
-        progress=scan_data.get("progress", 0),
+        status=scan_data["status"],
+        progress=scan_data["progress"],
         current_phase=scan_data.get("current_phase", "Unknown"),
-        findings_count=scan_data.get("findings_count", 0),
+        findings_count=scan_data["findings_count"],
         parallel_mode=scan_data.get("parallel_mode", False),
         total_chunks=scan_data.get("total_chunks", 1),
         completed_chunks=scan_data.get("completed_chunks", 0),
         chunk_status=chunk_status,
-        job_ids=scan_data.get("job_ids", []),
+        job_ids=[],  # Legacy field, not used
         queue_stats=queue_stats
     )
 
 @app.get("/api/scan/{scan_id}/findings")
-async def get_scan_findings(
-    scan_id: str, 
-    offset: int = 0, 
-    limit: int = 50,
+async def get_scan_findings_endpoint(
+    scan_id: str,
+    offset: int = 0,
+    limit: int = 1000,  # Increased default limit for multi-scanner results
     user: Dict = Depends(verify_token)
 ):
-    """Get scan findings from job results"""
-    
-    if scan_id not in scans:
-        raise HTTPException(status_code=404, detail="Scan not found")
-    
-    # For direct execution mode, return mock endpoint data to show scan activity
-    # TODO: Parse actual findings from Docker scanner output
-    scan_data = scans[scan_id]
-    server_url = scan_data.get("server_url", "")
-    
-    # Create realistic findings showing vulnerabilities that VAmPI typically has
-    if scan_data.get("status") == "completed":
-        # Get scanner list for this scan to attribute findings
-        scanner_list = scan_data.get("scanners", ["ventiapi"])
-        
-        # VentiAPI findings (API-specific vulnerabilities)
-        all_findings = [
-            {
-                "rule": "broken_authentication",
-                "title": "Broken Authentication",
-                "severity": "High",
-                "score": 8,
-                "endpoint": "/users/v1/_debug",
-                "method": "GET",
-                "description": "Debug endpoint exposes sensitive user information including passwords",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "improper_authorization", 
-                "title": "Broken Object Level Authorization",
-                "severity": "High",
-                "score": 7,
-                "endpoint": "/books/v1/{book_title}",
-                "method": "GET",
-                "description": "Users can access books belonging to other users",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "jwt_weak_secret",
-                "title": "JWT Weak Secret",
-                "severity": "Medium",
-                "score": 6,
-                "endpoint": "/users/v1/login",
-                "method": "POST",
-                "description": "JWT tokens use a weak secret that can be cracked",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "sql_injection",
-                "title": "SQL Injection",
-                "severity": "Critical", 
-                "score": 9,
-                "endpoint": "/users/v1/{username}",
-                "method": "GET",
-                "description": "Username parameter is vulnerable to SQL injection attacks",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "mass_assignment",
-                "title": "Mass Assignment",
-                "severity": "Medium",
-                "score": 5,
-                "endpoint": "/users/v1/register",
-                "method": "POST",
-                "description": "Users can register as admin by adding admin field",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "bola_user_deletion",
-                "title": "Broken Object Level Authorization in User Deletion",
-                "severity": "High",
-                "score": 8,
-                "endpoint": "/users/v1/{username}",
-                "method": "DELETE", 
-                "description": "Non-admin users can delete other users' accounts",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "information_disclosure",
-                "title": "Information Disclosure",
-                "severity": "Medium",
-                "score": 4,
-                "endpoint": "/users/v1",
-                "method": "GET",
-                "description": "Endpoint reveals user email addresses and usernames",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
-            },
-            {
-                "rule": "improper_auth_flow",
-                "title": "Improper Authentication Flow",
-                "severity": "Medium",
-                "score": 5,
-                "endpoint": "/books/v1",
-                "method": "POST",
-                "description": "Endpoint accepts requests with invalid or expired tokens",
-                "scanner": "ventiapi",
-                "scanner_description": "VentiAPI - API Security Testing"
+    """Get scan findings from database"""
+
+    # Try to get from database first
+    scan_data = await get_scan(scan_id)
+
+    if not scan_data:
+        # Fallback to legacy file-based parsing for backward compatibility
+        if scan_id not in scans:
+            raise HTTPException(status_code=404, detail="Scan not found")
+
+        scan_data_legacy = scans[scan_id]
+
+        if scan_data_legacy.get("status") != "completed":
+            return {
+                "scan_id": scan_id,
+                "total": 0,
+                "offset": offset,
+                "limit": limit,
+                "findings": []
             }
-        ]
-        
-        # Add ZAP-specific findings if ZAP scanner was used
-        if "zap" in scanner_list:
-            zap_findings = [
-                {
-                    "rule": "xss_reflected",
-                    "title": "Cross-Site Scripting (Reflected)",
-                    "severity": "Medium",
-                    "score": 6,
-                    "endpoint": server_url,
-                    "method": "GET",
-                    "description": "Application is vulnerable to reflected XSS attacks through URL parameters",
-                    "scanner": "zap",
-                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                },
-                {
-                    "rule": "missing_security_headers",
-                    "title": "Missing Security Headers",
-                    "severity": "Low",
-                    "score": 3,
-                    "endpoint": server_url,
-                    "method": "GET",
-                    "description": "Application is missing important security headers like HSTS, CSP",
-                    "scanner": "zap",
-                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                },
-                {
-                    "rule": "cookie_security",
-                    "title": "Insecure Cookie Configuration",
-                    "severity": "Medium",
-                    "score": 5,
-                    "endpoint": server_url,
-                    "method": "GET",
-                    "description": "Cookies are not configured with Secure or HttpOnly flags",
-                    "scanner": "zap",
-                    "scanner_description": "OWASP ZAP - Baseline Security Scan"
-                }
-            ]
-            all_findings.extend(zap_findings)
-    else:
+
         all_findings = []
-    
-    # Apply pagination
-    total_findings = len(all_findings)
-    paginated_findings = all_findings[offset:offset + limit]
-    
-    return {
-        "scan_id": scan_id,
-        "total": total_findings,
-        "offset": offset,
-        "limit": limit,
-        "findings": paginated_findings
-    }
+        scanner_list = scan_data_legacy.get("scanners", ["ventiapi"])
+
+        # Parse VentiAPI results
+        if "ventiapi" in scanner_list:
+            ventiapi_findings = parse_ventiapi_results(scan_id)
+            all_findings.extend(ventiapi_findings)
+            print(f"✅ Loaded {len(ventiapi_findings)} findings from VentiAPI (legacy)")
+
+        # Parse ZAP results
+        if "zap" in scanner_list:
+            zap_findings = parse_zap_results(scan_id, scan_data_legacy.get("server_url", ""))
+            all_findings.extend(zap_findings)
+            print(f"✅ Loaded {len(zap_findings)} findings from ZAP (legacy)")
+
+        # Apply pagination
+        total_findings = len(all_findings)
+        paginated_findings = all_findings[offset:offset + limit]
+
+        return {
+            "scan_id": scan_id,
+            "total": total_findings,
+            "offset": offset,
+            "limit": limit,
+            "findings": paginated_findings
+        }
+
+    # Query findings from database
+    try:
+        findings_list = await get_findings(scan_id, offset=offset, limit=limit)
+        total_findings = await get_findings_count(scan_id)
+
+        # Convert database findings to API format
+        api_findings = []
+        for finding in findings_list:
+            try:
+                # Ensure all required fields have defaults
+                api_findings.append({
+                    "id": str(finding.get("id", "")),
+                    "rule": finding.get("rule", ""),
+                    "title": finding.get("title", ""),
+                    "severity": finding.get("severity", "Low"),
+                    "score": finding.get("score", 0),
+                    "endpoint": finding.get("endpoint", ""),
+                    "method": finding.get("method", "GET"),
+                    "description": finding.get("description", ""),
+                    "scanner": finding.get("scanner", "unknown"),
+                    "scanner_description": finding.get("scanner_description") or finding.get("scanner", "unknown"),
+                    "evidence": finding.get("evidence", {})
+                })
+            except Exception as e:
+                print(f"⚠️ Error processing finding {finding.get('id', 'unknown')}: {e}")
+                continue
+
+        print(f"✅ Loaded {len(api_findings)} findings from database for scan {scan_id}")
+
+        return {
+            "scan_id": scan_id,
+            "total": total_findings,
+            "offset": offset,
+            "limit": limit,
+            "findings": api_findings
+        }
+    except Exception as e:
+        print(f"❌ Error fetching findings from database for scan {scan_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch findings: {str(e)}")
+
+def parse_ventiapi_results(scan_id: str) -> List[Dict]:
+    """Parse VentiAPI JSON output"""
+    try:
+        # VentiAPI saves results in a directory with findings.json
+        result_dir = SHARED_RESULTS / f"{scan_id}_ventiapi"
+        findings_file = result_dir / "findings.json"
+
+        print(f"🔍 Parsing VentiAPI results for scan {scan_id}")
+        print(f"   Looking in directory: {result_dir}")
+        print(f"   Directory exists: {result_dir.exists()}")
+
+        if result_dir.exists():
+            files = list(result_dir.glob("*"))
+            print(f"   Files in directory: {[f.name for f in files]}")
+
+        print(f"   Findings file path: {findings_file}")
+        print(f"   Findings file exists: {findings_file.exists()}")
+
+        if not findings_file.exists():
+            print(f"⚠️ VentiAPI results not found at {findings_file}")
+            # List what IS in the shared results directory
+            if SHARED_RESULTS.exists():
+                all_dirs = list(SHARED_RESULTS.glob(f"{scan_id}*"))
+                print(f"   Directories matching scan_id: {[d.name for d in all_dirs]}")
+            return []
+
+        with open(findings_file, 'r') as f:
+            data = json.load(f)
+
+        # Data is a direct array of findings
+        findings = []
+        findings_list = data if isinstance(data, list) else data.get("findings", [])
+
+        print(f"✅ Found {len(findings_list)} raw findings in file")
+
+        for finding in findings_list:
+            findings.append({
+                "rule": finding.get("rule", "unknown"),
+                "title": finding.get("title", "Unknown Issue"),
+                "severity": finding.get("severity", "Low"),
+                "score": finding.get("score", 0),
+                "endpoint": finding.get("endpoint", "/"),
+                "method": finding.get("method", "GET"),
+                "description": finding.get("description", ""),
+                "scanner": "ventiapi",
+                "scanner_description": "VentiAPI - OWASP API Security Top 10",
+                "evidence": finding.get("evidence", {})
+            })
+
+        print(f"✅ Parsed {len(findings)} findings successfully")
+        return findings
+
+    except Exception as e:
+        print(f"❌ Error parsing VentiAPI results: {e}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        return []
+
+def parse_zap_results(scan_id: str, server_url: str) -> List[Dict]:
+    """Parse ZAP JSON output"""
+    try:
+        # ZAP results are stored in dedicated subdirectory
+        result_path = SHARED_RESULTS / "zap" / f"{scan_id}_zap.json"
+        if not result_path.exists():
+            print(f"⚠️ ZAP results not found at {result_path}")
+            return []
+
+        with open(result_path, 'r') as f:
+            data = json.load(f)
+
+        findings = []
+
+        # ZAP JSON structure: site[0].alerts[]
+        for site in data.get("site", []):
+            for alert in site.get("alerts", []):
+                # Extract path from URL
+                from urllib.parse import urlparse
+                instances = alert.get("instances", [])
+
+                for instance in instances:
+                    url = instance.get("uri", "")
+                    parsed = urlparse(url)
+                    endpoint = parsed.path or "/"
+                    method = instance.get("method", "GET")
+
+                    # Map ZAP risk to severity
+                    risk = alert.get("riskcode", "0")
+                    severity_map = {
+                        "3": "High",
+                        "2": "Medium",
+                        "1": "Low",
+                        "0": "Informational"
+                    }
+                    severity = severity_map.get(str(risk), "Low")
+
+                    # Map severity to score
+                    score_map = {
+                        "High": 7,
+                        "Medium": 5,
+                        "Low": 3,
+                        "Informational": 1
+                    }
+
+                    findings.append({
+                        "rule": alert.get("pluginid", "unknown"),
+                        "title": alert.get("name", "Unknown Issue"),
+                        "severity": severity,
+                        "score": score_map.get(severity, 3),
+                        "endpoint": endpoint,
+                        "method": method,
+                        "description": alert.get("desc", ""),
+                        "scanner": "zap",
+                        "scanner_description": "OWASP ZAP - Web Application Scanner",
+                        "evidence": {
+                            "alert_ref": alert.get("alertRef", ""),
+                            "solution": alert.get("solution", ""),
+                            "reference": alert.get("reference", ""),
+                            "cwe_id": alert.get("cweid", ""),
+                            "wasc_id": alert.get("wascid", "")
+                        }
+                    })
+
+        return findings
+
+    except Exception as e:
+        print(f"❌ Error parsing ZAP results: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return []
+
+def parse_nuclei_results(scan_id: str) -> List[Dict]:
+    """Parse Nuclei JSON results from file"""
+    try:
+        # Nuclei results are stored in the shared results directory
+        result_path = SHARED_RESULTS / f"{scan_id}_nuclei.json"
+        if not result_path.exists():
+            print(f"⚠️ Nuclei results not found at {result_path}")
+            return []
+
+        findings = []
+        with open(result_path, 'r') as f:
+            content = f.read().strip()
+            if content:
+                # Nuclei outputs JSONL format (one JSON object per line)
+                for line in content.split('\n'):
+                    if line.strip():
+                        try:
+                            finding = json.loads(line)
+                            # Convert to standard format
+                            from urllib.parse import urlparse
+                            url = finding.get("matched-at", "")
+                            parsed = urlparse(url)
+                            endpoint = parsed.path or "/"
+                            
+                            # Map severity
+                            severity_raw = finding.get("info", {}).get("severity", "info")
+                            severity = severity_raw.title() if isinstance(severity_raw, str) else "Informational"
+                            if severity == "Info":
+                                severity = "Informational"
+                            
+                            # Map severity to score
+                            severity_scores = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Informational": 1}
+                            score = severity_scores.get(severity, 1)
+                            
+                            findings.append({
+                                "rule": finding.get("template-id", "unknown"),
+                                "title": finding.get("info", {}).get("name", "Unknown Vulnerability"),
+                                "severity": severity,
+                                "score": score,
+                                "endpoint": endpoint,
+                                "method": "GET",  # Nuclei doesn't specify method in output
+                                "description": finding.get("info", {}).get("description", ""),
+                                "url": url,
+                                "template": finding.get("template-id", ""),
+                                "scanner": "nuclei",
+                                "scanner_description": "Nuclei - Community-powered vulnerability scanner"
+                            })
+                        except json.JSONDecodeError:
+                            continue
+
+        return findings
+
+    except Exception as e:
+        print(f"❌ Error parsing Nuclei results: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return []
 
 @app.get("/api/scan/{scan_id}/report")
 async def get_scan_report(
@@ -892,9 +1114,72 @@ async def get_scan_report_html(
     return Response(content=html_template, media_type="text/html")
 
 @app.get("/api/scans")
-async def list_scans(user: Dict = Depends(verify_token)):
-    """List all scans for the user"""
-    return {"scans": list(scans.values())}
+async def list_scans(
+    limit: int = 10,
+    offset: int = 0,
+    user: Dict = Depends(verify_token)
+):
+    """List recent scans for the user, ordered by most recent first"""
+    try:
+        # Fetch scans from database, ordered by created_at descending
+        query = """
+            SELECT
+                scan_id,
+                status,
+                server_url,
+                spec_url,
+                scanners,
+                dangerous,
+                fuzz_auth,
+                progress,
+                findings_count,
+                created_at,
+                completed_at,
+                error
+            FROM scans
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+        """
+
+        scans_list = await database.fetch_all(
+            query=query,
+            values={"limit": limit, "offset": offset}
+        )
+
+        # Get total count
+        count_query = "SELECT COUNT(*) as total FROM scans"
+        total_result = await database.fetch_one(query=count_query)
+        total = total_result["total"] if total_result else 0
+
+        # Convert to dict format
+        scans_data = [
+            {
+                "scan_id": row["scan_id"],
+                "status": row["status"],
+                "server_url": row["server_url"],
+                "spec_url": row["spec_url"],
+                "scanners": row["scanners"],
+                "dangerous": row["dangerous"],
+                "fuzz_auth": row["fuzz_auth"],
+                "progress": row["progress"],
+                "findings_count": row["findings_count"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
+                "error": row["error"],
+            }
+            for row in scans_list
+        ]
+
+        return {
+            "scans": scans_data,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        print(f"Error fetching scans from database: {e}")
+        # Fallback to in-memory scans if database fails
+        return {"scans": list(scans.values()), "total": len(scans), "limit": limit, "offset": offset}
 
 @app.delete("/api/scan/{scan_id}")
 async def delete_scan(scan_id: str, user: Dict = Depends(verify_token)):
@@ -935,7 +1220,8 @@ async def get_available_scanners():
         "available_scanners": multi_scanner.get_available_engines(),
         "descriptions": {
             "ventiapi": "VentiAPI - OWASP API Security Top 10 focused scanner",
-            "zap": "OWASP ZAP - Comprehensive web application security scanner"
+            "zap": "OWASP ZAP - Comprehensive web application security scanner",
+            "nuclei": "Nuclei - Fast and customizable vulnerability scanner"
         }
     }
 
@@ -959,11 +1245,37 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         target_url = scan_data["target_url"]
         spec_location = scan_data["spec_location"]
         
-        # Determine volume prefix (for environment compatibility)
-        volume_prefix = "scannerapp"  # Default for local
-        if "ventiapi" in str(spec_location):  # AWS environment detection
-            volume_prefix = "ventiapi"
-        
+        # Determine volume prefix by inspecting actual mounted volumes
+        # This ensures scanner containers use the SAME volume as web-api
+        import socket
+        import subprocess
+        hostname = socket.gethostname()
+
+        # Try to auto-detect volume prefix from mounted volumes
+        try:
+            result = subprocess.run(
+                ['docker', 'inspect', '--format', '{{json .Mounts}}', hostname],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                import json
+                mounts = json.loads(result.stdout)
+                for mount in mounts:
+                    if mount.get('Destination') == '/shared/results':
+                        volume_name = mount.get('Name', '')
+                        if volume_name:
+                            # Extract prefix from volume name (e.g., "295capstone-assembly_shared-results" -> "295capstone-assembly")
+                            volume_prefix = volume_name.replace('_shared-results', '').replace('_shared-specs', '')
+                            print(f"🔧 Volume prefix auto-detected from mount: {volume_prefix}")
+                            break
+            else:
+                raise Exception("Docker inspect failed")
+        except Exception as e:
+            # Fallback to old hostname-based detection
+            print(f"⚠️ Could not auto-detect volume prefix ({e}), falling back to hostname detection")
+            volume_prefix = "ventiapi" if "ventiapi" in hostname.lower() or os.getenv("ENVIRONMENT") == "production" else "scannerapp"
+            print(f"🔧 Volume prefix (fallback): hostname={hostname}, volume_prefix={volume_prefix}")
+
         # Prepare scanner options
         scanner_options = {
             'rps': rps,
@@ -988,37 +1300,186 @@ async def execute_multi_scan(scan_id: str, user: Dict, dangerous: bool, fuzz_aut
         )
         
         # Update scan status based on results
+        print(f"DEBUG: Scanner results: {results}")
+        print(f"DEBUG: Overall status: {results.get('overall_status')}")
+        print(f"DEBUG: Individual results: {results.get('results')}")
+
         if results["overall_status"] == "completed":
             scan_data["status"] = "completed"
             scan_data["current_phase"] = "Scan completed successfully"
             scan_data["progress"] = 100
             print(f"✅ Multi-scan {scan_id} completed successfully")
         elif results["overall_status"] == "partial":
-            scan_data["status"] = "completed"
+            scan_data["status"] = "completed"  # Still parse findings even if some scanners failed
             scan_data["current_phase"] = "Scan completed with some failures"
             scan_data["progress"] = 100
             print(f"⚠️ Multi-scan {scan_id} completed with some failures")
+            print(f"⚠️ Some scanners may have failed, but parsing findings from successful ones...")
         else:
             scan_data["status"] = "failed"
             scan_data["current_phase"] = "Scan failed"
             scan_data["error"] = "All scanner engines failed"
             scan_data["progress"] = 100
-            print(f"❌ Multi-scan {scan_id} failed")
-        
+            print(f"❌ Multi-scan {scan_id} failed - overall_status: {results.get('overall_status')}")
+
         # Update chunk status based on individual scanner results
         for i, scanner_name in enumerate(scanner_list):
             scanner_result = results["results"].get(scanner_name, {})
             chunk = scan_data["chunk_status"][i]
-            
+
             if scanner_result.get("status") == "completed":
                 chunk["status"] = "completed"
                 chunk["progress"] = 100
             else:
                 chunk["status"] = "failed"
                 chunk["progress"] = 100
-        
+
+            # Update chunk status in database
+            await upsert_chunk_status(
+                scan_id=scan_id,
+                chunk_id=i,
+                scanner=scanner_name,
+                status=chunk["status"],
+                progress=chunk["progress"],
+                endpoints_count=chunk.get("endpoints_count", 0),
+                total_endpoints=chunk.get("total_endpoints", 0)
+            )
+
         # Store detailed results
         scan_data["scanner_results"] = results
+
+        # Parse findings from scanner output files and write to database
+        if scan_data["status"] == "completed":
+            all_findings = []
+            print(f"🔍 Starting to parse findings for scan {scan_id} with scanners: {scanner_list}")
+
+            # Parse VentiAPI results
+            if "ventiapi" in scanner_list:
+                try:
+                    ventiapi_findings = parse_ventiapi_results(scan_id)
+                    all_findings.extend(ventiapi_findings)
+                    print(f"✅ Parsed {len(ventiapi_findings)} findings from VentiAPI")
+                except Exception as e:
+                    print(f"❌ Error parsing VentiAPI results: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Parse ZAP results
+            if "zap" in scanner_list:
+                try:
+                    zap_findings = parse_zap_results(scan_id, server_url)
+                    all_findings.extend(zap_findings)
+                    print(f"✅ Parsed {len(zap_findings)} findings from ZAP")
+                except Exception as e:
+                    print(f"❌ Error parsing ZAP results: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Extract Nuclei findings from results dict (Nuclei returns findings directly in results)
+            if "nuclei" in scanner_list:
+                try:
+                    nuclei_result = results.get("results", {}).get("nuclei", {})
+                    print(f"🔍 Nuclei result keys: {list(nuclei_result.keys()) if nuclei_result else 'None'}")
+                    nuclei_findings_raw = nuclei_result.get("findings", [])
+                    print(f"🔍 Nuclei findings from results dict: {len(nuclei_findings_raw)}")
+                    
+                    # If no findings in results dict, try parsing from file
+                    if not nuclei_findings_raw:
+                        print(f"🔍 No findings in results dict, trying to parse from file...")
+                        nuclei_findings_raw = parse_nuclei_results(scan_id)
+                        print(f"🔍 Nuclei findings from file: {len(nuclei_findings_raw)}")
+                except Exception as e:
+                    print(f"❌ Error extracting Nuclei findings: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    nuclei_findings_raw = []
+                
+                # Convert Nuclei findings to standard format
+                nuclei_findings = []
+                for finding in nuclei_findings_raw:
+                    try:
+                        # Extract endpoint and method from URL
+                        from urllib.parse import urlparse
+                        url = finding.get("url", finding.get("matched-at", ""))
+                        if url:
+                            parsed = urlparse(url)
+                            endpoint = parsed.path or "/"
+                            # Try to extract method from finding, default to GET
+                            method = finding.get("method", "GET")
+                        else:
+                            endpoint = "/"
+                            method = "GET"
+                        
+                        # Map severity to standard format (Nuclei uses lowercase)
+                        severity_raw = finding.get("severity", "info")
+                        if isinstance(severity_raw, str):
+                            severity = severity_raw.title()
+                            if severity == "Info":
+                                severity = "Informational"
+                        else:
+                            severity = "Informational"
+                        
+                        # Map severity to score
+                        severity_scores = {"Critical": 9, "High": 7, "Medium": 5, "Low": 3, "Informational": 1}
+                        score = severity_scores.get(severity, 1)
+                        
+                        nuclei_findings.append({
+                            "rule": finding.get("rule", finding.get("template-id", finding.get("template", "unknown"))),
+                            "title": finding.get("title", "Unknown Vulnerability"),
+                            "severity": severity,
+                            "score": score,
+                            "endpoint": endpoint,
+                            "method": method,
+                            "description": finding.get("description", ""),
+                            "scanner": "nuclei",
+                            "scanner_description": "Nuclei - Community-powered vulnerability scanner",
+                            "evidence": {
+                                "url": url,
+                                "template": finding.get("template-id", finding.get("template", "")),
+                                "matched_at": finding.get("matched-at", url)
+                            }
+                        })
+                    except Exception as e:
+                        print(f"⚠️ Error processing Nuclei finding: {e}")
+                        print(f"   Finding data: {finding}")
+                        continue
+                
+                all_findings.extend(nuclei_findings)
+                print(f"✅ Extracted {len(nuclei_findings)} findings from Nuclei")
+
+            # Write all findings to database
+            print(f"📊 Total findings to insert: {len(all_findings)} (VentiAPI: {sum(1 for f in all_findings if f.get('scanner') == 'ventiapi')}, ZAP: {sum(1 for f in all_findings if f.get('scanner') == 'zap')}, Nuclei: {sum(1 for f in all_findings if f.get('scanner') == 'nuclei')})")
+            if all_findings:
+                try:
+                    inserted_count = await insert_findings(scan_id, all_findings)
+                    print(f"✅ Inserted {inserted_count} findings into database for scan {scan_id}")
+                except Exception as e:
+                    print(f"❌ Error inserting findings into database: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"⚠️ No findings to insert for scan {scan_id}")
+
+            # Update scan status in database with findings count
+            await update_scan_status(
+                scan_id=scan_id,
+                status="completed",
+                progress=100,
+                current_phase=scan_data["current_phase"],
+                findings_count=len(all_findings),
+                completed_chunks=len(scanner_list)
+            )
+
+            scan_data["findings_count"] = len(all_findings)
+        else:
+            # Update failed scan status in database
+            await update_scan_status(
+                scan_id=scan_id,
+                status="failed",
+                progress=100,
+                current_phase=scan_data["current_phase"],
+                error=scan_data.get("error")
+            )
         
     except Exception as e:
         import traceback
@@ -1233,20 +1694,21 @@ async def monitor_scan_progress(scan_id: str):
         scan_data = scans[scan_id]
         scanner_list = scan_data.get("scanners", ["ventiapi"])
         
-        # Parse actual endpoints from OpenAPI spec for VentiAPI
-        ventiapi_endpoints = await get_real_endpoints_from_spec(scan_data)
-        
+        # Parse actual endpoints from OpenAPI spec
+        spec_endpoints = await get_real_endpoints_from_spec(scan_data)
+
         # Define scanner-specific endpoints and behavior
         scanner_endpoints = {
             "ventiapi": {
-                "endpoints": ventiapi_endpoints if ventiapi_endpoints else ["/api/endpoints", "/api/users", "/api/books"],
+                "endpoints": spec_endpoints if spec_endpoints else ["/api/endpoints", "/api/users", "/api/books"],
                 "description": "API Security Testing",
                 "scan_type": "endpoint_based"
             },
             "zap": {
-                "endpoints": [scan_data.get("target_url", "https://httpbin.org")],
-                "description": "Baseline Security Scan",
-                "scan_type": "baseline_url"
+                # ZAP now uses OpenAPI spec if available, otherwise falls back to URL scan
+                "endpoints": spec_endpoints if spec_endpoints and scan_data.get("spec_location") else [scan_data.get("target_url", "https://httpbin.org")],
+                "description": "OpenAPI Security Scan" if spec_endpoints and scan_data.get("spec_location") else "Baseline Security Scan",
+                "scan_type": "openapi_based" if spec_endpoints and scan_data.get("spec_location") else "baseline_url"
             }
         }
         
@@ -1266,7 +1728,11 @@ async def monitor_scan_progress(scan_id: str):
                     continue
                     
                 chunk = scan_data["chunk_status"][chunk_idx]
-                scanner_info = scanner_endpoints.get(scanner_name, {"endpoints": ["/"], "description": "Unknown Scanner"})
+                scanner_info = scanner_endpoints.get(scanner_name, {
+                    "endpoints": ["/"], 
+                    "description": "Unknown Scanner",
+                    "scan_type": "baseline_url"
+                })
                 
                 # Different progress patterns for different scanners
                 if scanner_name == "ventiapi":
@@ -1293,10 +1759,24 @@ async def monitor_scan_progress(scan_id: str):
                         chunk["endpoints_count"] = len(chunk["endpoints"])
                     
                     # Add comprehensive scanner-specific metadata
-                    chunk["scanner_description"] = scanner_info["description"]
-                    chunk["scan_type"] = scanner_info["scan_type"]
+                    chunk["scanner_description"] = scanner_info.get("description", "Unknown Scanner")
+                    chunk["scan_type"] = scanner_info.get("scan_type", "baseline_url")
                     chunk["total_endpoints"] = len(endpoints)
                     chunk["scanned_endpoints"] = endpoints[:endpoint_idx + 1] if endpoint_idx < len(endpoints) else endpoints
+                    
+                    # Update chunk status in database with real-time progress
+                    try:
+                        await upsert_chunk_status(
+                            scan_id=scan_id,
+                            chunk_id=chunk_idx,
+                            scanner=scanner_name,
+                            status="running",
+                            progress=chunk_progress,
+                            endpoints_count=len(chunk.get("endpoints", [])),
+                            total_endpoints=len(endpoints)
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Failed to update chunk status in database: {e}")
             
             # Calculate overall progress
             if scan_data["chunk_status"]:

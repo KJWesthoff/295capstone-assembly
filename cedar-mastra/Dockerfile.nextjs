@@ -1,0 +1,35 @@
+# Cedar Frontend - Next.js Application (PROPOSED PRODUCTION DOCKERFILE)
+
+# --- Stage 1: Build the Next.js application ---
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package.json and package-lock.json first to leverage Docker cache
+COPY package.json package-lock.json* ./
+
+# Install dependencies (including devDependencies needed for build)
+# Use --frozen-lockfile for more reliable builds
+RUN npm ci
+
+# Copy the rest of the application code
+COPY . .
+
+# Set environment variables for development
+ARG NEXT_PUBLIC_MASTRA_URL
+ARG NEXT_PUBLIC_SCANNER_SERVICE_URL
+ARG NEXT_PUBLIC_SCANNER_USERNAME
+ARG NEXT_PUBLIC_SCANNER_PASSWORD
+
+ENV NEXT_PUBLIC_MASTRA_URL=${NEXT_PUBLIC_MASTRA_URL}
+ENV NEXT_PUBLIC_SCANNER_SERVICE_URL=${NEXT_PUBLIC_SCANNER_SERVICE_URL}
+ENV NEXT_PUBLIC_SCANNER_USERNAME=${NEXT_PUBLIC_SCANNER_USERNAME}
+ENV NEXT_PUBLIC_SCANNER_PASSWORD=${NEXT_PUBLIC_SCANNER_PASSWORD}
+
+# Development environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 3000
+
+# Run Next.js in development mode with hot reload
+CMD ["npx", "next", "dev", "--port", "3000"]

@@ -18,3 +18,7 @@ cryptography>=42.0.0
 celery==5.3.0
 uuid==1.30
 
+# Database dependencies
+asyncpg==0.29.0
+databases[postgresql]==0.8.0
+
