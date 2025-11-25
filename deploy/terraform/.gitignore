@@ -1,0 +1,21 @@
+# Terraform files
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+
+# Local secrets (NEVER commit)
+*.tfvars.local
+terraform.tfvars
+secrets.auto.tfvars
+
+# Keep non-sensitive tfvars templates
+!terraform.tfvars.example
+!dev.tfvars
+!prod.tfvars
+
+# Keep lock file for reproducibility
+!.terraform.lock.hcl
+
+# Secrets
+*.pem
+*.key

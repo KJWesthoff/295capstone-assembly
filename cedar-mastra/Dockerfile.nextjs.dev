@@ -1,0 +1,23 @@
+# Cedar Frontend - Next.js Development Mode
+# Hot reload enabled, source maps, non-minified React
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Copy source code
+COPY . .
+
+EXPOSE 3000
+
+ENV PORT=3000
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Run Next.js in development mode with hot reload
+# Note: Using npx directly to avoid --turbopack flag issues
+CMD ["npx", "next", "dev"]
