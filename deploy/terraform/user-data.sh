@@ -194,11 +194,11 @@ LOG_FORMAT=json
 # CORS (allow access from domain and IP - both HTTP and HTTPS)
 ADDITIONAL_CORS_ORIGINS=https://ventiapi.com,https://www.ventiapi.com,http://ventiapi.com,http://www.ventiapi.com,http://$PUBLIC_IP,http://$PUBLIC_IP:3001,http://$PUBLIC_IP:3000,https://$PUBLIC_IP,https://$PUBLIC_IP:3001
 
-# Frontend public URLs (for cedar-frontend container)
-NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
+# Frontend public URLs (for cedar-frontend container) - Use HTTPS domain to avoid mixed content errors
+NEXT_PUBLIC_SCANNER_SERVICE_URL=https://ventiapi.com
 NEXT_PUBLIC_SCANNER_USERNAME=$ADMIN_USERNAME
 NEXT_PUBLIC_SCANNER_PASSWORD=$ADMIN_PASSWORD
-NEXT_PUBLIC_MASTRA_URL=http://$PUBLIC_IP:4111
+NEXT_PUBLIC_MASTRA_URL=https://ventiapi.com:4111
 EOF
 
 # Cedar/Mastra .env
@@ -230,8 +230,8 @@ SCANNER_SERVICE_URL=http://web-api:8000
 SCANNER_USERNAME=$ADMIN_USERNAME
 SCANNER_PASSWORD=$ADMIN_PASSWORD
 
-# Public URLs (for frontend)
-NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
+# Public URLs (for frontend) - Use HTTPS domain to avoid mixed content errors
+NEXT_PUBLIC_SCANNER_SERVICE_URL=https://ventiapi.com
 NEXT_PUBLIC_SCANNER_USERNAME=$ADMIN_USERNAME
 NEXT_PUBLIC_SCANNER_PASSWORD=$ADMIN_PASSWORD
 NEXT_PUBLIC_MASTRA_URL=http://$PUBLIC_IP:4111
