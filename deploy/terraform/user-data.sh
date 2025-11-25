@@ -48,6 +48,20 @@ curl -L "https://github.com/docker/compose/releases/download/v$${COMPOSE_VERSION
 chmod +x /usr/local/bin/docker-compose
 
 # =============================================================================
+# Install Certbot (for Let's Encrypt SSL)
+# =============================================================================
+
+echo "=== Installing Certbot ==="
+yum install -y certbot python3-certbot-nginx
+
+# Create directories for certbot
+mkdir -p /opt/ventiapi/certbot-webroot/.well-known/acme-challenge
+mkdir -p /etc/letsencrypt
+chmod -R 755 /opt/ventiapi/certbot-webroot
+
+echo "Certbot installed (SSL setup must be run manually after DNS configuration)"
+
+# =============================================================================
 # Get Public IP (with IMDSv2 support)
 # Wait for EIP to be attached before proceeding
 # =============================================================================
@@ -321,6 +335,23 @@ echo "  Direct Access (development):"
 echo "    Cedar Frontend:     http://$PUBLIC_IP:3001"
 echo ""
 echo "  Login: $ADMIN_USERNAME / [password in Secrets Manager]"
+echo ""
+echo "=============================================="
+echo "  Next Steps: SSL Configuration"
+echo "=============================================="
+echo ""
+echo "  1. Configure DNS A record to point to: $PUBLIC_IP"
+echo "     ventiapi.com    → $PUBLIC_IP"
+echo "     www.ventiapi.com → $PUBLIC_IP"
+echo ""
+echo "  2. Wait for DNS propagation (5-15 minutes)"
+echo "     Test: dig +short ventiapi.com"
+echo ""
+echo "  3. Run SSL setup script:"
+echo "     cd /opt/ventiapi"
+echo "     sudo ./deploy/setup-certbot.sh ventiapi.com admin@ventiapi.com"
+echo ""
+echo "  See: /opt/ventiapi/deploy/SSL_SETUP.md for detailed instructions"
 echo ""
 echo "=============================================="
 
