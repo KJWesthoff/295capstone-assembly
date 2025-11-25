@@ -191,8 +191,8 @@ DEFAULT_RATE_LIMIT=2.0
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 
-# CORS (allow access from nginx on port 80, plus direct port access for dev)
-ADDITIONAL_CORS_ORIGINS=http://$PUBLIC_IP,http://$PUBLIC_IP:3001,http://$PUBLIC_IP:3000
+# CORS (allow access from domain and IP - both HTTP and HTTPS)
+ADDITIONAL_CORS_ORIGINS=https://ventiapi.com,https://www.ventiapi.com,http://ventiapi.com,http://www.ventiapi.com,http://$PUBLIC_IP,http://$PUBLIC_IP:3001,http://$PUBLIC_IP:3000,https://$PUBLIC_IP,https://$PUBLIC_IP:3001
 
 # Frontend public URLs (for cedar-frontend container)
 NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
