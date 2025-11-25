@@ -72,7 +72,16 @@ resource "aws_security_group" "ventiapi" {
     description = "SSH access"
   }
 
-  # HTTPS (for future SSL/TLS support)
+  # HTTP (nginx reverse proxy for Cedar frontend)
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP access (nginx)"
+  }
+
+  # HTTPS (for SSL/TLS support)
   ingress {
     from_port   = 443
     to_port     = 443
