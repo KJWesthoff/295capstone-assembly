@@ -177,8 +177,8 @@ DEFAULT_RATE_LIMIT=2.0
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 
-# CORS
-ADDITIONAL_CORS_ORIGINS=http://$PUBLIC_IP:3001,http://$PUBLIC_IP:3000
+# CORS (allow access from nginx on port 80, plus direct port access for dev)
+ADDITIONAL_CORS_ORIGINS=http://$PUBLIC_IP,http://$PUBLIC_IP:3001,http://$PUBLIC_IP:3000
 
 # Frontend public URLs (for cedar-frontend container)
 NEXT_PUBLIC_SCANNER_SERVICE_URL=http://$PUBLIC_IP:8000
@@ -313,10 +313,12 @@ echo "  Environment: $ENVIRONMENT"
 echo "  Public IP:   $PUBLIC_IP"
 echo ""
 echo "  URLs:"
-echo "    Production Scanner: http://$PUBLIC_IP:3000"
-echo "    Cedar Dashboard:    http://$PUBLIC_IP:3001"
+echo "    Cedar Dashboard:    http://$PUBLIC_IP (nginx on port 80)"
 echo "    Scanner API:        http://$PUBLIC_IP:8000"
 echo "    Mastra Backend:     http://$PUBLIC_IP:4111"
+echo ""
+echo "  Direct Access (development):"
+echo "    Cedar Frontend:     http://$PUBLIC_IP:3001"
 echo ""
 echo "  Login: $ADMIN_USERNAME / [password in Secrets Manager]"
 echo ""
