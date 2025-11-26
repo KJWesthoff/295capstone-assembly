@@ -9,8 +9,8 @@ import type { ExecutiveRisk, ExecutiveSlaOwner } from '@/app/cedar-os/mentions';
  * - Top business risks (executiveRisks)
  * - SLA ownership metrics (executiveOwners)
  *
- * @param initialRisks - Initial executive risks data (typically mockExecTopRisks)
- * @param initialOwners - Initial SLA ownership data (typically mockExecSlaOwners)
+ * @param initialRisks - Initial executive risks data computed from scan findings
+ * @param initialOwners - Initial SLA ownership data computed from scan findings
  * @returns State objects and setters for risks and owners
  */
 export function useRegisterExecutiveData(

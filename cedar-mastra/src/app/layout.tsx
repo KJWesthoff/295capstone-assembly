@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
+import Script from 'next/script';
 import './globals.css';
 import { CedarCopilot, ProviderConfig } from 'cedar-os';
 import { FloatingCedarChat } from '@/app/cedar-os/components/chatComponents/FloatingCedarChat';
@@ -64,6 +65,16 @@ export default function RootLayout({
 
   return (
     <html lang="en">
+      <head>
+        {process.env.NODE_ENV === 'development' && (
+          <Script
+            src="//unpkg.com/react-grab/dist/index.global.js"
+            crossOrigin="anonymous"
+            strategy="beforeInteractive"
+            data-enabled="true"
+          />
+        )}
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${berkeleyMono.variable} antialiased`}>
         {/* [STEP 1]: We register the main CedarCopilot wrapper at the root of the app with a Mastra provider. */}
         <CedarCopilot llmProvider={llmProvider}>

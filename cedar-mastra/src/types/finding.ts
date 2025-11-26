@@ -42,14 +42,51 @@ export interface Finding {
   fixabilityScore?: number;
 }
 
-export interface Evidence {
-  id: string;
-  authContext: string;
-  request: string;
-  response: string;
+// HTTP request/response structures matching scanner backend evidence.py
+export interface HttpRequest {
+  method: string;
+  url: string;
   headers: Record<string, string>;
-  pocLinks: string[];
-  redactRules: string[];
+  query_params?: Record<string, any>;
+  body?: string;
+  body_params?: Record<string, any>;
+}
+
+export interface HttpResponse {
+  status_code: number;
+  headers: Record<string, string>;
+  body: string;
+  size_bytes: number;
+  time_ms?: number;
+  redirect_chain?: string[];
+}
+
+export interface Evidence {
+  // HTTP Transaction
+  request: HttpRequest;
+  response: HttpResponse;
+
+  // Context
+  auth_context: string;
+  probe_name: string;
+  timestamp: string;
+
+  // Reproduction
+  curl_command: string;
+  steps: string[];
+
+  // Analysis
+  why_vulnerable: string;
+  attack_scenario: string;
+  poc_references: string[];
+
+  // Optional additional data
+  additional_requests?: Array<{
+    description: string;
+    url: string;
+    status: number;
+    note?: string;
+  }>;
 }
 
 export function calculatePriorityScore(finding: Finding): number {

@@ -7,7 +7,7 @@ import type { Finding } from '@/types/finding';
  * Custom hook to register vulnerability findings with Cedar OS
  * Handles state management, Cedar registration, and @mention functionality
  *
- * @param initialFindings - Initial findings data (typically mockFindings)
+ * @param initialFindings - Initial findings data from scanner API
  * @returns findings state and setter
  */
 export function useRegisterFindings(initialFindings: Finding[]) {

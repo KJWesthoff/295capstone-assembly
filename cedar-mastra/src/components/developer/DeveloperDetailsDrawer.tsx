@@ -23,7 +23,11 @@ export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDra
   if (!finding) return null;
 
   // Evidence is now embedded directly in the finding from the scanner API
+  // Handle both old and new evidence formats
   const evidence = finding.evidence;
+
+  // Check if this is the new structured evidence format
+  const isNewFormat = evidence && evidence.request && typeof evidence.request === 'object' && evidence.request.method;
 
   const handleCopyCode = (code: string) => {
     cedar.util.copy(code);
@@ -427,59 +431,119 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
 
             {/* Evidence & Repro Tab */}
             <TabsContent value="evidence" className="space-y-4">
-              <Card className="p-4 bg-muted/20 border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-foreground">Request</h3>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleCopyCode(evidence?.request || "")}
-                    >
-                      <Copy className="h-4 w-4 mr-1" />
-                      cURL
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleCopyCode(evidence?.request || "")}
-                    >
-                      <Copy className="h-4 w-4 mr-1" />
-                      HTTPie
-                    </Button>
-                  </div>
-                </div>
-                <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                  {evidence?.request || "N/A"}
-                </pre>
-              </Card>
+              {isNewFormat ? (
+                // New structured evidence format
+                <>
+                  <Card className="p-4 bg-muted/20 border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-foreground">Request</h3>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleCopyCode(evidence.curl_command || "")}
+                        >
+                          <Copy className="h-4 w-4 mr-1" />
+                          cURL
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleCopyCode(
+                            `${evidence.request.method} ${evidence.request.url}\n` +
+                            Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
+                            (evidence.request.body ? `\n\n${evidence.request.body}` : '')
+                          )}
+                        >
+                          <Copy className="h-4 w-4 mr-1" />
+                          Raw
+                        </Button>
+                      </div>
+                    </div>
+                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
+{`${evidence.request.method} ${evidence.request.url}
+${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`}
+                    </pre>
+                  </Card>
 
-              <Card className="p-4 bg-muted/20 border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-foreground">Response</h3>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleCopyCode(evidence?.response || "")}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                  {evidence?.response || "N/A"}
-                </pre>
-              </Card>
+                  <Card className="p-4 bg-muted/20 border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-foreground">Response ({evidence.response.status_code})</h3>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleCopyCode(
+                          `HTTP/1.1 ${evidence.response.status_code}\n` +
+                          Object.entries(evidence.response.headers).map(([k, v]) => `${k}: ${v}`).join('\n') +
+                          `\n\n${evidence.response.body}`
+                        )}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono max-h-64">
+{`HTTP/1.1 ${evidence.response.status_code}
+${Object.entries(evidence.response.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}
 
-              <Card className="p-4 bg-muted/20 border-border">
-                <h3 className="font-semibold text-foreground mb-2">Auth Context</h3>
-                <p className="text-sm text-muted-foreground">{evidence?.authContext || "N/A"}</p>
-              </Card>
+${evidence.response.body}`}
+                    </pre>
+                  </Card>
 
-              {evidence?.pocLinks && evidence.pocLinks.length > 0 && (
+                  <Card className="p-4 bg-muted/20 border-border">
+                    <h3 className="font-semibold text-foreground mb-2">Auth Context</h3>
+                    <p className="text-sm text-muted-foreground">{evidence.auth_context || "N/A"}</p>
+                  </Card>
+                </>
+              ) : (
+                // Old evidence format fallback
+                <>
+                  <Card className="p-4 bg-muted/20 border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-foreground">Request</h3>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleCopyCode(typeof evidence?.request === 'string' ? evidence.request : JSON.stringify(evidence?.request, null, 2))}
+                        >
+                          <Copy className="h-4 w-4 mr-1" />
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
+                      {typeof evidence?.request === 'string' ? evidence.request : JSON.stringify(evidence?.request, null, 2) || "N/A"}
+                    </pre>
+                  </Card>
+
+                  <Card className="p-4 bg-muted/20 border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-foreground">Response</h3>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleCopyCode(typeof evidence?.response === 'string' ? evidence.response : JSON.stringify(evidence?.response, null, 2))}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
+                      {typeof evidence?.response === 'string' ? evidence.response : JSON.stringify(evidence?.response, null, 2) || "N/A"}
+                    </pre>
+                  </Card>
+
+                  <Card className="p-4 bg-muted/20 border-border">
+                    <h3 className="font-semibold text-foreground mb-2">Auth Context</h3>
+                    <p className="text-sm text-muted-foreground">{evidence?.authContext || evidence?.auth_context || "N/A"}</p>
+                  </Card>
+                </>
+              )}
+
+              {((evidence?.pocLinks && evidence.pocLinks.length > 0) || (evidence?.poc_references && evidence.poc_references.length > 0)) && (
                 <Card className="p-4 bg-destructive/10 border-destructive">
                   <h3 className="font-semibold text-foreground mb-2">⚠️ POC Links (Public Exploits)</h3>
                   <ul className="space-y-1">
-                    {evidence.pocLinks.map((link, i) => (
+                    {(evidence.pocLinks || evidence.poc_references || []).map((link, i) => (
                       <li key={i}>
                         <a
                           href={link}

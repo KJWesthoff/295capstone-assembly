@@ -8,21 +8,21 @@ output "instance_id" {
 }
 
 output "public_ip" {
-  value       = aws_eip.ventiapi.public_ip
-  description = "Public IP address (Elastic IP)"
+  value       = aws_instance.ventiapi.public_ip
+  description = "Public IP address (auto-assigned)"
 }
 
 output "ssh_command" {
-  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ec2-user@${aws_eip.ventiapi.public_ip}"
+  value       = "ssh -i ~/.ssh/${var.key_pair_name}.pem ec2-user@${aws_instance.ventiapi.public_ip}"
   description = "SSH connection command"
 }
 
 output "urls" {
   value = {
-    production_scanner = "http://${aws_eip.ventiapi.public_ip}:3000"
-    cedar_dashboard    = "http://${aws_eip.ventiapi.public_ip}:3001"
-    scanner_api        = "http://${aws_eip.ventiapi.public_ip}:8000"
-    mastra_backend     = "http://${aws_eip.ventiapi.public_ip}:4111"
+    production_scanner = "http://${aws_instance.ventiapi.public_ip}:3000"
+    cedar_dashboard    = "http://${aws_instance.ventiapi.public_ip}:3001"
+    scanner_api        = "http://${aws_instance.ventiapi.public_ip}:8000"
+    mastra_backend     = "http://${aws_instance.ventiapi.public_ip}:4111"
   }
   description = "Service URLs"
 }

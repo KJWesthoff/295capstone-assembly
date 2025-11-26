@@ -59,6 +59,12 @@ const getAuthIcon = (exposure: number) => {
   return { icon: <Shield className="h-3 w-3" />, label: "Admin", color: "text-info" };
 };
 
+const getOwaspRank = (owaspString: string): string | null => {
+  // Extract "API1" from "API1:2023 Broken Object Level Authorization"
+  const match = owaspString.match(/^(API\d+)/);
+  return match ? match[1] : null;
+};
+
 export const FindingsTable = ({
   findings,
   onRowClick,
@@ -168,11 +174,25 @@ export const FindingsTable = ({
     {
       id: "signals",
       header: "Signals",
-      className: "w-[80px]",
+      className: "w-[120px]",
       cell: ({ row: finding }) => {
         const authInfo = getAuthIcon(finding.exposure);
+        const owaspRank = getOwaspRank(finding.owasp);
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {owaspRank && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 bg-[#5B21B6]/10 text-[#5B21B6] border-[#5B21B6]/40 font-semibold">
+                    {owaspRank}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">{finding.owasp}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
             <Tooltip>
               <TooltipTrigger>
                 <span className={authInfo.color}>{authInfo.icon}</span>
@@ -448,6 +468,10 @@ export const FindingsTable = ({
         renderLegend={() => (
           <div className="flex flex-wrap items-center gap-6 text-xs text-muted-foreground bg-card px-4 py-2 rounded-lg border border-border">
             <span className="font-semibold text-foreground">Legend:</span>
+            <div className="flex items-center gap-1">
+              <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 bg-[#5B21B6]/10 text-[#5B21B6] border-[#5B21B6]/40 font-semibold">API#</Badge>
+              <span>OWASP Top 10</span>
+            </div>
             <div className="flex items-center gap-1">
               <Globe className="h-3 w-3 text-critical" />
               <span>No auth</span>

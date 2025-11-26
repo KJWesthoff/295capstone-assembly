@@ -47,6 +47,12 @@ const testsStatusColors = {
   Passing: "bg-success text-success-foreground",
 };
 
+const getOwaspRank = (owaspString: string): string | null => {
+  // Extract "API1" from "API1:2023 Broken Object Level Authorization"
+  const match = owaspString.match(/^(API\d+)/);
+  return match ? match[1] : null;
+};
+
 export const DeveloperFindingsTable = ({
   findings,
   onSelectFinding,
@@ -126,34 +132,51 @@ export const DeveloperFindingsTable = ({
     {
       id: "service",
       header: "Service/Repo · File/Route",
-      cell: ({ row: finding }) => (
-        <div className="space-y-1">
-          <div className="font-semibold text-foreground">
-            {finding.title || finding.owasp || "No Title"}
+      cell: ({ row: finding }) => {
+        const owaspRank = getOwaspRank(finding.owasp);
+        return (
+          <div className="space-y-1">
+            <div className="font-semibold text-foreground">
+              {finding.title || finding.owasp || "No Title"}
+            </div>
+            <div className="text-sm text-muted-foreground font-mono">
+              {finding.endpoint.method} {finding.endpoint.path}
+            </div>
+            {finding.file && (
+              <div className="text-xs text-muted-foreground">{finding.file}</div>
+            )}
+            {/* Signal chips */}
+            <div className="flex flex-wrap items-center gap-1 mt-1">
+              {owaspRank && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 bg-[#5B21B6]/10 text-[#5B21B6] border-[#5B21B6]/40 font-semibold">
+                        {owaspRank}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">{finding.owasp}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {finding.flags?.isNew && (
+                <Badge variant="destructive" className="text-xs px-1.5 py-0">NEW</Badge>
+              )}
+              {finding.flags?.isRegressed && (
+                <Badge variant="outline" className="text-xs px-1.5 py-0 border-destructive/60 text-destructive font-semibold">REG</Badge>
+              )}
+              {finding.exposure && finding.exposure >= 8 && (
+                <Globe className="h-3 w-3 text-primary" aria-label="Internet-facing" />
+              )}
+              {finding.exploitPresent && (
+                <Shield className="h-3 w-3 text-destructive" aria-label="Public exploit available" />
+              )}
+            </div>
           </div>
-          <div className="text-sm text-muted-foreground font-mono">
-            {finding.endpoint.method} {finding.endpoint.path}
-          </div>
-          {finding.file && (
-            <div className="text-xs text-muted-foreground">{finding.file}</div>
-          )}
-          {/* Signal chips */}
-          <div className="flex flex-wrap items-center gap-1 mt-1">
-            {finding.flags?.isNew && (
-              <Badge variant="destructive" className="text-xs px-1.5 py-0">NEW</Badge>
-            )}
-            {finding.flags?.isRegressed && (
-              <Badge variant="outline" className="text-xs px-1.5 py-0 border-destructive/60 text-destructive font-semibold">REG</Badge>
-            )}
-            {finding.exposure && finding.exposure >= 8 && (
-              <Globe className="h-3 w-3 text-primary" aria-label="Internet-facing" />
-            )}
-            {finding.exploitPresent && (
-              <Shield className="h-3 w-3 text-destructive" aria-label="Public exploit available" />
-            )}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       id: "severity",
@@ -371,6 +394,10 @@ export const DeveloperFindingsTable = ({
           renderLegend={() => (
             <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground bg-muted/20 p-3 rounded">
               <span className="font-semibold">Legend:</span>
+              <div className="flex items-center gap-1">
+                <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 bg-[#5B21B6]/10 text-[#5B21B6] border-[#5B21B6]/40 font-semibold">API#</Badge>
+                <span>OWASP Top 10</span>
+              </div>
               <div className="flex items-center gap-1">
                 <Shield className="h-3 w-3 text-destructive" />
                 <span>Public exploit</span>

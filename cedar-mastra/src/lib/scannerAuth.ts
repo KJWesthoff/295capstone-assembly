@@ -90,7 +90,7 @@ class ScannerAuth {
     const defaultUsername = process.env.NEXT_PUBLIC_SCANNER_USERNAME || 'MICS295';
     const defaultPassword = process.env.NEXT_PUBLIC_SCANNER_PASSWORD || 'MaryMcHale';
 
-    console.log(`🔑 Attempting auto-login to scanner service with username: ${defaultUsername}...`);
+    console.log(`🔑 Attempting auto-login to scanner service...`);
     return await this.login(defaultUsername, defaultPassword);
   }
 
