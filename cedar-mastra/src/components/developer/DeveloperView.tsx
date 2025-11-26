@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { DeveloperFindingsTable } from "./DeveloperFindingsTable";
 import { DeveloperDetailsDrawer } from "./DeveloperDetailsDrawer";
 import { ChatPresets } from "@/components/shared/ChatPresets";
@@ -8,9 +8,10 @@ import { developerPresets } from "@/config/chatPresets";
 import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import type { Finding } from "@/types/finding";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
-import { scannerApi } from "@/lib/scannerApi";
 import { useScanManager } from "@/hooks/useScanManager";
-import { ScanLauncher, ScanSelector, ScanProgressTracker } from "@/components/scanner";
+import { ScanLauncher, ScanProgressTracker } from "@/components/scanner";
+import { ScanSelector } from "@/components/shared/ScanSelector";
+import { useScanResultsState } from "@/app/cedar-os/scanState";
 
 interface DeveloperViewProps {
   selectedFindings?: Set<string>;
@@ -19,43 +20,23 @@ interface DeveloperViewProps {
 
 export const DeveloperView = ({ selectedFindings, onSelectionChange }: DeveloperViewProps = {}) => {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
-  const [scanFindings, setScanFindings] = useState<any[]>([]);
 
-  // Use centralized scan manager
+  // Get findings from Cedar state (populated by ScanSelector)
+  const { scanResults } = useScanResultsState();
+
+  // Use scan manager only for ScanLauncher
   const {
     isScanning,
     currentScanStatus,
     activeScanId,
-    scans,
-    selectedScanId,
-    isLoadingScans,
     startScan,
-    selectScan,
-    refreshScans,
   } = useScanManager();
 
-  // Fetch findings when selected scan changes
-  useEffect(() => {
-    if (!selectedScanId) return;
-
-    const fetchFindings = async () => {
-      try {
-        const response = await scannerApi.getFindings(selectedScanId);
-        setScanFindings(response.findings || []);
-      } catch (error) {
-        console.error('Error fetching findings:', error);
-        setScanFindings([]);
-      }
-    };
-
-    fetchFindings();
-  }, [selectedScanId]);
-
-  // Transform scanner findings to Finding type for display
+  // Transform Cedar findings to Finding type for display
   const actualFindings: Finding[] = useMemo(() => {
-    if (!scanFindings || scanFindings.length === 0) return [];
+    if (!scanResults?.findings || scanResults.findings.length === 0) return [];
 
-    return scanFindings.map((f: any) => ({
+    return scanResults.findings.map((f: any) => ({
       id: f.id || `${f.endpoint}-${f.rule}`,
       title: f.title,
       severity: f.severity as 'Critical' | 'High' | 'Medium' | 'Low',
@@ -93,7 +74,7 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
         isResolved: false,
       },
     }));
-  }, [scanFindings]);
+  }, [scanResults]);
 
   // Register findings with Cedar for @mention functionality
   const { findings } = useRegisterFindings(actualFindings);
@@ -109,13 +90,7 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex-1 w-full sm:w-auto">
-            <ScanSelector
-              scans={scans}
-              selectedScanId={selectedScanId}
-              onSelectScan={selectScan}
-              isLoading={isLoadingScans}
-              onRefresh={refreshScans}
-            />
+            <ScanSelector />
           </div>
           <ScanLauncher
             onStartScan={startScan}

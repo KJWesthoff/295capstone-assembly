@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useScanResultsState } from '@/app/cedar-os/scanState';
 import { useCedarStore } from 'cedar-os';
 import { RefreshCw, Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { scannerApi } from '@/lib/scannerApi';
 
 interface Scan {
   scan_id: string;
@@ -44,19 +45,13 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
     setError(null);
 
     try {
-      // Try to fetch scan list from API
-      const response = await fetch('http://localhost:8000/api/scans?limit=20');
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch scans: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      // Use authenticated API client
+      const data = await scannerApi.listScans(20, 0);
       setScans(data.scans || []);
     } catch (err) {
       console.error('Error fetching scans:', err);
 
-      // Fallback: If API doesn't have /api/scans endpoint yet, check localStorage
+      // Fallback: If API call fails, check localStorage
       const storedScanId = localStorage.getItem('lastScanId');
       if (storedScanId) {
         setScans([{
@@ -83,14 +78,8 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
     setError(null);
 
     try {
-      // Fetch scan results from API
-      const response = await fetch(`http://localhost:8000/api/scan/${scanId}/findings`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to load scan: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      // Use authenticated API client
+      const data = await scannerApi.getFindings(scanId);
 
       // Transform to our state format
       const findings = data.findings.map((f: any, index: number) => ({

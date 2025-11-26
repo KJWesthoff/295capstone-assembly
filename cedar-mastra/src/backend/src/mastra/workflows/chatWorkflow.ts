@@ -458,11 +458,25 @@ const callAgent = createStep({
 
       let finalText = '';
       if (streamController) {
-        finalText = await handleTextStream(streamResult, streamController);
+        // Accumulate text chunks
+        for await (const chunk of streamResult.textStream) {
+          finalText += chunk as string;
+          // Stream each chunk as plain text
+          streamController.enqueue(new TextEncoder().encode(`data: ${chunk}\n\n`));
+        }
+
+        // Send completion event
         streamJSONEvent(streamController, {
           type: 'progress_update',
           status: 'complete',
           text: 'Response generated',
+        });
+
+        // Send final message content as JSON for Cedar to display
+        streamJSONEvent(streamController, {
+          type: 'message',
+          role: 'assistant',
+          content: finalText,
         });
       } else {
         for await (const chunk of streamResult.textStream) {
@@ -474,12 +488,22 @@ const callAgent = createStep({
     } catch (error) {
       console.error('Error in callAgent step:', error);
 
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
       // Try to send error to stream if still available
       if (streamController) {
         try {
+          // Send error as a visible message
           streamJSONEvent(streamController, {
-            type: 'error',
-            message: error instanceof Error ? error.message : 'Unknown error occurred',
+            type: 'message',
+            role: 'assistant',
+            content: `⚠️ **Error**: ${errorMessage}\n\nPlease check the Mastra backend logs for details.`,
+          });
+
+          streamJSONEvent(streamController, {
+            type: 'progress_update',
+            status: 'error',
+            text: errorMessage,
           });
         } catch (streamError) {
           // Stream is closed, log and continue
@@ -487,8 +511,8 @@ const callAgent = createStep({
         }
       }
 
-      // Re-throw the error for workflow error handling
-      throw error;
+      // Return error as content instead of throwing to allow graceful handling
+      return { content: `Error: ${errorMessage}` };
     }
   },
 });

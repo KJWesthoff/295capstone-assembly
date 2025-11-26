@@ -12,7 +12,8 @@ import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 import { useScanResultsState } from "@/app/cedar-os/scanState";
 import { transformVulnerabilityFindings } from "@/lib/transformFindings";
 import { useScanManager } from "@/hooks/useScanManager";
-import { ScanLauncher, ScanSelector, ScanProgressTracker } from "@/components/scanner";
+import { ScanLauncher, ScanProgressTracker } from "@/components/scanner";
+import { ScanSelector } from "@/components/shared/ScanSelector";
 
 interface SecurityAnalystViewProps {
   selectedFindings?: Set<string>;
@@ -23,17 +24,12 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [showDiffModal, setShowDiffModal] = useState(false);
 
-  // Use centralized scan manager
+  // Use scan manager only for ScanLauncher
   const {
     isScanning,
     currentScanStatus,
     activeScanId,
-    scans,
-    selectedScanId,
-    isLoadingScans,
     startScan,
-    selectScan,
-    refreshScans,
   } = useScanManager();
 
   // Get actual scan results from Cedar state
@@ -67,13 +63,7 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex-1 w-full sm:w-auto">
-            <ScanSelector
-              scans={scans}
-              selectedScanId={selectedScanId}
-              onSelectScan={selectScan}
-              isLoading={isLoadingScans}
-              onRefresh={refreshScans}
-            />
+            <ScanSelector />
           </div>
           <ScanLauncher
             onStartScan={startScan}
