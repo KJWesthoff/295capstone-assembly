@@ -191,14 +191,15 @@ const fetchContext = createStep({
       let scanId: string | null = null;
       const vulnerabilityFindings: any[] = [];
 
-      // Check scanResults state subscription (from useSecurityContext)
+      // Check scanResults state subscription (from useScanResultsState)
       if (inputData.additionalContext.scanResults) {
         const scanResults = Array.isArray(inputData.additionalContext.scanResults)
           ? inputData.additionalContext.scanResults[0]
           : inputData.additionalContext.scanResults;
 
-        if (scanResults?.data?.scanId) {
-          scanId = scanResults.data.scanId;
+        // For subscribed state, scanId is directly on the object (not nested in .data)
+        if (scanResults?.scanId) {
+          scanId = scanResults.scanId;
           console.log(`Found scan ID in scanResults context: ${scanId}`);
         }
       }
@@ -300,17 +301,13 @@ Keep it short (2-3 paragraphs max). Make them WANT to ask a follow-up question, 
         console.log(`Enhanced prompt with ${vulnerabilityFindings.length} vulnerability findings`);
       }
 
-      // If scan ID found and user is asking for analysis, append it to prompt
-      if (scanId && (
-        inputData.prompt.toLowerCase().includes('analyz') ||
-        inputData.prompt.toLowerCase().includes('report') ||
-        inputData.prompt.toLowerCase().includes('scan')
-      )) {
+      // If scan ID found in context, always inform the agent (let agent decide whether to use it)
+      if (scanId) {
         if (vulnerabilityFindings.length === 0) {
-          // Only add scan ID context if we haven't already added vulnerability findings
+          // Scan ID available, inform agent to use scan-analysis-workflow if user asks for analysis
           enhancedPrompt = `${inputData.prompt}
 
-[CONTEXT: Scan ID ${scanId} is available in the context. Use scan-analysis-workflow to analyze it.]`;
+[CONTEXT: Active Scan ID ${scanId} - If user asks for scan analysis/report, call scan-analysis-workflow with this ID]`;
           console.log(`Enhanced prompt with scan ID: ${scanId}`);
         } else {
           // If we have both vulnerability findings and scan ID, add scan ID to the existing enhanced prompt
@@ -458,25 +455,18 @@ const callAgent = createStep({
 
       let finalText = '';
       if (streamController) {
-        // Accumulate text chunks
+        // Stream text chunks as they arrive (Cedar renders these incrementally)
         for await (const chunk of streamResult.textStream) {
           finalText += chunk as string;
-          // Stream each chunk as plain text
+          // Send as plain text - Cedar parses and renders each chunk
           streamController.enqueue(new TextEncoder().encode(`data: ${chunk}\n\n`));
         }
 
-        // Send completion event
+        // Send completion event only (chunks already rendered, no duplicate needed)
         streamJSONEvent(streamController, {
           type: 'progress_update',
           status: 'complete',
           text: 'Response generated',
-        });
-
-        // Send final message content as JSON for Cedar to display
-        streamJSONEvent(streamController, {
-          type: 'message',
-          role: 'assistant',
-          content: finalText,
         });
       } else {
         for await (const chunk of streamResult.textStream) {
