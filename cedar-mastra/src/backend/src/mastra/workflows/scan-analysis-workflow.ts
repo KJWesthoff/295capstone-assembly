@@ -70,7 +70,8 @@ const fetchScanResultsStep = createStep({
         const errorDetails = fetchError instanceof Error ? fetchError.message : String(fetchError);
         const errorName = fetchError instanceof Error ? fetchError.name : 'Unknown';
         logger?.error(`Failed to connect to scanner service: ${errorName} - ${errorDetails}`);
-        throw new Error(`Failed to connect to scanner service at ${scannerUrl}: ${errorName} - ${errorDetails}`);
+        // Sanitized error for user - don't expose internal URLs
+        throw new Error(`Unable to connect to the scanner service. Please ensure the scanner is running and accessible.`);
       }
 
       if (!authResponse.ok) {
