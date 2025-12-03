@@ -1,7 +1,10 @@
 // Scanner Service Authentication
 // Handles JWT authentication with the Python scanner service
 
-const SCANNER_SERVICE_URL = process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000';
+const isServer = typeof window === 'undefined';
+const SCANNER_SERVICE_URL = isServer
+  ? (process.env.SCANNER_SERVICE_URL || process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000')
+  : (process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL ?? 'http://localhost:8000');
 
 interface LoginResponse {
   access_token: string;
@@ -28,7 +31,7 @@ class ScannerAuth {
     if (!this.token || !this.tokenExpiry) {
       return false;
     }
-    
+
     // Check if token is expired (with 5 minute buffer)
     const now = Date.now();
     return this.tokenExpiry > now + (5 * 60 * 1000);
@@ -64,7 +67,7 @@ class ScannerAuth {
 
       const data: LoginResponse = await response.json();
       this.token = data.access_token;
-      
+
       // JWT tokens typically expire in 24 hours
       this.tokenExpiry = Date.now() + (24 * 60 * 60 * 1000);
 
@@ -100,7 +103,7 @@ class ScannerAuth {
   logout(): void {
     this.token = null;
     this.tokenExpiry = null;
-    
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem('scanner_token');
       localStorage.removeItem('scanner_token_expiry');

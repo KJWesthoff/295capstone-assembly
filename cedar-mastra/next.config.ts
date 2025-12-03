@@ -10,13 +10,8 @@ const nextConfig: NextConfig = {
     // Disable TypeScript errors during builds for Docker
     ignoreBuildErrors: true,
   },
-  webpack: (config) => {
-    config.module.rules.push({
-      test: /\.(png|jpg|gif|svg)$/i,
-      type: 'asset/resource',
-    });
-    return config;
-  },
+  // Note: Removed custom webpack image rule that conflicted with Next.js's
+  // built-in image handling and caused broken images in production
 };
 
 export default nextConfig;

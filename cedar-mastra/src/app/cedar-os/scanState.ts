@@ -76,7 +76,7 @@ export function useScanResultsState() {
           const { scanId } = args;
 
           try {
-            const scannerUrl = process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000';
+            const scannerUrl = process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL ?? 'http://localhost:8000';
             const response = await fetch(`${scannerUrl}/api/scan/${scanId}/findings`);
             const data = await response.json();
 

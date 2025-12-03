@@ -17,8 +17,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> }
 ) {
+  const { scanId } = await params;
+
   try {
-    const { scanId } = await params;
 
     if (!scanId) {
       return NextResponse.json(
@@ -30,9 +31,10 @@ export async function GET(
     // Manually authenticate since API routes run on server (no localStorage)
     const username = process.env.NEXT_PUBLIC_SCANNER_USERNAME || 'MICS295';
     const password = process.env.NEXT_PUBLIC_SCANNER_PASSWORD || 'MaryMcHale';
+    const serviceUrl = process.env.SCANNER_SERVICE_URL || process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000';
 
     // Get auth token
-    const loginResponse = await fetch(`${process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000'}/api/auth/login`, {
+    const loginResponse = await fetch(`${serviceUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -48,7 +50,7 @@ export async function GET(
     const { access_token } = await loginResponse.json();
 
     // Fetch raw findings from scanner service with auth header
-    const findingsUrl = `${process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000'}/api/scan/${scanId}/findings`;
+    const findingsUrl = `${serviceUrl}/api/scan/${scanId}/findings`;
     const rawResponse = await fetch(findingsUrl, {
       headers: { 'Authorization': `Bearer ${access_token}` }
     });
@@ -70,7 +72,7 @@ export async function GET(
     }
 
     // Get scan status to retrieve scan timestamp
-    const statusUrl = `${process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000'}/api/scan/${scanId}/status`;
+    const statusUrl = `${serviceUrl}/api/scan/${scanId}/status`;
     const statusResponse = await fetch(statusUrl, {
       headers: { 'Authorization': `Bearer ${access_token}` }
     });
@@ -116,7 +118,7 @@ export async function GET(
       return NextResponse.json(
         {
           error: 'Scan not found',
-          message: `No scan found with ID: ${params.scanId}`
+          message: `No scan found with ID: ${scanId}`
         },
         { status: 404 }
       );

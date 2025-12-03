@@ -3,7 +3,10 @@
 
 import { ensureScannerAuth, getScannerAuthHeader, scannerAuth } from './scannerAuth';
 
-const SCANNER_SERVICE_URL = process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000';
+const isServer = typeof window === 'undefined';
+const SCANNER_SERVICE_URL = isServer
+  ? (process.env.SCANNER_SERVICE_URL || process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL || 'http://localhost:8000')
+  : (process.env.NEXT_PUBLIC_SCANNER_SERVICE_URL ?? 'http://localhost:8000');
 
 export interface ScanRequest {
   serverUrl: string;
@@ -95,11 +98,11 @@ export class ScannerApiClient {
     formData.append('target_url', config.specUrl || config.serverUrl);
     formData.append('rps', (config.rps || 1.0).toString());
     formData.append('max_requests', (config.maxRequests || 100).toString());
-    
+
     if (config.dangerous) {
       formData.append('dangerous', 'true');
     }
-    
+
     if (config.fuzzAuth) {
       formData.append('fuzz_auth', 'true');
     }
