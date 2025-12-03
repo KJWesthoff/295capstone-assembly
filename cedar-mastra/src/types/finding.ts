@@ -40,6 +40,7 @@ export interface Finding {
   prStatus?: "None" | "Open" | "Merged";
   testsStatus?: "None" | "Failing" | "Passing";
   fixabilityScore?: number;
+  evidence?: Evidence;
 }
 
 // HTTP request/response structures matching scanner backend evidence.py
@@ -106,8 +107,8 @@ export function getPriorityTooltip(finding: Finding): string {
   const statusText = finding.flags.isNew
     ? "new this week"
     : finding.flags.isRegressed
-    ? "regressed"
-    : "existing";
+      ? "regressed"
+      : "existing";
   return `Why ranked: CVSS ${finding.cvss}, ${exploitText}, exposure ${finding.exposure}/10, ${statusText}`;
 }
 

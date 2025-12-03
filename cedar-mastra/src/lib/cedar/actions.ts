@@ -39,12 +39,25 @@ export const cedarPayloadShapes = {
   evidenceLite: (evidence: any) => {
     const truncate = (str: string, max: number) =>
       str?.length > max ? str.substring(0, max) + "..." : str;
+
+    const formatReq = (req: any) => {
+      if (!req) return "";
+      if (typeof req === "string") return req;
+      return `${req.method} ${req.url}\n${JSON.stringify(req.headers)}\n\n${req.body || ""}`;
+    };
+
+    const formatRes = (res: any) => {
+      if (!res) return "";
+      if (typeof res === "string") return res;
+      return `HTTP ${res.status_code}\n${JSON.stringify(res.headers)}\n\n${res.body || ""}`;
+    };
+
     return {
       id: evidence.id,
-      authContext: evidence.authContext,
-      request: truncate(evidence.request, 1200),
-      response: truncate(evidence.response, 1200),
-      pocLinks: evidence.pocLinks,
+      authContext: evidence.auth_context || evidence.authContext,
+      request: truncate(formatReq(evidence.request), 1200),
+      response: truncate(formatRes(evidence.response), 1200),
+      pocLinks: evidence.poc_references || evidence.pocLinks,
     };
   },
 

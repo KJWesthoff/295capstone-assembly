@@ -1,4 +1,4 @@
-import type { Finding } from "@/types/finding";
+import type { Finding, Evidence } from "@/types/finding";
 import type { VulnerabilityFinding } from "@/app/cedar-os/scanState";
 
 /**
@@ -46,6 +46,7 @@ export function transformVulnerabilityToFinding(vuln: VulnerabilityFinding): Fin
     prStatus: "None",
     testsStatus: "None",
     fixabilityScore: undefined,
+    evidence: vuln.evidence as Evidence,
   };
 }
 

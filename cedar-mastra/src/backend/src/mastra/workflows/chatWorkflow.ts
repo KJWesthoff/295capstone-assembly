@@ -301,6 +301,42 @@ Keep it short (2-3 paragraphs max). Make them WANT to ask a follow-up question, 
         console.log(`Enhanced prompt with ${vulnerabilityFindings.length} vulnerability findings`);
       }
 
+      // Extract evidence items (from Evidence type: request, response, authContext)
+      const evidenceItems: any[] = [];
+      for (const key in inputData.additionalContext) {
+        const entries = inputData.additionalContext[key];
+        if (Array.isArray(entries)) {
+          for (const entry of entries) {
+            if (entry.data?.request && entry.data?.response && entry.data?.authContext) {
+              evidenceItems.push(entry.data);
+              console.log(`Found evidence item: ${entry.data.id}`);
+            }
+          }
+        }
+      }
+
+      if (evidenceItems.length > 0) {
+        const formattedEvidence = evidenceItems.map(evidence => `
+**Evidence for Finding ${evidence.id || 'Unknown'}**
+- Auth Context: ${evidence.authContext}
+- Request:
+\`\`\`http
+${evidence.request}
+\`\`\`
+- Response:
+\`\`\`http
+${evidence.response}
+\`\`\`
+${evidence.pocLinks ? `- PoC Links: ${JSON.stringify(evidence.pocLinks)}` : ''}
+`).join('\n---\n');
+
+        enhancedPrompt = `${enhancedPrompt}
+
+[CONTEXT: User has provided the following technical evidence:]
+${formattedEvidence}`;
+        console.log(`Enhanced prompt with ${evidenceItems.length} evidence items`);
+      }
+
       // If scan ID found in context, always inform the agent (let agent decide whether to use it)
       if (scanId) {
         if (vulnerabilityFindings.length === 0) {
