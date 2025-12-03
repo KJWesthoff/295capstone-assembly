@@ -95,50 +95,51 @@ Use this tool when the user provides a vulnerability scan JSON file or scan resu
       );
     }
 
-    // Log any warnings
+    // Log any warnings (but continue with DB retrieval regardless)
     if (envValidation.warnings.length > 0) {
       console.log('⚠️  Environment warnings:', envValidation.warnings.join('; '));
-    } else {
-        try {
-          const config: RetrievalConfig = {
-            connectionString: process.env.DATABASE_URL!,
-            mistralApiKey: process.env.MISTRAL_API_KEY!,
-            openaiApiKey: process.env.OPENAI_API_KEY!,
-          };
+    }
 
-          const retrieved = await retrieveAndRerankContext(processed, config, {
-            owaspTopK: 3,  // Get top 3 OWASP entries
-            cweTopK: 5,    // Get top 5 CWE entries
-          });
+    // Always attempt database retrieval if environment is valid
+    try {
+      const config: RetrievalConfig = {
+        connectionString: process.env.DATABASE_URL!,
+        mistralApiKey: process.env.MISTRAL_API_KEY!,
+        openaiApiKey: process.env.OPENAI_API_KEY!,
+      };
 
-          owaspData = retrieved.owaspData;
-          cweData = retrieved.cweData;
+      const retrieved = await retrieveAndRerankContext(processed, config, {
+        owaspTopK: 3,  // Get top 3 OWASP entries
+        cweTopK: 5,    // Get top 5 CWE entries
+      });
 
-          logger?.info(`✅ Retrieved security intelligence`, {
-            owaspEntries: owaspData.length,
-            cweEntries: cweData.length,
-          });
+      owaspData = retrieved.owaspData;
+      cweData = retrieved.cweData;
 
-          // Step 2.5: Retrieve code examples for the CWEs
-          logger?.info('🔍 Retrieving code examples...');
-          const cweIds = extractUniqueCWEs(processed);
-          const client = await initializePgClient(config.connectionString);
+      logger?.info(`✅ Retrieved security intelligence`, {
+        owaspEntries: owaspData.length,
+        cweEntries: cweData.length,
+      });
 
-          try {
-            codeExamples = await retrieveCodeExamplesForCWEs(client, cweIds, {
-              limit: 10,  // Get up to 10 focused examples (quality over quantity)
-            });
-            logger?.info(`✅ Retrieved ${codeExamples.length} code examples`);
-          } catch (error) {
-            logger?.error('Failed to retrieve code examples', { error });
-          } finally {
-            await closePgClient();
-          }
-        } catch (error) {
-          logger?.error('❌ Database connection error, continuing without security intelligence', { error });
-          // Continue with empty arrays
-        }
+      // Step 2.5: Retrieve code examples for the CWEs
+      logger?.info('🔍 Retrieving code examples...');
+      const cweIds = extractUniqueCWEs(processed);
+      const client = await initializePgClient(config.connectionString);
+
+      try {
+        codeExamples = await retrieveCodeExamplesForCWEs(client, cweIds, {
+          limit: 10,  // Get up to 10 focused examples (quality over quantity)
+        });
+        logger?.info(`✅ Retrieved ${codeExamples.length} code examples`);
+      } catch (error) {
+        logger?.error('Failed to retrieve code examples', { error });
+      } finally {
+        await closePgClient();
       }
+    } catch (error) {
+      logger?.error('❌ Database connection error, continuing without security intelligence', { error });
+      // Continue with empty arrays
+    }
 
       // Step 3: Format contexts
       logger?.info('📄 Formatting context for analysis...');

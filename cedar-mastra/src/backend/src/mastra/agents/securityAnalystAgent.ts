@@ -293,7 +293,7 @@ When appropriate, proactively inform users about these capabilities:
 
 **Important**: Only mention these capabilities when relevant to the conversation. Don't list all tools in every response - suggest them naturally when they would help solve the user's specific problem.
   `.trim(),
-  model: openai('gpt-4o'),
+  model: openai('gpt-5'),
 
   // Individual tools for specific queries
   tools: {
@@ -315,18 +315,42 @@ When appropriate, proactively inform users about these capabilities:
         }),
       }),
       execute: async ({ context }) => {
-        console.log('🚀 Executing scanAnalysisWorkflow wrapper for scanId:', context.scanId);
-        const run = await scanAnalysisWorkflow.createRunAsync();
-        const result = await run.start({
-          inputData: { scanId: context.scanId },
-        });
+        console.log('🚀 ENTRY: scanAnalysisWorkflow wrapper called');
+        console.log('Context:', JSON.stringify(context));
+        try {
+          console.log('Creating workflow run...');
+          const run = await scanAnalysisWorkflow.createRunAsync();
+          console.log('Starting workflow with scanId:', context.scanId);
+          const result = await run.start({
+            inputData: { scanId: context.scanId },
+          });
 
-        if (result.status !== 'success') {
-          throw new Error(`Workflow failed: ${result.status}`);
+          console.log('Workflow result status:', result.status);
+          console.log('Workflow result keys:', Object.keys(result));
+
+          if (result.status !== 'success') {
+            console.error('Workflow failed with status:', result.status);
+            console.error('Full result:', JSON.stringify(result, null, 2));
+            throw new Error(`Workflow failed: ${result.status}`);
+          }
+
+          console.log('✅ Workflow execution completed via wrapper');
+          console.log('Result keys:', Object.keys(result.result || {}));
+
+          // Log what we're returning to the agent
+          const returnData = result.result;
+          console.log('📤 RETURNING TO AGENT:');
+          console.log('  - scanContext length:', returnData?.scanContext?.length || 0);
+          console.log('  - securityContext length:', returnData?.securityContext?.length || 0);
+          console.log('  - codeExamples count:', returnData?.codeExamples?.length || 0);
+          console.log('  - metadata:', JSON.stringify(returnData?.metadata));
+
+          return returnData;
+        } catch (error) {
+          console.error('❌ ERROR in scanAnalysisWorkflow wrapper:', error);
+          console.error('Error stack:', (error as Error).stack);
+          throw error;
         }
-
-        console.log('✅ Workflow execution completed via wrapper');
-        return result.result;
       },
     }),
     getSecurityIntelligenceTool, // Unified retrieval tool
