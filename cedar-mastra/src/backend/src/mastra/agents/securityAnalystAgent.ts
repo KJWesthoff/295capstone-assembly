@@ -1,14 +1,3 @@
-/**
- * `Security Analyst Agent`
- * 
- * This agent analyzes vulnerability scan results and provides:
- * - Risk prioritization (P0/P1/P2)
- * - Detailed remediation guidance
- * - Code examples (vulnerable → fixed)
- * - Real-world impact assessment
- * - OWASP/CWE cross-references
- */
-
 import { Agent } from '@mastra/core';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
@@ -27,13 +16,9 @@ import {
   type RetrievalConfig,
 } from '../lib/retrieval';
 import { analyzeScanTool } from '../tools/analyze-scan-tool';
-import { githubAdvisoryIngestionTool } from '../tools/github-advisory-ingestion-tool';
-import { checkDatabaseCoverageTool } from '../tools/check-database-coverage-tool';
-import { quickCoverageEnrichmentTool } from '../tools/quick-coverage-enrichment-tool';
+import { getSecurityIntelligenceTool } from '../tools/get-security-intelligence';
 import { remediationPrioritizationTool } from '../tools/remediation-prioritization-tool';
-import { queryGitHubAdvisoriesTool } from '../tools/query-github-advisories-tool';
 import { visualizeAttackPathTool } from '../tools/visualize-attack-path-tool';
-// Removed fetchScanResultsTool - workflow handles fetching internally now
 import { scanAnalysisWorkflow } from '../workflows/scan-analysis-workflow';
 
 // ============================================================================
@@ -171,8 +156,12 @@ When errors occur, provide user-friendly messages without exposing technical imp
      - Do NOT remain silent after the workflow finishes
      - You MUST interpret the workflow results and generate a detailed markdown report
      - Always provide actionable insights and remediation guidance
-2. **Quick Queries**: Use individual tools for specific lookups (coverage checks, prioritization)
-3. **Cross-Reference Intelligence**: Correlate findings across OWASP, CWE, and CVE databases
+2. **Proactive Knowledge Retrieval**:
+   - **ALWAYS** verify your security advice with the `getSecurityIntelligenceTool` when discussing specific CVEs, CWEs, or attack techniques.
+   - **NEVER** guess about code examples. If the user asks for an example in a specific language (e.g., "Show me this in Python"), use `getSecurityIntelligenceTool` to find a verified example.
+   - **CROSS-REFERENCE** findings. If a scan reveals a vulnerability, check if there are related CVEs or known exploits using the retrieval tool to provide a richer context.
+3. **Quick Queries**: Use individual tools for specific lookups (coverage checks, prioritization)
+4. **Cross-Reference Intelligence**: Correlate findings across OWASP, CWE, and CVE databases
 
 ### Workflow Output Format
 When scan-analysis-workflow completes, you receive:
@@ -257,29 +246,17 @@ Every analysis must be:
 
 When appropriate, proactively inform users about these capabilities:
 
-### 🔍 Database Coverage Check
-**When to mention**: User asks about available security knowledge, CVEs, or framework coverage
-**Tool**: \`checkDatabaseCoverageTool\`
-**What it does**: Shows what security intelligence is in the database (OWASP entries, CWE data, code examples)
-**Example prompt**: "I can check what security knowledge is available in the database. Would you like me to see what frameworks, vulnerabilities, and code examples we have coverage for?"
-
-### 📚 Quick Database Enrichment
-**When to mention**: Missing code examples, incomplete CVE data, or user needs specific framework examples
-**Tool**: \`quickCoverageEnrichmentTool\`
-**What it does**: Fetches missing security data from GitHub Security Advisories for specific CVEs/CWEs
-**Example prompt**: "I notice we're missing code examples for this vulnerability. I can enrich our database with real-world examples from GitHub Security Advisories. Would you like me to do that?"
-
-### 🔎 Query GitHub Advisories
-**When to mention**: User asks about a specific CVE, vulnerability type, or wants examples in a specific programming language
-**Tool**: \`queryGitHubAdvisoriesTool\`
-**What it does**: Searches GitHub's Security Advisory Database for specific vulnerabilities and returns immediate results. Also triggers background ingestion to enrich the database for future queries.
-**Example prompt**: "I can search GitHub's Security Advisory Database for [CVE/vulnerability type] in [language]. This will give you immediate results and also enrich our database for better future analysis. Would you like me to search?"
-**Key benefit**: Gets immediate results while enriching the database in the background - by the time the conversation continues, the embeddings are ready for deeper RAG queries.
+### 🧠 Get Security Intelligence
+**When to mention**: User asks about a specific vulnerability, CVE, or wants code examples.
+**Tool**: \`getSecurityIntelligenceTool\`
+**What it does**: Retrieves detailed security information, code examples, and remediation guidance. It checks our local database first, and if needed, fetches fresh data from GitHub Security Advisories.
+**Example prompt**: "I can look up detailed information and code examples for that vulnerability. Would you like me to find examples for a specific language?"
 
 ### 🎯 Remediation Prioritization
 **When to mention**: User has multiple vulnerabilities and needs help deciding what to fix first
 **Tool**: \`remediationPrioritizationTool\`
 **What it does**: Prioritizes vulnerabilities based on exploitability, impact, and affected resources
+**Example prompt**: "I can help you prioritize these findings based on risk factors, exploitability, and business impact. Would you like me to generate a remediation roadmap?"
 
 ### 🎨 Visual Attack Path Generator (WOW FACTOR!)
 **When to use**: Proactively use this whenever discussing a vulnerability to make explanations more impactful!
@@ -299,18 +276,9 @@ When appropriate, proactively inform users about these capabilities:
   - If explaining multiple vulnerabilities, create one diagram per vulnerability rather than combining them
 **Example**: When analyzing a SQL injection: "Let me show you exactly how this attack works..." → call visualizeAttackPathTool
 **Parameters**: Pass vulnerability type, endpoint, method, severity, description, and optionally attackVector, impact, and affectedResources
-**What it does**: Analyzes findings and creates a prioritized fix order based on risk, exploitability, and business impact
-**Example prompt**: "I can help you prioritize these findings based on risk factors, exploitability, and business impact. Would you like me to generate a remediation roadmap?"
-
-### 📥 Bulk Advisory Ingestion (Admin Only)
-**When to mention**: User is setting up the system or wants to bulk-load security data
-**Tool**: \`githubAdvisoryIngestionTool\`
-**What it does**: Batch imports security advisories from GitHub for comprehensive coverage
-**Example prompt**: "For initial setup, I can bulk-import security advisories from GitHub to build comprehensive coverage. This is useful for administrators setting up the knowledge base."
 
 **Important**: Only mention these capabilities when relevant to the conversation. Don't list all tools in every response - suggest them naturally when they would help solve the user's specific problem.
   `.trim(),
-
   model: openai('gpt-5', {
     structuredOutputs: true,
     // Core model parameters
@@ -331,25 +299,17 @@ When appropriate, proactively inform users about these capabilities:
     },
   }),
 
-  // Multi-step RAG query configuration
-  maxSteps: 18,
-  maxRetries: 3,
-
   // Register the workflow for automated scan analysis
   workflows: {
-    scanAnalysisWorkflow,
-  },
+  scanAnalysisWorkflow,
+},
 
   // Individual tools for specific queries
   tools: {
-    // fetchScanResultsTool removed - workflow handles fetching internally
-    checkDatabaseCoverageTool,
-    quickCoverageEnrichmentTool,
-    remediationPrioritizationTool,
-    githubAdvisoryIngestionTool, // For admin/batch operations only
-    queryGitHubAdvisoriesTool, // Query GitHub advisories for specific vulnerabilities/languages
-    visualizeAttackPathTool, // Generate visual attack flow diagrams
-  },
+  getSecurityIntelligenceTool, // Unified retrieval tool
+  remediationPrioritizationTool,
+  visualizeAttackPathTool, // Generate visual attack flow diagrams
+},
 
   // Enable conversation memory for multi-turn interactions
   memory: new Memory({
