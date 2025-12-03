@@ -16,6 +16,7 @@ export interface VulnerabilityFinding {
   scanner: string;
   scanner_description: string;
   evidence?: Record<string, any>;
+  exploit_available?: boolean;
 }
 
 export interface ScanResultsState {
@@ -92,6 +93,7 @@ export function useScanResultsState() {
               scanner: f.scanner || 'unknown',
               scanner_description: f.scanner_description || '',
               evidence: f.evidence || {},
+              exploit_available: f.exploit_available,
             }));
 
             const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};

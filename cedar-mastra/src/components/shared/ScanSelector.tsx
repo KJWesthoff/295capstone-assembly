@@ -94,6 +94,7 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
         scanner: f.scanner || 'ventiapi',
         scanner_description: f.scanner_description || '',
         evidence: f.evidence || {},
+        exploit_available: f.exploit_available,
       }));
 
       // Group by endpoint

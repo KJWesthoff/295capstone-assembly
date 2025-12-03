@@ -373,3 +373,71 @@ async def get_scan_summary(scan_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"❌ Failed to get scan summary: {e}")
         return None
+
+
+async def get_exploit_status_for_rules(rules: List[str]) -> Dict[str, bool]:
+    """
+    Check if there are public exploits for the given OWASP rules.
+    Returns a dictionary mapping rule -> boolean (true if exploit exists).
+    """
+    if not rules:
+        return {}
+
+    # Static mapping of OWASP API Security Top 10 to primary CWEs
+    # We focus on CWEs that are likely to have exploits in our DB
+    owasp_to_cwe = {
+        "API1": ["CWE-639", "CWE-285"],       # BOLA
+        "API2": ["CWE-287", "CWE-306"],       # Broken Auth
+        "API3": ["CWE-200", "CWE-770"],       # Excessive Data Exposure
+        "API4": ["CWE-770", "CWE-400"],       # Rate Limiting
+        "API5": ["CWE-285", "CWE-862"],       # BFLA
+        "API6": ["CWE-799", "CWE-862"],       # Mass Assignment / Business Flows
+        "API7": ["CWE-918", "CWE-16"],        # SSRF / Misconfig
+        "API8": ["CWE-89", "CWE-77", "CWE-78", "CWE-94"], # Injection (SQLi, Command, Code)
+        "API9": ["CWE-1059", "CWE-200"],      # Improper Assets
+        "API10": ["CWE-20", "CWE-778"],       # Unsafe Consumption / Logging
+    }
+
+    # Flatten the list of relevant CWEs based on the requested rules
+    relevant_cwes = set()
+    rule_to_cwe_map = {}
+
+    for rule in rules:
+        # Handle "API1:2023" or just "API1"
+        base_rule = rule.split(':')[0]
+        if base_rule in owasp_to_cwe:
+            cwes = owasp_to_cwe[base_rule]
+            relevant_cwes.update(cwes)
+            rule_to_cwe_map[rule] = cwes
+
+    if not relevant_cwes:
+        return {rule: False for rule in rules}
+
+    try:
+        # Query to find which CWEs have exploits
+        # We join exploit_database with cwe_cve_mapping
+        query = """
+            SELECT DISTINCT m.cwe_id
+            FROM exploit_database e
+            JOIN cwe_cve_mapping m ON m.cve_id = ANY(e.cve_ids)
+            WHERE m.cwe_id = ANY(:cwes)
+        """
+        
+        rows = await database.fetch_all(query=query, values={"cwes": list(relevant_cwes)})
+        exploitable_cwes = {row["cwe_id"] for row in rows}
+        
+        # Map back to rules
+        result = {}
+        for rule in rules:
+            is_exploitable = False
+            if rule in rule_to_cwe_map:
+                # If any of the CWEs for this rule are in the exploitable set
+                if any(cwe in exploitable_cwes for cwe in rule_to_cwe_map[rule]):
+                    is_exploitable = True
+            result[rule] = is_exploitable
+            
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Failed to check exploit status: {e}")
+        return {rule: False for rule in rules}

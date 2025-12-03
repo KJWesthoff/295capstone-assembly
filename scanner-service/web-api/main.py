@@ -36,7 +36,8 @@ from database import (
     database, connect_db, disconnect_db,
     create_scan, get_scan, update_scan_status,
     insert_findings, get_findings, get_findings_count,
-    upsert_chunk_status, get_chunk_status, get_scan_summary
+    upsert_chunk_status, get_chunk_status, get_scan_summary,
+    get_exploit_status_for_rules
 )
 
 # Configuration
@@ -675,14 +676,19 @@ async def get_scan_findings_endpoint(
         findings_list = await get_findings(scan_id, offset=offset, limit=limit)
         total_findings = await get_findings_count(scan_id)
 
+        # Get unique rules to check for exploits
+        rules = list({f.get("rule", "") for f in findings_list if f.get("rule")})
+        exploit_status = await get_exploit_status_for_rules(rules)
+
         # Convert database findings to API format
         api_findings = []
         for finding in findings_list:
             try:
+                rule = finding.get("rule", "")
                 # Ensure all required fields have defaults
                 api_findings.append({
                     "id": str(finding.get("id", "")),
-                    "rule": finding.get("rule", ""),
+                    "rule": rule,
                     "title": finding.get("title", ""),
                     "severity": finding.get("severity", "Low"),
                     "score": finding.get("score", 0),
@@ -691,7 +697,8 @@ async def get_scan_findings_endpoint(
                     "description": finding.get("description", ""),
                     "scanner": finding.get("scanner", "unknown"),
                     "scanner_description": finding.get("scanner_description") or finding.get("scanner", "unknown"),
-                    "evidence": finding.get("evidence", {})
+                    "evidence": finding.get("evidence", {}),
+                    "exploit_available": exploit_status.get(rule, False)
                 })
             except Exception as e:
                 print(f"⚠️ Error processing finding {finding.get('id', 'unknown')}: {e}")

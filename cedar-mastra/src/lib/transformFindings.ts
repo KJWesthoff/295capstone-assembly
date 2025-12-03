@@ -15,7 +15,7 @@ export function transformVulnerabilityToFinding(vuln: VulnerabilityFinding): Fin
     severity: vuln.severity,
     cvss: vuln.score || 0,
     exploitSignal: 0,
-    exploitPresent: false,
+    exploitPresent: vuln.exploit_available || false,
     owasp: vuln.rule || "Unknown",
     cwe: [],
     cve: [],
