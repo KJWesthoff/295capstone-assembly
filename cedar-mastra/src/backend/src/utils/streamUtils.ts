@@ -78,9 +78,7 @@ export async function handleTextStream(
     // Stream raw text chunks through data field
     for await (const chunk of streamResult.textStream) {
       chunks.push(chunk);
-      // Escape literal newlines for SSE compliance
-      const escaped = chunk.replace(/\n/g, '\\n');
-      streamController.enqueue(encoder.encode(`data:${escaped}\n\n`));
+      streamJSONEvent(streamController, chunk);
     }
   } catch (error) {
     // Handle stream errors gracefully

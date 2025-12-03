@@ -1,5 +1,9 @@
 import { Agent } from '@mastra/core';
+import { createTool } from '@mastra/core/tools';
 import { openai } from '@ai-sdk/openai';
+// ... (keep existing imports)
+
+// ... (inside tools object)
 import { z } from 'zod';
 import { Memory } from '@mastra/memory';
 import { PostgresStore } from '@mastra/pg';
@@ -157,8 +161,8 @@ When errors occur, provide user-friendly messages without exposing technical imp
      - You MUST interpret the workflow results and generate a detailed markdown report
      - Always provide actionable insights and remediation guidance
 2. **Proactive Knowledge Retrieval**:
-   - **ALWAYS** verify your security advice with the `getSecurityIntelligenceTool` when discussing specific CVEs, CWEs, or attack techniques.
-   - **NEVER** guess about code examples. If the user asks for an example in a specific language (e.g., "Show me this in Python"), use `getSecurityIntelligenceTool` to find a verified example.
+   - **ALWAYS** verify your security advice with the 'getSecurityIntelligenceTool' when discussing specific CVEs, CWEs, or attack techniques.
+   - **NEVER** guess about code examples. If the user asks for an example in a specific language (e.g., "Show me this in Python"), use 'getSecurityIntelligenceTool' to find a verified example.
    - **CROSS-REFERENCE** findings. If a scan reveals a vulnerability, check if there are related CVEs or known exploits using the retrieval tool to provide a richer context.
 3. **Quick Queries**: Use individual tools for specific lookups (coverage checks, prioritization)
 4. **Cross-Reference Intelligence**: Correlate findings across OWASP, CWE, and CVE databases
@@ -172,29 +176,39 @@ When scan-analysis-workflow completes, you receive:
 - \`enrichmentStats\`: Whether the database was enriched (wasEnriched, newExamples)
 
 ### MANDATORY: Your Response After Workflow Completes
-**CRITICAL**: The workflow generates a COMPLETE, pre-formatted user response. You must ONLY stream it.
+The workflow returns raw context data. You must process this data and generate a user-friendly report.
 
 When scan-analysis-workflow completes:
-1. **Extract userResponse field**: The workflow returns a userResponse string with the complete analysis
-2. **Stream ONLY the userResponse**: Output the userResponse exactly as provided
-3. **DO NOT add anything**: No introductions, no summaries, no "Additional details", no extra bullet points
-4. **DO NOT append**: No "Scan summary", no "Total issues", no additional context after userResponse
-5. **The response is COMPLETE**: userResponse contains everything the user needs
+1. **Analyze the Context**: Read \`scanContext\` (findings summary) and \`securityContext\` (OWASP/CWE details).
+2. **Generate the Report**: Create a comprehensive markdown report that includes:
+   - **Executive Summary**: High-level overview of the security posture.
+   - **Critical Findings**: Detailed breakdown of the most severe issues.
+   - **Remediation**: Actionable steps to fix the vulnerabilities, using the provided \`codeExamples\` if available.
+   - **Strategic Advice**: Long-term security improvements based on the findings.
 
-**Example workflow call and response**:
-User: "Analyze scan abc-123"
-You:
-1. Call scan-analysis-workflow with scanId: "abc-123"
-2. Receive workflow results with userResponse field
-3. **Stream ONLY the userResponse** - nothing before, nothing after
-4. DONE - do not add summaries or additional analysis
+**CRITICAL**:
+- Do NOT say "Workflow completed" or just dump the JSON.
+- You MUST synthesize the information into a readable, professional security report.
+- Use the \`codeExamples\` array to provide specific fixes where applicable.
+- If \`plannerInsights\` are present, incorporate them into your strategic advice.
 
-**For Follow-up Questions ONLY**:
-If the user asks a follow-up question AFTER you've streamed userResponse, THEN you can use plannerInsights, scanContext, and securityContext to answer.
+**Example Response Structure**:
+# Security Analysis Report for Scan [ID]
 
-**Fallback**: If userResponse is missing (shouldn't happen with new workflow), generate a comprehensive markdown report using scanContext and securityContext.
+## Executive Summary
+[Brief overview of risk level and key findings]
 
-**CRITICAL RULE**: userResponse is the COMPLETE answer. Stream it verbatim. Adding anything else is an error.
+## Critical Vulnerabilities
+### [Vulnerability Name]
+- **Severity**: [Level]
+- **Impact**: [Description]
+- **Fix**: [Actionable advice]
+
+## Code Examples
+[Show relevant code examples if available]
+
+## Strategic Recommendations
+[Long-term advice]
 
 ## Analysis Requirements
 
@@ -279,37 +293,46 @@ When appropriate, proactively inform users about these capabilities:
 
 **Important**: Only mention these capabilities when relevant to the conversation. Don't list all tools in every response - suggest them naturally when they would help solve the user's specific problem.
   `.trim(),
-  model: openai('gpt-5', {
-    structuredOutputs: true,
-    // Core model parameters
-    temperature: 0.2,
-    topP: 0.9,
-    maxTokens: 5000,
-    frequencyPenalty: 0.1,
-    presencePenalty: 0.0,
-    // Text verbosity configuration
-    text: {
-      verbosity: "medium",
-    },
-    // OpenAI-specific reasoning configuration
-    providerOptions: {
-      openai: {
-        reasoning_effort: "medium",
-      },
-    },
-  }),
-
-  // Register the workflow for automated scan analysis
-  workflows: {
-  scanAnalysisWorkflow,
-},
+  model: openai('gpt-4o'),
 
   // Individual tools for specific queries
   tools: {
-  getSecurityIntelligenceTool, // Unified retrieval tool
-  remediationPrioritizationTool,
-  visualizeAttackPathTool, // Generate visual attack flow diagrams
-},
+    scanAnalysisWorkflow: createTool({
+      id: 'scanAnalysisWorkflow',
+      description: 'Automated analysis of API vulnerability scans',
+      inputSchema: z.object({
+        scanId: z.string().describe('The UUID of the scan to analyze'),
+      }),
+      outputSchema: z.object({
+        scanContext: z.string(),
+        securityContext: z.string(),
+        codeExamples: z.array(z.any()),
+        metadata: z.object({
+          totalFindings: z.number(),
+          uniqueRules: z.number(),
+          owaspEntriesRetrieved: z.number(),
+          cweEntriesRetrieved: z.number(),
+        }),
+      }),
+      execute: async ({ context }) => {
+        console.log('🚀 Executing scanAnalysisWorkflow wrapper for scanId:', context.scanId);
+        const run = await scanAnalysisWorkflow.createRunAsync();
+        const result = await run.start({
+          inputData: { scanId: context.scanId },
+        });
+
+        if (result.status !== 'success') {
+          throw new Error(`Workflow failed: ${result.status}`);
+        }
+
+        console.log('✅ Workflow execution completed via wrapper');
+        return result.result;
+      },
+    }),
+    getSecurityIntelligenceTool, // Unified retrieval tool
+    remediationPrioritizationTool,
+    visualizeAttackPathTool, // Generate visual attack flow diagrams
+  },
 
   // Enable conversation memory for multi-turn interactions
   memory: new Memory({
