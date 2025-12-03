@@ -119,3 +119,11 @@ database/init/*.sql
 *.sqlite
 *.sqlite3
 !Data_Breach_Chronology_sample.db  # Exception: Sample data
+
+# Terraform state files (contain secrets)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
