@@ -163,14 +163,41 @@ export const ChatInput: React.FC<{
       }
     };
 
-    // Add the event listener
     window.addEventListener('keydown', handleGlobalKeyDown);
-
-    // Clean up
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
   }, [handleVoiceToggle]);
+
+  const [_, setForceUpdate] = React.useState(0);
+
+  // Handle custom event for programmatic message sending
+  useEffect(() => {
+    const handleCustomSend = (e: CustomEvent<{ message: string }>) => {
+      if (editor && e.detail.message) {
+        editor.commands.focus();
+        editor.commands.setContent(e.detail.message);
+
+        // Force update to ensure button is enabled
+        setForceUpdate((prev) => prev + 1);
+
+        // Small delay to allow state to propagate before submitting
+        setTimeout(() => {
+          // Check if editor actually has content before submitting
+          if (!editor.isEmpty) {
+            handleSubmit();
+          }
+        }, 500);
+      }
+    };
+
+    window.addEventListener('cedar-chat-send' as any, handleCustomSend as any);
+    return () => {
+      window.removeEventListener('cedar-chat-send' as any, handleCustomSend as any);
+    };
+  }, [editor, handleSubmit]);
+
+  const isSendButtonDisabled = editor ? editor.isEmpty : isEditorEmpty;
 
   return (
     <div className={cn('bg-gray-800/10 dark:bg-gray-600/80 rounded-lg p-3 text-sm', className)}>
@@ -263,18 +290,18 @@ export const ChatInput: React.FC<{
           motionProps={{
             layoutId: 'send-chat',
             animate: {
-              opacity: isEditorEmpty ? 0.5 : 1,
-              backgroundColor: isEditorEmpty ? 'transparent' : '#93c5fd',
+              opacity: isSendButtonDisabled ? 0.5 : 1,
+              backgroundColor: isSendButtonDisabled ? 'transparent' : '#93c5fd',
             },
             transition: { type: 'spring', stiffness: 300, damping: 20 },
           }}
           onClick={() => handleSubmit()}
-          color={isEditorEmpty ? undefined : '#93c5fd'}
+          color={isSendButtonDisabled ? undefined : '#93c5fd'}
           className="flex items-center flex-shrink-0 ml-auto -mt-0.5 rounded-full bg-white dark:bg-gray-800"
           childClassName="p-1.5"
         >
           <motion.div
-            animate={{ rotate: isEditorEmpty ? 0 : -90 }}
+            animate={{ rotate: isSendButtonDisabled ? 0 : -90 }}
             transition={{ type: 'spring', stiffness: 300, damping: 20 }}
           >
             <SendHorizonal className="w-4 h-4" />

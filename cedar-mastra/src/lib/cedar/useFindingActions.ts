@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { useCedarActions } from "./hooks";
+import { useCedarStore } from "cedar-os";
 import { cedarPayloadShapes } from "./actions";
 import { getSeverityColor as getSeverityColorUtil, Severity } from "@/lib/utils/severity";
 import type { Finding } from "@/types/finding";
@@ -12,7 +13,7 @@ const DEBUG_CONTEXT_ADDITIONS = true;
  * Provides consistent color coding, key generation, and label formatting.
  */
 export function useFindingActions() {
-  const { addToContext } = useCedarActions();
+  const { addToContext, sendMessage } = useCedarActions();
 
   /**
    * Get hex color code based on vulnerability severity
@@ -117,10 +118,34 @@ export function useFindingActions() {
     addToContext(key, data, label, color);
   };
 
+  /**
+   * Add finding to chat and trigger visualization
+   * @param finding - The vulnerability finding
+   */
+  const visualizeFinding = (finding: Finding) => {
+    addFindingToChat(finding, "finding");
+
+    // Ensure chat is open so ChatInput is mounted and listener is active
+    const { setShowChat } = useCedarStore.getState();
+    setShowChat(true);
+
+    // Use a small timeout to ensure the ChatInput component is mounted and has registered the event listener
+    setTimeout(() => {
+      const prompt = `Create a diagram using the visualize attack path tool for this finding:
+      - Vulnerability: ${finding.owasp || finding.cwe?.[0] || 'Unknown Vulnerability'}
+      - Endpoint: ${finding.endpoint.path}
+      - Method: ${finding.endpoint.method}
+      - Severity: ${finding.severity}
+      - Description: ${finding.summaryHumanReadable || 'No description available'}`;
+      sendMessage(prompt);
+    }, 500);
+  };
+
   return {
     addFindingToChat,
     addFindingsToChat,
     addCustomToChat,
+    visualizeFinding,
     getSeverityColor: getColor,
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Shield, Globe, Plus, Copy, ExternalLink, Wrench, Filter } from "lucide-react";
+import { Shield, Globe, Plus, Copy, ExternalLink, Wrench, Filter, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -61,7 +61,7 @@ export const DeveloperFindingsTable = ({
 }: DeveloperFindingsTableProps) => {
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all");
   const [selectedFramework, setSelectedFramework] = useState<string>("all");
-  const { addFindingToChat, addFindingsToChat } = useFindingActions();
+  const { addFindingToChat, addFindingsToChat, visualizeFinding } = useFindingActions();
   const { sendMessage } = useCedarActions();
 
   // Memoize Select handlers to prevent infinite loops
@@ -137,7 +137,7 @@ export const DeveloperFindingsTable = ({
         return (
           <div className="space-y-1">
             <div className="font-semibold text-foreground">
-              {finding.title || finding.owasp || "No Title"}
+              {finding.summaryHumanReadable || finding.owasp || "No Title"}
             </div>
             <div className="text-sm text-muted-foreground font-mono">
               {finding.endpoint.method} {finding.endpoint.path}
@@ -321,6 +321,19 @@ export const DeveloperFindingsTable = ({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Open in Repo</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="ghost" onClick={(e) => {
+                  e.stopPropagation();
+                  visualizeFinding(finding);
+                }}>
+                  <GitCompare className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Visualize Attack Path</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>

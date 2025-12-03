@@ -197,6 +197,11 @@ export const cedar = {
   chat: {
     send: (payload: any, instruction: string) => {
       console.log("cedar.chat.send:", { payload, instruction });
+      // Dispatch custom event to trigger ChatInput
+      const event = new CustomEvent('cedar-chat-send', {
+        detail: { message: instruction }
+      });
+      window.dispatchEvent(event);
       toast.success(`AI Request Prepared with ${cedarEstimateTokens(payload)} tokens`);
     },
     launcher: {

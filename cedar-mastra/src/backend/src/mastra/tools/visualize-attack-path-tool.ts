@@ -33,7 +33,21 @@ function sanitizeForMermaid(text: string | undefined): string {
   if (!text) return '';
   // Replace quotes with apostrophes to prevent breaking mermaid syntax
   // Remove newlines or replace them with <br/> if needed (mermaid handles some html)
-  return text.replace(/"/g, "'").replace(/\n/g, '<br/>');
+  // Also escape brackets [] {} () as they are special characters in Mermaid node definitions
+  return text
+    .replace(/"/g, "'")
+    .replace(/\n/g, '<br/>')
+    .replace(/[\[\]\{\}\(\)]/g, (match) => {
+      const map: Record<string, string> = {
+        '[': '#91;',
+        ']': '#93;',
+        '{': '#123;',
+        '}': '#125;',
+        '(': '#40;',
+        ')': '#41;'
+      };
+      return map[match] || match;
+    });
 }
 
 // ============================================================================
@@ -95,12 +109,12 @@ function generateInjectionAttackDiagram(input: z.infer<typeof VisualizeAttackPat
 
   return `\`\`\`mermaid
 graph LR
-    A[🎭 Attacker] -->|1. Craft Malicious Payload| B[💉 Injection Payload]
-    B -->|2. Send ${method} Request| C["📡 ${endpoint}"]
-    C -->|3. No Input Validation| D{🔍 Database Query}
-    D -->|4. Execute Malicious SQL| E[💥 SQL Execution]
-    E -->|5. Extract Data| F["💾 ${affectedResource || 'Database'}"]
-    F -->|6. Data Breach| G[🔓 ${impact || 'Unauthorized Access'}]
+    A["🎭 Attacker"] -- "1. Craft Malicious Payload" --> B["💉 Injection Payload"]
+    B -- "2. Send ${method} Request" --> C["📡 ${endpoint}"]
+    C -- "3. No Input Validation" --> D{"🔍 Database Query"}
+    D -- "4. Execute Malicious SQL" --> E["💥 SQL Execution"]
+    E -- "5. Extract Data" --> F["💾 ${affectedResource || 'Database'}"]
+    F -- "6. Data Breach" --> G["🔓 ${impact || 'Unauthorized Access'}"]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
     style B fill:#DC2626,stroke:#EF4444,color:#fff
@@ -131,12 +145,12 @@ function generateBOLAAttackDiagram(input: z.infer<typeof VisualizeAttackPathSche
 
   return `\`\`\`mermaid
 graph TB
-    A[🎭 Attacker<br/>User ID: 123] -->|1. Authenticated Request| B["📱 ${method} ${endpoint}"]
-    B -->|2. Manipulate ID Parameter| C{🔍 Authorization Check?}
-    C -->|❌ No Check| D["👤 Victim's Data<br/>User ID: 456"]
-    C -->|✅ Should Block| E[🛡️ Access Denied]
-    D -->|3. Return Sensitive Data| F["💾 ${affectedResources.join(', ') || 'User Records'}"]
-    F -->|4. Data Breach| G[🔓 ${impact || 'Unauthorized Access'}]
+    A["🎭 Attacker<br/>User ID: 123"] -- "1. Authenticated Request" --> B["📱 ${method} ${endpoint}"]
+    B -- "2. Manipulate ID Parameter" --> C{"🔍 Authorization Check?"}
+    C -- "❌ No Check" --> D["👤 Victim's Data<br/>User ID: 456"]
+    C -- "✅ Should Block" --> E["🛡️ Access Denied"]
+    D -- "3. Return Sensitive Data" --> F["💾 ${affectedResources.join(', ') || 'User Records'}"]
+    F -- "4. Data Breach" --> G["🔓 ${impact || 'Unauthorized Access'}"]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
     style B fill:${color},stroke:#FCA5A5,color:#fff
@@ -168,12 +182,12 @@ function generateAuthAttackDiagram(input: z.infer<typeof VisualizeAttackPathSche
 
   return `\`\`\`mermaid
 graph LR
-    A[🎭 Attacker] -->|1. Identify Weakness| B["🔐 ${method} ${endpoint}"]
-    B -->|2. ${attackVector || 'Bypass Authentication'}| C{🔑 Auth Validation}
-    C -->|❌ Bypassed| D[🚪 Admin Access]
-    C -->|✅ Should Block| E[🛡️ Access Denied]
-    D -->|3. Elevated Privileges| F["⚙️ Admin Panel"]
-    F -->|4. Full Control| G[💥 ${impact || 'System Compromise'}]
+    A["🎭 Attacker"] -- "1. Identify Weakness" --> B["🔐 ${method} ${endpoint}"]
+    B -- "2. ${attackVector || 'Bypass Authentication'}" --> C{"🔑 Auth Validation"}
+    C -- "❌ Bypassed" --> D["🚪 Admin Access"]
+    C -- "✅ Should Block" --> E["🛡️ Access Denied"]
+    D -- "3. Elevated Privileges" --> F["⚙️ Admin Panel"]
+    F -- "4. Full Control" --> G["💥 ${impact || 'System Compromise'}"]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
     style B fill:${color},stroke:#FCA5A5,color:#fff
@@ -202,12 +216,12 @@ function generateXSSAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchem
 
   return `\`\`\`mermaid
 graph TB
-    A[🎭 Attacker] -->|1. Inject Malicious Script| B["📝 ${method} ${endpoint}"]
-    B -->|2. Store Unsanitized| C[💾 Database]
-    C -->|3. Retrieve & Display| D["🌐 Victim's Browser"]
-    D -->|4. Execute Script| E[⚡ JavaScript Execution]
-    E -->|5. Steal Credentials| F[🍪 Session Cookie/Token]
-    F -->|6. Session Hijacking| G[🔓 ${impact || 'Account Takeover'}]
+    A["🎭 Attacker"] -- "1. Inject Malicious Script" --> B["📝 ${method} ${endpoint}"]
+    B -- "2. Store Unsanitized" --> C["💾 Database"]
+    C -- "3. Retrieve & Display" --> D["🌐 Victim's Browser"]
+    D -- "4. Execute Script" --> E["⚡ JavaScript Execution"]
+    E -- "5. Steal Credentials" --> F["🍪 Session Cookie/Token"]
+    F -- "6. Session Hijacking" --> G["🔓 ${impact || 'Account Takeover'}"]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
     style B fill:${color},stroke:#FCA5A5,color:#fff
@@ -237,11 +251,11 @@ function generateRateLimitAttackDiagram(input: z.infer<typeof VisualizeAttackPat
 
   return `\`\`\`mermaid
 graph LR
-    A[🎭 Attacker] -->|1. Automated Requests| B["🔁 Bulk Requests"]
-    B -->|2. 1000+ req/sec| C["📡 ${method} ${endpoint}"]
-    C -->|3. No Rate Limiting| D{⚡ Server Resources}
-    D -->|4. Resource Exhaustion| E[💥 Server Overload]
-    E -->|5. Service Degradation| F[⏸️ ${impact || 'Service Unavailable'}]
+    A["🎭 Attacker"] -- "1. Automated Requests" --> B["🔁 Bulk Requests"]
+    B -- "2. 1000+ req/sec" --> C["📡 ${method} ${endpoint}"]
+    C -- "3. No Rate Limiting" --> D{"⚡ Server Resources"}
+    D -- "4. Resource Exhaustion" --> E["💥 Server Overload"]
+    E -- "5. Service Degradation" --> F["⏸️ ${impact || 'Service Unavailable'}"]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
     style B fill:#DC2626,stroke:#EF4444,color:#fff
@@ -276,11 +290,11 @@ function generateGenericAttackDiagram(input: z.infer<typeof VisualizeAttackPathS
 
   return `\`\`\`mermaid
 graph LR
-    A[🎭 Attacker] -->|1. Identify Target| B["📡 ${method} ${endpoint}"]
-    B -->|2. ${attackVector || 'Exploit Vulnerability'}| C{🔍 Security Control}
-    C -->|❌ Bypassed| D["💾 ${resources}"]
-    C -->|✅ Should Block| E[🛡️ Access Denied]
-    D -->|3. ${input.vulnerabilityType}| F[💥 ${impact || 'Security Breach'}]
+    A["🎭 Attacker"] -- "1. Identify Target" --> B["📡 ${method} ${endpoint}"]
+    B -- "2. ${attackVector || 'Exploit Vulnerability'}" --> C{"🔍 Security Control"}
+    C -- "❌ Bypassed" --> D["💾 ${resources}"]
+    C -- "✅ Should Block" --> E["🛡️ Access Denied"]
+    D -- "3. ${vulnType}" --> F["💥 ${impact || 'Security Breach'}"]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
     style B fill:${color},stroke:#FCA5A5,color:#fff
@@ -329,15 +343,11 @@ export const visualizeAttackPathTool = createTool({
   execute: async ({ context }) => {
     try {
       console.log('🎨 Generating visual attack path diagram...');
-
       const diagram = generateAttackPathDiagram(context);
 
       console.log('✅ Attack path diagram generated successfully');
 
-      return {
-        diagram,
-        message: '✅ Attack path visualization generated! The diagram shows the complete attack flow from initial entry to final impact.',
-      };
+      return `${diagram}\n\n✅ Attack path visualization generated! Click the button above to view the interactive diagram.`;
     } catch (error) {
       console.error('❌ Failed to generate attack path diagram:', error);
       throw new Error(`Failed to generate attack path visualization: ${error instanceof Error ? error.message : String(error)}`);

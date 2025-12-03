@@ -289,8 +289,10 @@ When appropriate, proactively inform users about these capabilities:
   - User says "show me", "visualize", "diagram", "how does this work", "attack flow", "attack path"
   - When explaining any vulnerability (SQL injection, BOLA, XSS, etc.)
   - When user adds a vulnerability to chat context
-**IMPORTANT**: This tool creates VISUAL diagrams that render automatically in the chat! Use it liberally to make your explanations more powerful.
-**Space Constraints**: Diagrams render in a SMALL CHAT WINDOW with limited space. Keep diagrams focused and compact:
+  **IMPORTANT**: This tool creates VISUAL diagrams that render automatically in the chat! Use it liberally to make your explanations more powerful.
+  **MANDATORY**: If the user asks for a diagram or "visualize this", you MUST call this tool.
+  **CRITICAL**: You MUST output the \`diagram\` string returned by the tool EXACTLY as provided. Do NOT modify the Mermaid code. Do NOT generate your own Mermaid code.
+  **Space Constraints**: Diagrams render in a SMALL CHAT WINDOW with limited space. Keep diagrams focused and compact:
   - For complex attack scenarios, create MULTIPLE smaller diagrams instead of one large diagram
   - Example: For a multi-stage attack, create separate diagrams for "Initial Access", "Privilege Escalation", and "Data Exfiltration"
   - Each diagram should focus on 5-8 steps maximum for readability

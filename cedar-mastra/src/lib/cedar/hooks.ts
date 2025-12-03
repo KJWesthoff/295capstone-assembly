@@ -20,8 +20,16 @@ export function useCedarActions() {
     toast.success(`Added to Chat: ${label}`);
   }, [addContextEntry]);
 
+  const sendMessage = useCallback((message: string) => {
+    const event = new CustomEvent('cedar-chat-send', {
+      detail: { message }
+    });
+    window.dispatchEvent(event);
+  }, []);
+
   return {
     addToContext,
+    sendMessage,
   };
 }
 

@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { getPriorityTooltip } from "@/types/finding";
 import { cedar, cedarPayloadShapes, cedarEstimateTokens } from "@/lib/cedar/actions";
 import { useCedarActions } from "@/lib/cedar/hooks";
+import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import { SeverityTooltip } from "@/components/shared/SeverityTooltip";
 import { DataTable, DataTableColumn, KeyboardShortcut } from "@/components/shared/DataTable";
@@ -78,6 +79,7 @@ export const FindingsTable = ({
   const [addedFindings, setAddedFindings] = useState<Set<string>>(new Set());
   const { addItem } = useContextBasket();
   const { addToContext, sendMessage } = useCedarActions();
+  const { visualizeFinding } = useFindingActions();
 
   const handleAddToChat = (finding: Finding, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -131,8 +133,8 @@ export const FindingsTable = ({
         payload,
         label,
         finding.severity === "Critical" ? "#dc2626" :
-        finding.severity === "High" ? "#ea580c" :
-        finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
+          finding.severity === "High" ? "#ea580c" :
+            finding.severity === "Medium" ? "#ca8a04" : "#16a34a"
       );
     });
     toast.success(`Added ${selectedFindingsArray.length} selected findings to Chat`);
@@ -372,33 +374,48 @@ export const FindingsTable = ({
     {
       id: "actions",
       header: "",
-      className: "w-[100px]",
+      className: "w-[140px]",
       cell: ({ row: finding }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => handleAddToChat(finding, e)}
-          disabled={addedFindings.has(finding.id)}
-          className={cn(
-            "h-7 text-xs transition-all",
-            addedFindings.has(finding.id)
-              ? "bg-success/20 hover:bg-success/30 text-success cursor-default"
-              : "bg-primary/10 hover:bg-primary/20 text-primary"
-          )}
-          title={addedFindings.has(finding.id) ? "Added to chat context" : "Add to chat context"}
-        >
-          {addedFindings.has(finding.id) ? (
-            <>
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Added
-            </>
-          ) : (
-            <>
-              <Plus className="h-3 w-3 mr-1" />
-              Add
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              visualizeFinding(finding);
+            }}
+            className="h-7 text-xs text-primary bg-primary/10 hover:bg-primary/20"
+            title="Visualize Attack Path"
+          >
+            <GitCompare className="h-3 w-3 mr-1" />
+            Visualize
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => handleAddToChat(finding, e)}
+            disabled={addedFindings.has(finding.id)}
+            className={cn(
+              "h-7 text-xs transition-all",
+              addedFindings.has(finding.id)
+                ? "bg-success/20 hover:bg-success/30 text-success cursor-default"
+                : "bg-primary/10 hover:bg-primary/20 text-primary"
+            )}
+            title={addedFindings.has(finding.id) ? "Added to chat context" : "Add to chat context"}
+          >
+            {addedFindings.has(finding.id) ? (
+              <>
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                Added
+              </>
+            ) : (
+              <>
+                <Plus className="h-3 w-3 mr-1" />
+                Add
+              </>
+            )}
+          </Button>
+        </div>
       ),
     },
   ], [addedFindings, sendMessage, setSeverityFilter, handleAddToChat]);

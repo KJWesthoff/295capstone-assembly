@@ -15,7 +15,6 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, className
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isFloatingOpen, setIsFloatingOpen] = useState(false);
-  const elementRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Initialize mermaid with dark theme
@@ -74,24 +73,16 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, className
 
   return (
     <>
-      {/* Inline preview with expand button */}
-      <div className={`relative mermaid-container bg-gray-900 bg-opacity-50 border border-gray-700 rounded-lg p-6 my-4 ${className}`}>
-        {/* Expand button */}
+      {/* Button to open diagram in floating window */}
+      <div className={`my-4 ${className}`}>
         <button
           onClick={() => setIsFloatingOpen(true)}
-          className="absolute top-3 right-3 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors flex items-center gap-2 text-sm"
-          title="Open in floating window"
+          className="flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-sm hover:shadow-md w-full sm:w-auto justify-center"
+          title="Open attack path diagram"
         >
-          <Maximize2 className="w-4 h-4" />
-          <span>Open in Window</span>
+          <Maximize2 className="w-5 h-5" />
+          <span>View Attack Path Diagram</span>
         </button>
-
-        {/* Small inline preview */}
-        <div
-          ref={elementRef}
-          className="overflow-x-auto max-h-[300px] pr-32"
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
       </div>
 
       {/* Floating window - rendered at body level using portal */}
