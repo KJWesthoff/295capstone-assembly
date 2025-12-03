@@ -68,19 +68,19 @@ export function streamJSONEvent<T>(
  */
 export async function handleTextStream(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  streamResult: StreamTextResult<any, any>,
+  streamResult: StreamTextResult<any, any> | { textStream: AsyncIterable<string> },
   streamController: ReadableStreamDefaultController<Uint8Array>,
 ): Promise<string> {
   const encoder = new TextEncoder();
   const chunks: string[] = [];
 
   try {
-    // Stream text chunks as plain text content for Cedar OS
-    // Cedar expects raw text in SSE data field for message streaming
+    // Stream raw text chunks through data field
     for await (const chunk of streamResult.textStream) {
       chunks.push(chunk);
-      // Send text chunk directly - Cedar parses plain text as message content
-      streamController.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+      // Escape literal newlines for SSE compliance
+      const escaped = chunk.replace(/\n/g, '\\n');
+      streamController.enqueue(encoder.encode(`data:${escaped}\n\n`));
     }
   } catch (error) {
     // Handle stream errors gracefully

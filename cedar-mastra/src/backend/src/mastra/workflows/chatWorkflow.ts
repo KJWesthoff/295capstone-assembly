@@ -455,14 +455,10 @@ const callAgent = createStep({
 
       let finalText = '';
       if (streamController) {
-        // Stream text chunks as they arrive (Cedar renders these incrementally)
-        for await (const chunk of streamResult.textStream) {
-          finalText += chunk as string;
-          // Send as plain text - Cedar parses and renders each chunk
-          streamController.enqueue(new TextEncoder().encode(`data: ${chunk}\n\n`));
-        }
+        // Use handleTextStream helper for proper encoding and error handling
+        finalText = await handleTextStream(streamResult, streamController);
 
-        // Send completion event only (chunks already rendered, no duplicate needed)
+        // Send completion event only (chunks already rendered by handleTextStream)
         streamJSONEvent(streamController, {
           type: 'progress_update',
           status: 'complete',

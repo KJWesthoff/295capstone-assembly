@@ -32,7 +32,7 @@ export const FloatingCedarChat: React.FC<FloatingCedarChatProps> = ({
   collapsedLabel = 'How can I help you today?',
   companyLogo,
   dimensions = {
-    minWidth: 350,
+    minWidth: 450,
     minHeight: 400,
   },
   showThreadController = false,
@@ -42,6 +42,17 @@ export const FloatingCedarChat: React.FC<FloatingCedarChatProps> = ({
   // Get showChat state and setShowChat from store
   const showChat = useCedarStore((state) => state.showChat);
   const setShowChat = useCedarStore((state) => state.setShowChat);
+
+  const [chatDimensions, setChatDimensions] = React.useState(dimensions);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setChatDimensions((prev) => ({
+        ...prev,
+        width: window.innerWidth * 0.66,
+      }));
+    }
+  }, []);
 
   return (
     <>
@@ -59,7 +70,7 @@ export const FloatingCedarChat: React.FC<FloatingCedarChatProps> = ({
       <FloatingContainer
         isActive={showChat}
         position={side === 'left' ? 'bottom-left' : 'bottom-right'}
-        dimensions={dimensions}
+        dimensions={chatDimensions}
         resizable={resizable}
         className="cedar-floating-chat"
       >

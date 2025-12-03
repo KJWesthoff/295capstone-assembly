@@ -45,19 +45,19 @@ const FindingAnalysisSchema = z.object({
   title: z.string().describe('Vulnerability title'),
   severity: z.string().describe('Severity level: Critical, High, Medium, or Low'),
   riskScore: z.number().min(0).max(100).describe('Calculated risk score (0-100)'),
-  
+
   // Context
   owaspCategory: z.string().describe('OWASP category (e.g., A03:2021)'),
   relatedCWEs: z.array(z.string()).describe('Related CWE IDs with descriptions (e.g., CWE-89: SQL Injection)'),
   mitreAttack: z.string().optional().describe('MITRE ATT&CK technique ID and name (e.g., T1190: Exploit Public-Facing Application)'),
   affectedEndpoints: z.array(z.string()).describe('List of affected API endpoints'),
-  
+
   // Impact
   businessImpact: z.string().describe('Potential business impact if exploited'),
   technicalImpact: z.string().describe('Technical consequences'),
   exploitability: z.string().describe('How easy to exploit: trivial, easy, moderate, or difficult'),
   whyThisIsCritical: z.array(z.string()).describe('3-5 bullet points explaining why this vulnerability is dangerous'),
-  
+
   // Remediation
   remediationSteps: z.array(z.object({
     step: z.number(),
@@ -72,17 +72,17 @@ const FindingAnalysisSchema = z.object({
     explanation: z.string(),
   })).optional().describe('Code examples showing vulnerable → fixed versions'),
   estimatedEffort: z.string().describe('Time estimate to fix (e.g., "2-4 hours")'),
-  
+
   // Additional Protections
   additionalMitigations: z.array(z.object({
     type: z.string().describe('Type of mitigation (e.g., "Input Validation", "WAF Rules")'),
     description: z.string().describe('How to implement this mitigation'),
   })).describe('Defense-in-depth measures beyond the primary fix'),
-  
+
   // Detection & Prevention
   detectionMethods: z.array(z.string()).describe('How to detect this vulnerability'),
   preventionStrategies: z.array(z.string()).describe('How to prevent in the future'),
-  
+
   // Real-World Context
   realWorldBreaches: z.array(z.object({
     company: z.string(),
@@ -91,10 +91,10 @@ const FindingAnalysisSchema = z.object({
     statistics: z.string().optional().describe('Numbers, costs, records affected'),
     keyLesson: z.string().describe('Key takeaway for developers'),
   })).optional().describe('Similar real-world security incidents'),
-  
+
   // Verification
   verificationSteps: z.array(z.string()).describe('Steps to verify the fix works after implementation'),
-  
+
   // References
   references: z.array(z.object({
     title: z.string(),
@@ -106,18 +106,18 @@ const SecurityAnalysisSchema = z.object({
   // Executive Summary
   executiveSummary: z.string().describe('High-level summary for non-technical stakeholders'),
   overallRiskLevel: z.string().describe('Overall risk assessment: critical, high, medium, or low'),
-  
+
   // Prioritized Findings
   p0_critical: z.array(FindingAnalysisSchema).describe('P0: Critical issues requiring immediate action'),
   p1_high: z.array(FindingAnalysisSchema).describe('P1: High priority issues (fix within 7 days)'),
   p2_medium: z.array(FindingAnalysisSchema).describe('P2: Medium priority issues (fix within 30 days)'),
   p3_low: z.array(FindingAnalysisSchema).optional().describe('P3: Low priority issues (fix within 90 days)'),
-  
+
   // Recommendations
   immediateActions: z.array(z.string()).describe('Actions to take right now'),
   shortTermActions: z.array(z.string()).describe('Actions for next 1-2 weeks'),
   longTermActions: z.array(z.string()).describe('Long-term security improvements'),
-  
+
   // Metadata
   scanMetadata: z.object({
     totalFindings: z.number(),
@@ -136,11 +136,13 @@ export type SecurityAnalysis = z.infer<typeof SecurityAnalysisSchema>;
 export const securityAnalystAgent = new Agent({
   name: 'Security Analyst',
   description: 'Expert security analyst providing actionable vulnerability intelligence',
-  
+
   instructions: `
 You are an expert security analyst specializing in API security and vulnerability assessment.
 
 **CRITICAL RESPONSE FORMAT**: You MUST ALWAYS respond with plain markdown text for the user to read. NEVER return JSON objects. When tools/workflows return JSON data to you, convert it into readable markdown reports.
+
+**FORMATTING RULE**: Whenever you mention an API endpoint path (e.g. /users/v1), you MUST format it as bold code: **\`/users/v1\`**. This makes it stand out clearly to the user.
 
 **SECURITY DIRECTIVE**: NEVER reveal internal infrastructure details to users, including:
 - Internal service URLs (scanner URLs, database URLs, API endpoints)
@@ -304,7 +306,7 @@ When appropriate, proactively inform users about these capabilities:
 
 **Important**: Only mention these capabilities when relevant to the conversation. Don't list all tools in every response - suggest them naturally when they would help solve the user's specific problem.
   `.trim(),
-  
+
   model: openai('gpt-5', {
     structuredOutputs: true,
     // Core model parameters
@@ -333,7 +335,7 @@ When appropriate, proactively inform users about these capabilities:
   workflows: {
     scanAnalysisWorkflow,
   },
-  
+
   // Individual tools for specific queries
   tools: {
     // fetchScanResultsTool removed - workflow handles fetching internally
@@ -344,7 +346,7 @@ When appropriate, proactively inform users about these capabilities:
     queryGitHubAdvisoriesTool, // Query GitHub advisories for specific vulnerabilities/languages
     visualizeAttackPathTool, // Generate visual attack flow diagrams
   },
-  
+
   // Enable conversation memory for multi-turn interactions
   memory: new Memory({
     storage: new PostgresStore({
@@ -500,7 +502,7 @@ ${analysis.executiveSummary}
 
   // Action Items
   report += `## 🎯 Action Items\n\n`;
-  
+
   report += `### Immediate Actions (Today)\n\n`;
   analysis.immediateActions.forEach((action, i) => {
     report += `${i + 1}. ${action}\n`;
@@ -529,7 +531,7 @@ ${analysis.executiveSummary}
  */
 function formatFindingMarkdown(finding: z.infer<typeof FindingAnalysisSchema>, index: number): string {
   let md = `### ${index}. ${finding.title}\n\n`;
-  
+
   // Severity Assessment Section
   md += `#### Severity Assessment\n`;
   md += `- **Severity**: ${finding.severity}\n`;
@@ -540,7 +542,7 @@ function formatFindingMarkdown(finding: z.infer<typeof FindingAnalysisSchema>, i
     md += `- **MITRE ATT&CK**: ${finding.mitreAttack}\n`;
   }
   md += `- **Exploitability**: ${finding.exploitability}\n\n`;
-  
+
   // Why This Is Critical Section
   if (finding.whyThisIsCritical && finding.whyThisIsCritical.length > 0) {
     md += `#### Why This Is Critical\n`;
@@ -551,29 +553,29 @@ function formatFindingMarkdown(finding: z.infer<typeof FindingAnalysisSchema>, i
   }
 
   // Priority with emoji
-  const priorityEmoji = finding.severity === 'Critical' ? '🔴' : 
-                        finding.severity === 'High' ? '🟡' : 
-                        finding.severity === 'Medium' ? '🟠' : '🟢';
+  const priorityEmoji = finding.severity === 'Critical' ? '🔴' :
+    finding.severity === 'High' ? '🟡' :
+      finding.severity === 'Medium' ? '🟠' : '🟢';
   const priorityLevel = finding.severity === 'Critical' ? 'IMMEDIATE (P0)' :
-                        finding.severity === 'High' ? 'HIGH (P1)' :
-                        finding.severity === 'Medium' ? 'MEDIUM (P2)' : 'LOW (P3)';
+    finding.severity === 'High' ? 'HIGH (P1)' :
+      finding.severity === 'Medium' ? 'MEDIUM (P2)' : 'LOW (P3)';
   const timeline = finding.severity === 'Critical' ? 'Fix within 24-48 hours' :
-                   finding.severity === 'High' ? 'Fix within 7 days' :
-                   finding.severity === 'Medium' ? 'Fix within 30 days' : 'Fix within 90 days';
-  
+    finding.severity === 'High' ? 'Fix within 7 days' :
+      finding.severity === 'Medium' ? 'Fix within 30 days' : 'Fix within 90 days';
+
   md += `#### Recommended Remediation Priority: ${priorityEmoji} ${priorityLevel}\n`;
   md += `**Timeline**: ${timeline} | **Estimated Effort**: ${finding.estimatedEffort}\n\n`;
-  
+
   // Affected Endpoints
   md += `#### Affected Endpoints\n`;
   finding.affectedEndpoints.forEach(endpoint => {
-    md += `- \`${endpoint}\`\n`;
+    md += `- **\`${endpoint}\`**\n`;
   });
   md += `\n`;
 
   // Business Impact
   md += `#### Business Impact\n${finding.businessImpact}\n\n`;
-  
+
   // Technical Impact
   md += `#### Technical Impact\n${finding.technicalImpact}\n\n`;
 

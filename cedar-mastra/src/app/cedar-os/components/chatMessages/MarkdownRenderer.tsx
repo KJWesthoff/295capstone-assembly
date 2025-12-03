@@ -7,6 +7,11 @@ import { useStyling } from 'cedar-os';
 import { Copy, Check } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import 'katex/dist/katex.min.css';
+
 // Dynamically import MermaidDiagram to avoid SSR issues
 const MermaidDiagram = dynamic(() => import('./MermaidDiagram'), { ssr: false });
 
@@ -66,7 +71,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 	return (
 		<Wrapper className={wrapperClassName}>
 			<ReactMarkdown
-				remarkPlugins={[remarkGfm]}
+				remarkPlugins={[remarkGfm, remarkMath]}
+				rehypePlugins={[rehypeKatex, rehypeRaw]}
 				components={{
 					p: ({ children }) =>
 						inline ? (
