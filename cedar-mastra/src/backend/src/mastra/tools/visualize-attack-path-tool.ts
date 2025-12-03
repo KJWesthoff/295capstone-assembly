@@ -26,6 +26,17 @@ const VisualizeAttackPathSchema = z.object({
 });
 
 // ============================================================================
+// Helper: Sanitize Strings for Mermaid
+// ============================================================================
+
+function sanitizeForMermaid(text: string | undefined): string {
+  if (!text) return '';
+  // Replace quotes with apostrophes to prevent breaking mermaid syntax
+  // Remove newlines or replace them with <br/> if needed (mermaid handles some html)
+  return text.replace(/"/g, "'").replace(/\n/g, '<br/>');
+}
+
+// ============================================================================
 // Helper: Generate Mermaid Diagram Based on Vulnerability Type
 // ============================================================================
 
@@ -74,7 +85,13 @@ function generateAttackPathDiagram(input: z.infer<typeof VisualizeAttackPathSche
 // ============================================================================
 
 function generateInjectionAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchema>, color: string): string {
-  const { endpoint, method, attackVector, impact, affectedResources } = input;
+  const endpoint = sanitizeForMermaid(input.endpoint);
+  const method = sanitizeForMermaid(input.method);
+  const attackVector = sanitizeForMermaid(input.attackVector);
+  const impact = sanitizeForMermaid(input.impact);
+  const affectedResource = sanitizeForMermaid(input.affectedResources?.[0]);
+  const vulnType = sanitizeForMermaid(input.vulnerabilityType);
+  const description = sanitizeForMermaid(input.description);
 
   return `\`\`\`mermaid
 graph LR
@@ -82,7 +99,7 @@ graph LR
     B -->|2. Send ${method} Request| C["📡 ${endpoint}"]
     C -->|3. No Input Validation| D{🔍 Database Query}
     D -->|4. Execute Malicious SQL| E[💥 SQL Execution]
-    E -->|5. Extract Data| F["💾 ${affectedResources[0] || 'Database'}"]
+    E -->|5. Extract Data| F["💾 ${affectedResource || 'Database'}"]
     F -->|6. Data Breach| G[🔓 ${impact || 'Unauthorized Access'}]
 
     style A fill:#4B5563,stroke:#9CA3AF,color:#fff
@@ -95,18 +112,22 @@ graph LR
 \`\`\`
 
 **Attack Flow Explanation:**
-1. **Attacker** crafts malicious ${input.vulnerabilityType} payload
+1. **Attacker** crafts malicious ${vulnType} payload
 2. **Injection** payload sent to vulnerable endpoint \`${method} ${endpoint}\`
 3. **Missing validation** allows payload to reach database query
 4. **Malicious query** executes with elevated privileges
-5. **Data extraction** from ${affectedResources[0] || 'sensitive database'}
+5. **Data extraction** from ${affectedResource || 'sensitive database'}
 6. **Impact**: ${impact || 'Complete database compromise'}
 
-**🚨 Severity: ${input.severity}** - ${input.description}`;
+**🚨 Severity: ${input.severity}** - ${description}`;
 }
 
 function generateBOLAAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchema>, color: string): string {
-  const { endpoint, method, attackVector, impact, affectedResources } = input;
+  const endpoint = sanitizeForMermaid(input.endpoint);
+  const method = sanitizeForMermaid(input.method);
+  const impact = sanitizeForMermaid(input.impact);
+  const affectedResources = (input.affectedResources || []).map(r => sanitizeForMermaid(r));
+  const description = sanitizeForMermaid(input.description);
 
   return `\`\`\`mermaid
 graph TB
@@ -133,13 +154,17 @@ graph TB
 4. **Victim's data** (User 456) returned to attacker
 5. **Impact**: ${impact || 'Complete access to other users\' data'}
 
-**🚨 Severity: ${input.severity}** - ${input.description}
+**🚨 Severity: ${input.severity}** - ${description}
 
 **Why This Is Critical**: Any authenticated user can access ALL other users' data by simply changing the ID parameter.`;
 }
 
 function generateAuthAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchema>, color: string): string {
-  const { endpoint, method, attackVector, impact } = input;
+  const endpoint = sanitizeForMermaid(input.endpoint);
+  const method = sanitizeForMermaid(input.method);
+  const attackVector = sanitizeForMermaid(input.attackVector);
+  const impact = sanitizeForMermaid(input.impact);
+  const description = sanitizeForMermaid(input.description);
 
   return `\`\`\`mermaid
 graph LR
@@ -166,11 +191,14 @@ graph LR
 4. **Privilege escalation** to administrator role
 5. **Impact**: ${impact || 'Complete system takeover'}
 
-**🚨 Severity: ${input.severity}** - ${input.description}`;
+**🚨 Severity: ${input.severity}** - ${description}`;
 }
 
 function generateXSSAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchema>, color: string): string {
-  const { endpoint, method, impact } = input;
+  const endpoint = sanitizeForMermaid(input.endpoint);
+  const method = sanitizeForMermaid(input.method);
+  const impact = sanitizeForMermaid(input.impact);
+  const description = sanitizeForMermaid(input.description);
 
   return `\`\`\`mermaid
 graph TB
@@ -198,11 +226,14 @@ graph TB
 5. **Session theft**: Attacker steals authentication tokens
 6. **Impact**: ${impact || 'Complete account takeover of victims'}
 
-**🚨 Severity: ${input.severity}** - ${input.description}`;
+**🚨 Severity: ${input.severity}** - ${description}`;
 }
 
 function generateRateLimitAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchema>, color: string): string {
-  const { endpoint, method, impact } = input;
+  const endpoint = sanitizeForMermaid(input.endpoint);
+  const method = sanitizeForMermaid(input.method);
+  const impact = sanitizeForMermaid(input.impact);
+  const description = sanitizeForMermaid(input.description);
 
   return `\`\`\`mermaid
 graph LR
@@ -227,13 +258,19 @@ graph LR
 4. **Server resources** (CPU, memory, bandwidth) exhausted
 5. **Impact**: ${impact || 'Service becomes unavailable to legitimate users'}
 
-**🚨 Severity: ${input.severity}** - ${input.description}`;
+**🚨 Severity: ${input.severity}** - ${description}`;
 }
 
 function generateGenericAttackDiagram(input: z.infer<typeof VisualizeAttackPathSchema>, color: string): string {
-  const { endpoint, method, attackVector, impact, affectedResources } = input;
+  const endpoint = sanitizeForMermaid(input.endpoint);
+  const method = sanitizeForMermaid(input.method);
+  const attackVector = sanitizeForMermaid(input.attackVector);
+  const impact = sanitizeForMermaid(input.impact);
+  const affectedResources = (input.affectedResources || []).map(r => sanitizeForMermaid(r));
+  const vulnType = sanitizeForMermaid(input.vulnerabilityType);
+  const description = sanitizeForMermaid(input.description);
 
-  const resources = affectedResources && affectedResources.length > 0
+  const resources = affectedResources.length > 0
     ? affectedResources.join('<br/>')
     : 'System Resources';
 
@@ -256,11 +293,11 @@ graph LR
 **Attack Flow Explanation:**
 1. **Attacker** targets vulnerable endpoint \`${method} ${endpoint}\`
 2. **Exploitation**: ${attackVector || 'Leverages security weakness to bypass controls'}
-3. **Security control bypassed**: ${input.vulnerabilityType} allows unauthorized access
+3. **Security control bypassed**: ${vulnType} allows unauthorized access
 4. **Affected resources**: ${affectedResources.join(', ') || 'Critical system components'}
 5. **Impact**: ${impact || 'Security breach and potential data loss'}
 
-**🚨 Severity: ${input.severity}** - ${input.description}`;
+**🚨 Severity: ${input.severity}** - ${description}`;
 }
 
 // ============================================================================
