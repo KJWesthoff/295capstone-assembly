@@ -44,9 +44,9 @@ export function getPostgresPool(): Pool {
       connectionTimeoutMillis: 5000, // Fail fast on connection
       statement_timeout: 60000, // 60 second statement timeout
       query_timeout: 60000, // 60 second query timeout
-      ssl: {
-        rejectUnauthorized: false, // Accept self-signed certificates in development
-      },
+      ssl: DATABASE_URL.includes('sslmode=require') || DATABASE_URL.includes('ssl=true')
+        ? { rejectUnauthorized: false }
+        : undefined,
     });
 
     // Handle pool errors
@@ -121,9 +121,9 @@ export async function getDatabaseClient(): Promise<Client> {
     connectionString: DATABASE_URL,
     statement_timeout: 60000,
     query_timeout: 60000,
-    ssl: {
-      rejectUnauthorized: false, // Accept self-signed certificates in development
-    },
+    ssl: DATABASE_URL.includes('sslmode=require') || DATABASE_URL.includes('ssl=true')
+      ? { rejectUnauthorized: false }
+      : undefined,
   });
 
   try {
@@ -131,8 +131,7 @@ export async function getDatabaseClient(): Promise<Client> {
     return client;
   } catch (error) {
     throw new Error(
-      `Failed to connect to PostgreSQL database: ${
-        error instanceof Error ? error.message : 'Unknown error'
+      `Failed to connect to PostgreSQL database: ${error instanceof Error ? error.message : 'Unknown error'
       }`
     );
   }
