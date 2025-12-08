@@ -293,7 +293,7 @@ When appropriate, proactively inform users about these capabilities:
 
 **Important**: Only mention these capabilities when relevant to the conversation. Don't list all tools in every response - suggest them naturally when they would help solve the user's specific problem.
   `.trim(),
-  model: openai('gpt-5'),
+  model: openai('gpt-4o'),
 
   // Individual tools for specific queries
   tools: {
