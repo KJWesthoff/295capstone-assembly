@@ -35,7 +35,7 @@ const CTA = () => {
             <Button
               size="lg"
               variant="outline"
-              className="text-lg border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary"
+              className="text-lg bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary"
             >
               Schedule Demo
             </Button>
@@ -44,12 +44,12 @@ const CTA = () => {
           {/* Trust Indicators */}
           <div className="flex flex-wrap justify-center gap-8 pt-8 border-t border-primary-foreground/20">
             <div className="text-center">
-              <p className="text-3xl font-bold text-accent">10,000+</p>
-              <p className="text-sm text-primary-foreground/70">APIs Scanned</p>
+              <p className="text-3xl font-bold text-accent">49,000+</p>
+              <p className="text-sm text-primary-foreground/70">Security Records</p>
             </div>
             <div className="text-center">
-              <p className="text-3xl font-bold text-accent">99.9%</p>
-              <p className="text-sm text-primary-foreground/70">Accuracy Rate</p>
+              <p className="text-3xl font-bold text-accent">3</p>
+              <p className="text-sm text-primary-foreground/70">Scanning Engines</p>
             </div>
             <div className="text-center">
               <p className="text-3xl font-bold text-accent">&lt; 2min</p>

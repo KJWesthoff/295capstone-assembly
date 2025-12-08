@@ -4,20 +4,20 @@ const steps = [
   {
     icon: Upload,
     number: "01",
-    title: "Connect Your API",
-    description: "Simply provide your API endpoint URL or upload your OpenAPI specification. No complex configuration needed.",
+    title: "Scanner Finds It",
+    description: "Raw scanner output is noisy, technical, and overwhelming. Without context, it's just a list of problems.",
   },
   {
     icon: Search,
     number: "02",
-    title: "Automated Scanning",
-    description: "VentiAPI automatically tests your endpoints for vulnerabilities, authentication issues, and security misconfigurations.",
+    title: "Analyst Triages It",
+    description: "VentiAPI enriches findings with real-world exploit context, filtering out false positives and prioritizing real risks.",
   },
   {
     icon: FileCheck,
     number: "03",
-    title: "Get Actionable Results",
-    description: "Receive clear, prioritized reports with step-by-step remediation guides written for all skill levels.",
+    title: "Developer Fixes It",
+    description: "Developers receive exact reproduction steps and pull-request-ready code fixes, closing the remediation gap.",
   },
 ];
 
@@ -28,11 +28,10 @@ const HowItWorks = () => {
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
           <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-4">
-            Security in Three
-            <span className="block text-accent mt-2">Simple Steps</span>
+            The 55-Day Gap
           </h2>
           <p className="text-lg text-muted-foreground">
-            No security degree required. Get comprehensive API security in minutes.
+            Attackers exploit new vulnerabilities in 5 days. Organizations take 55 days to fix them. VentiAPI closes that window.
           </p>
         </div>
 
@@ -73,10 +72,10 @@ const HowItWorks = () => {
         <div className="text-center mt-16 max-w-2xl mx-auto">
           <div className="bg-accent/10 border border-accent/20 rounded-xl p-6">
             <p className="text-foreground font-medium">
-              🚀 Average scan time: <span className="text-accent font-bold">Under 2 minutes</span>
+              🚀 <span className="text-accent font-bold">50 Days Saved</span>
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              From connection to comprehensive report in less time than it takes to make coffee
+              Automating the translation from "vulnerability found" to "fix ready" saves weeks of back-and-forth.
             </p>
           </div>
         </div>

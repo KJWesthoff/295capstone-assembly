@@ -12,9 +12,9 @@ import heroSecurity from "@/assets/hero-security.png";
 type UserRole = 'executive' | 'security' | 'developer';
 
 const roles: { value: UserRole; label: string; icon: string; description: string }[] = [
-  { value: 'executive', label: 'C-Suite Executive', icon: '👔', description: 'High-level risk overview' },
-  { value: 'security', label: 'Security Analyst', icon: '🛡️', description: 'Detailed vulnerability analysis' },
-  { value: 'developer', label: 'Software Engineer', icon: '💻', description: 'Actionable remediation guidance' },
+  { value: 'executive', label: 'C-Suite Executive', icon: '👔', description: 'Plain-language risk summaries' },
+  { value: 'security', label: 'Security Analyst', icon: '🛡️', description: 'Full technical findings & intel' },
+  { value: 'developer', label: 'Software Engineer', icon: '💻', description: 'Code-level fixes & reproduction' },
 ];
 
 const Hero = () => {
@@ -78,28 +78,27 @@ const Hero = () => {
             </div>
 
             <h2 className="text-4xl md:text-6xl font-bold text-primary-foreground leading-tight">
-              Secure Your APIs
-              <span className="block text-accent mt-2">Without the Complexity</span>
+              From Scan
+              <span className="block text-accent mt-2">to Remediation</span>
             </h2>
 
             <p className="text-lg md:text-xl text-primary-foreground/90 max-w-2xl">
-              Simple, powerful REST API security scanning designed for everyone. 
-              Detect vulnerabilities, ensure compliance, and protect your data—no cybersecurity expertise required.
+              The person who finds a vulnerability, owns the business, and fixes the code are three different people with three different needs. VentiAPI connects them.
             </p>
 
             {/* Feature Pills */}
             <div className="flex flex-wrap gap-4 justify-center lg:justify-start">
               <div className="flex items-center gap-2 bg-primary-foreground/10 backdrop-blur-sm px-4 py-2 rounded-full">
                 <Shield className="w-5 h-5 text-accent" />
-                <span className="text-primary-foreground font-medium">Instant Scanning</span>
+                <span className="text-primary-foreground font-medium">Unified Detection</span>
               </div>
               <div className="flex items-center gap-2 bg-primary-foreground/10 backdrop-blur-sm px-4 py-2 rounded-full">
                 <Lock className="w-5 h-5 text-accent" />
-                <span className="text-primary-foreground font-medium">Zero Config</span>
+                <span className="text-primary-foreground font-medium">Expert Context</span>
               </div>
               <div className="flex items-center gap-2 bg-primary-foreground/10 backdrop-blur-sm px-4 py-2 rounded-full">
                 <Zap className="w-5 h-5 text-accent" />
-                <span className="text-primary-foreground font-medium">Real-time Results</span>
+                <span className="text-primary-foreground font-medium">Actionable Fixes</span>
               </div>
             </div>
 
@@ -158,7 +157,7 @@ const Hero = () => {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="text-lg border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary w-full sm:w-auto"
+                  className="text-lg bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary w-full sm:w-auto"
                 >
                   Try Demo
                 </Button>
@@ -173,10 +172,7 @@ const Hero = () => {
               </Link>
             </p>
 
-            {/* Trust Badge */}
-            <p className="text-sm text-primary-foreground/70 pt-4">
-              AI-powered
-            </p>
+
           </div>
 
           {/* Right Column - Logo Display */}

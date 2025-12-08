@@ -66,11 +66,11 @@ const Footer = () => {
                   Documentation
                 </a>
               </li>
-              <li>
+              {/* <li>
                 <a href="#" className="text-sm text-primary-foreground/70 hover:text-accent transition-colors">
                   API Reference
                 </a>
-              </li>
+              </li> */}
             </ul>
           </div>
 
@@ -83,7 +83,7 @@ const Footer = () => {
                   Capstone Project
                 </Link>
               </li>
-              <li>
+              {/* <li>
                 <a href="#" className="text-sm text-primary-foreground/70 hover:text-accent transition-colors">
                   Blog
                 </a>
@@ -92,7 +92,7 @@ const Footer = () => {
                 <a href="#" className="text-sm text-primary-foreground/70 hover:text-accent transition-colors">
                   Careers
                 </a>
-              </li>
+              </li> */}
               <li>
                 <a href="#" className="text-sm text-primary-foreground/70 hover:text-accent transition-colors">
                   Contact
