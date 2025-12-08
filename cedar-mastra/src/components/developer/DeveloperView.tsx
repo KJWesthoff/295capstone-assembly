@@ -12,10 +12,11 @@ import { useScanManager } from "@/hooks/useScanManager";
 import { ScanLauncher, ScanProgressTracker } from "@/components/scanner";
 import { ScanSelector } from "@/components/shared/ScanSelector";
 import { useScanResultsState } from "@/app/cedar-os/scanState";
+import { transformVulnerabilityFindings } from "@/lib/transformFindings";
 
 interface DeveloperViewProps {
-  selectedFindings?: Set<string>;
-  onSelectionChange?: (selected: Set<string>) => void;
+  selectedFindings?: Set<string | number>;
+  onSelectionChange?: (selected: Set<string | number>) => void;
 }
 
 export const DeveloperView = ({ selectedFindings, onSelectionChange }: DeveloperViewProps = {}) => {
@@ -35,45 +36,7 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
   // Transform Cedar findings to Finding type for display
   const actualFindings: Finding[] = useMemo(() => {
     if (!scanResults?.findings || scanResults.findings.length === 0) return [];
-
-    return scanResults.findings.map((f: any) => ({
-      id: f.id || `${f.endpoint}-${f.rule}`,
-      title: f.title,
-      severity: f.severity as 'Critical' | 'High' | 'Medium' | 'Low',
-      endpoint: {
-        method: f.method || 'GET',
-        path: f.endpoint || '/',
-        service: f.scanner || 'unknown',
-      },
-      description: f.description,
-      recommendation: f.recommendation || 'No recommendation available',
-      impact: f.impact || f.description,
-      scanner: f.scanner || 'unknown',
-      evidence: f.evidence || {},
-      // Add default values for missing fields
-      cvss: f.score || 0,
-      exploitSignal: 0,
-      exploitPresent: false,
-      owasp: f.rule || '',
-      cwe: [],
-      cve: [],
-      scanners: [f.scanner || 'unknown'],
-      status: 'New' as const,
-      evidenceId: f.id || '',
-      exposure: 0,
-      recencyTrend: 0,
-      blastRadius: 0,
-      priorityScore: 0,
-      firstSeen: f.created_at || new Date().toISOString(),
-      lastSeen: f.created_at || new Date().toISOString(),
-      owner: '',
-      slaDue: '',
-      flags: {
-        isNew: true,
-        isRegressed: false,
-        isResolved: false,
-      },
-    }));
+    return transformVulnerabilityFindings(scanResults.findings);
   }, [scanResults]);
 
   // Register findings with Cedar for @mention functionality
