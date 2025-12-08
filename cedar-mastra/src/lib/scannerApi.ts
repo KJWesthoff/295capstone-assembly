@@ -127,6 +127,24 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
+        // If 401 or 403, clear stale token and retry once
+        if (response.status === 401 || response.status === 403) {
+          console.warn('Authentication expired, re-authenticating...');
+          scannerAuth.logout();
+          const reAuthenticated = await ensureScannerAuth();
+          if (reAuthenticated) {
+            const retryResponse = await fetch(`${this.baseUrl}/api/scan/start`, {
+              method: 'POST',
+              headers: {
+                ...getScannerAuthHeader(),
+              },
+              body: formData,
+            });
+            if (retryResponse.ok) {
+              return retryResponse.json();
+            }
+          }
+        }
         const error = await response.text();
         throw new Error(`Failed to start scan: ${response.status} - ${error}`);
       }
@@ -160,8 +178,8 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
-        // If 403, try to re-authenticate and retry once
-        if (response.status === 403) {
+        // If 401 or 403, try to re-authenticate and retry once
+        if (response.status === 401 || response.status === 403) {
           console.warn('Authentication expired, re-authenticating...');
           scannerAuth.logout();
           const reAuthenticated = await ensureScannerAuth();
@@ -212,8 +230,8 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
-        // If 403, try to re-authenticate and retry once
-        if (response.status === 403) {
+        // If 401 or 403, try to re-authenticate and retry once
+        if (response.status === 401 || response.status === 403) {
           console.warn('Authentication expired, re-authenticating...');
           scannerAuth.logout();
           const reAuthenticated = await ensureScannerAuth();
@@ -277,6 +295,15 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
+        // If 401 or 403, clear stale token and retry once
+        if (response.status === 401 || response.status === 403) {
+          console.warn('Authentication expired, re-authenticating...');
+          scannerAuth.logout();
+          const reAuthenticated = await ensureScannerAuth();
+          if (reAuthenticated) {
+            return this.listScans(limit, offset);
+          }
+        }
         throw new Error(`Failed to list scans: ${response.status}`);
       }
 
@@ -308,6 +335,22 @@ export class ScannerApiClient {
       });
 
       if (!response.ok) {
+        // If 401 or 403, clear stale token and retry once
+        if (response.status === 401 || response.status === 403) {
+          console.warn('Authentication expired, re-authenticating...');
+          scannerAuth.logout();
+          const reAuthenticated = await ensureScannerAuth();
+          if (reAuthenticated) {
+            const retryResponse = await fetch(`${this.baseUrl}/api/scanners`, {
+              headers: {
+                ...getScannerAuthHeader(),
+              },
+            });
+            if (retryResponse.ok) {
+              return retryResponse.json();
+            }
+          }
+        }
         throw new Error(`Failed to get scanners: ${response.status}`);
       }
 

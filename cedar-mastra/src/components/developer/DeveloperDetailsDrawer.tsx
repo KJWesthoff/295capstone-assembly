@@ -219,61 +219,59 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
         {/* Tabs */}
         <ScrollArea className="flex-1">
           <Tabs defaultValue="fix" className="p-6">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="fix">Fix</TabsTrigger>
               <TabsTrigger value="evidence">Evidence & Repro</TabsTrigger>
               <TabsTrigger value="similar">Similar Fixes</TabsTrigger>
               <TabsTrigger value="compliance">Compliance</TabsTrigger>
             </TabsList>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-4">
-              <Card className="p-4 bg-muted/20 border-border">
-                <h3 className="font-semibold text-foreground mb-2">Root Cause Summary</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {finding.summaryHumanReadable}
-                </p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-semibold text-foreground">Impact Scope:</span>
-                    <p className="text-muted-foreground">Blast Radius: {finding.blastRadius}/10</p>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground">Breaking Risk:</span>
-                    <p className="text-muted-foreground">Low (backward compatible fix)</p>
-                  </div>
-                </div>
-              </Card>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  addCustomToChat(
-                    `developer-overview-${finding.id}`,
-                    { overview: finding.summaryHumanReadable },
-                    "Overview",
-                    finding.severity
-                  )
-                }
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Overview to Chat
-              </Button>
-            </TabsContent>
-
             {/* Fix Tab (Default) */}
             <TabsContent value="fix" className="space-y-6">
+              {/* Overview Section */}
+              <div className="space-y-4 border-b border-border pb-6">
+                <Card className="p-4 bg-muted/20 border-border">
+                  <h3 className="font-semibold text-foreground mb-2">Root Cause Summary</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {finding.summaryHumanReadable}
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-semibold text-foreground">Impact Scope:</span>
+                      <p className="text-muted-foreground">Blast Radius: {finding.blastRadius}/10</p>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-foreground">Breaking Risk:</span>
+                      <p className="text-muted-foreground">Low (backward compatible fix)</p>
+                    </div>
+                  </div>
+                </Card>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    addCustomToChat(
+                      `developer-overview-${finding.id}`,
+                      { overview: finding.summaryHumanReadable },
+                      "Overview",
+                      finding.severity
+                    )
+                  }
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Overview to Chat
+                </Button>
+              </div>
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Hot Patch */}
                 <Card className="p-4 bg-muted/20 border-border">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-foreground">🚨 Hot Patch (48h mitigation)</h3>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleCopyCode(hotPatchConfig)}
-                        >
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleCopyCode(hotPatchConfig)}
+                    >
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>
@@ -461,7 +459,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                       </div>
                     </div>
                     <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-{`${evidence.request.method} ${evidence.request.url}
+                      {`${evidence.request.method} ${evidence.request.url}
 ${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`}
                     </pre>
                   </Card>
@@ -482,7 +480,7 @@ ${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\
                       </Button>
                     </div>
                     <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono max-h-64">
-{`HTTP/1.1 ${evidence.response.status_code}
+                      {`HTTP/1.1 ${evidence.response.status_code}
 ${Object.entries(evidence.response.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}
 
 ${evidence.response.body}`}
