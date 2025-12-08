@@ -487,10 +487,52 @@ ${evidence.response.body}`}
                     </pre>
                   </Card>
 
-                  <Card className="p-4 bg-muted/20 border-border">
-                    <h3 className="font-semibold text-foreground mb-2">Auth Context</h3>
-                    <p className="text-sm text-muted-foreground">{evidence.auth_context || "N/A"}</p>
-                  </Card>
+                  {/* Reproduction Steps Section */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-base text-foreground border-b pb-2">Reproduction Steps</h3>
+
+                    {/* curl Command */}
+                    <Card className="p-4 bg-muted/20 border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium text-sm text-foreground">curl Command</h4>
+                        <Button variant="ghost" size="sm" onClick={() => handleCopyCode(evidence.curl_command || "")}>
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy curl
+                        </Button>
+                      </div>
+                      <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
+                        {evidence.curl_command}
+                      </pre>
+                    </Card>
+
+                    {/* Manual Steps */}
+                    {evidence.steps && evidence.steps.length > 0 && (
+                      <Card className="p-4 bg-muted/20 border-border">
+                        <h4 className="font-medium text-sm mb-2 text-foreground">Manual Steps</h4>
+                        <ol className="list-decimal list-inside space-y-2 text-sm">
+                          {evidence.steps.map((step: string, i: number) => (
+                            <li key={i} className="text-muted-foreground pl-2">
+                              {step}
+                            </li>
+                          ))}
+                        </ol>
+                      </Card>
+                    )}
+
+                    {/* Authentication Context */}
+                    <Card className="p-4 bg-muted/20 border-border">
+                      <h4 className="font-medium text-sm mb-1 text-foreground">Authentication Used</h4>
+                      <p className="text-sm text-muted-foreground">{evidence.auth_context || "N/A"}</p>
+                    </Card>
+
+                    {/* Probe */}
+                    {evidence.probe_name && (
+                      <Card className="p-4 bg-muted/20 border-border">
+                        <h4 className="font-medium text-sm mb-1 text-foreground">Probe</h4>
+                        <Badge variant="outline">{evidence.probe_name}</Badge>
+                      </Card>
+                    )}
+                  </div>
                 </>
               ) : (
                 // Old evidence format fallback
@@ -532,16 +574,16 @@ ${evidence.response.body}`}
 
                   <Card className="p-4 bg-muted/20 border-border">
                     <h3 className="font-semibold text-foreground mb-2">Auth Context</h3>
-                    <p className="text-sm text-muted-foreground">{evidence?.authContext || evidence?.auth_context || "N/A"}</p>
+                    <p className="text-sm text-muted-foreground">{evidence?.auth_context || "N/A"}</p>
                   </Card>
                 </>
               )}
 
-              {((evidence?.pocLinks && evidence.pocLinks.length > 0) || (evidence?.poc_references && evidence.poc_references.length > 0)) && (
+              {evidence?.poc_references && evidence.poc_references.length > 0 && (
                 <Card className="p-4 bg-destructive/10 border-destructive">
                   <h3 className="font-semibold text-foreground mb-2">⚠️ POC Links (Public Exploits)</h3>
                   <ul className="space-y-1">
-                    {(evidence.pocLinks || evidence.poc_references || []).map((link, i) => (
+                    {evidence.poc_references.map((link: string, i: number) => (
                       <li key={i}>
                         <a
                           href={link}

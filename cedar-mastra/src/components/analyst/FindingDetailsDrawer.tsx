@@ -92,9 +92,9 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
             <Button
               onClick={() => handleAddToChat("full")}
               size="sm"
-              className="bg-gradient-primary hover:opacity-90"
+              className="w-full bg-gradient-primary hover:opacity-90"
             >
-              <Plus className="mr-2 h-3 w-3" />
+              <Plus className="mr-2 h-4 w-4" />
               Add Full Details to Chat
             </Button>
           </div>
@@ -394,6 +394,6 @@ ${evidence.response.body}`}
           </Tabs>
         </ScrollArea>
       </div>
-    </div>
+    </div >
   );
 };
