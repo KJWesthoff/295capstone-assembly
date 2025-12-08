@@ -10,6 +10,7 @@ import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { toast } from "sonner";
 import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
 import { getSeverityColor, Severity } from "@/lib/utils/severity";
+import { CodeBlock } from "@/components/ui/code-block";
 import type { Finding } from "@/types/finding";
 
 interface DeveloperDetailsDrawerProps {
@@ -265,7 +266,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Hot Patch */}
                 <Card className="p-4 bg-muted/20 border-border">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-foreground">🚨 Hot Patch (48h mitigation)</h3>
                     <Button
                       size="sm"
@@ -275,9 +276,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>
-                  <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                    {hotPatchConfig}
-                  </pre>
+                  <CodeBlock language="nginx" value={hotPatchConfig} />
                   <p className="text-xs text-muted-foreground mt-2">
                     Deploy to NGINX/API Gateway immediately for rate limiting protection.
                   </p>
@@ -285,7 +284,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
 
                 {/* Full Code Fix */}
                 <Card className="p-4 bg-muted/20 border-border">
-                  <h3 className="font-semibold text-foreground mb-3">✅ Full Code Fix</h3>
+                  <h3 className="font-semibold text-foreground">✅ Full Code Fix</h3>
                   <div className="space-y-3">
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -298,9 +297,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                           <Copy className="h-4 w-4" />
                         </Button>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono max-h-[400px]">
-                        {proposedDiff}
-                      </pre>
+                      <CodeBlock language="javascript" value={proposedDiff} className="max-h-[400px] overflow-auto" />
                     </div>
                   </div>
                 </Card>
@@ -318,9 +315,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                  {unitTest}
-                </pre>
+                <CodeBlock language="javascript" value={unitTest} />
               </Card>
 
               {/* Guardrail */}
@@ -335,9 +330,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                  {guardrailRule}
-                </pre>
+                <CodeBlock language="javascript" value={guardrailRule} />
               </Card>
 
               {/* Create PR Panel */}
@@ -361,9 +354,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                   </div>
                   <div>
                     <span className="font-semibold text-foreground">PR Body:</span>
-                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono mt-2 max-h-[200px]">
-                      {prBody}
-                    </pre>
+                    <CodeBlock language="markdown" value={prBody} className="mt-2 max-h-[200px] overflow-auto" />
                   </div>
                   <div className="flex gap-2 pt-2">
                     <Button size="sm" onClick={() => toast.info("PR stub - This would open a PR in your repo")}>
@@ -458,10 +449,8 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                         </Button>
                       </div>
                     </div>
-                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                      {`${evidence.request.method} ${evidence.request.url}
-${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`}
-                    </pre>
+                    <CodeBlock language="http" value={`${evidence.request.method} ${evidence.request.url}
+${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`} />
                   </Card>
 
                   <Card className="p-4 bg-muted/20 border-border">
@@ -479,12 +468,10 @@ ${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
-                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono max-h-64">
-                      {`HTTP/1.1 ${evidence.response.status_code}
+                    <CodeBlock language="http" value={`HTTP/1.1 ${evidence.response.status_code}
 ${Object.entries(evidence.response.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}
 
-${evidence.response.body}`}
-                    </pre>
+${evidence.response.body}`} className="max-h-64 overflow-auto" />
                   </Card>
 
                   {/* Reproduction Steps Section */}
@@ -500,9 +487,7 @@ ${evidence.response.body}`}
                           Copy curl
                         </Button>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                        {evidence.curl_command}
-                      </pre>
+                      <CodeBlock language="bash" value={evidence.curl_command || ""} />
                     </Card>
 
                     {/* Manual Steps */}
@@ -551,9 +536,7 @@ ${evidence.response.body}`}
                         </Button>
                       </div>
                     </div>
-                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                      {typeof evidence?.request === 'string' ? evidence.request : JSON.stringify(evidence?.request, null, 2) || "N/A"}
-                    </pre>
+                    <CodeBlock language="json" value={typeof evidence?.request === 'string' ? evidence.request : JSON.stringify(evidence?.request, null, 2) || "N/A"} />
                   </Card>
 
                   <Card className="p-4 bg-muted/20 border-border">
@@ -567,9 +550,7 @@ ${evidence.response.body}`}
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
-                    <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                      {typeof evidence?.response === 'string' ? evidence.response : JSON.stringify(evidence?.response, null, 2) || "N/A"}
-                    </pre>
+                    <CodeBlock language="json" value={typeof evidence?.response === 'string' ? evidence.response : JSON.stringify(evidence?.response, null, 2) || "N/A"} />
                   </Card>
 
                   <Card className="p-4 bg-muted/20 border-border">
@@ -632,10 +613,8 @@ ${evidence.response.body}`}
                 <p className="text-sm text-muted-foreground mb-2">
                   Fixed similar SQL injection by using ORM parameterized queries. Time-to-fix: 2 days.
                 </p>
-                <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                  {`- const query = \`SELECT * FROM users WHERE id='\${id}'\`;
-+ const user = await User.findByPk(id);`}
-                </pre>
+                <CodeBlock language="diff" value={`- const query = \`SELECT * FROM users WHERE id='\${id}'\`;
++ const user = await User.findByPk(id);`} />
               </Card>
 
               <Card className="p-4 bg-muted/20 border-border">
@@ -649,9 +628,7 @@ ${evidence.response.body}`}
                 <p className="text-sm text-muted-foreground mb-2">
                   Node.js Express SQL injection pattern. Use prepared statements.
                 </p>
-                <pre className="bg-background p-3 rounded text-xs overflow-x-auto border border-border font-mono">
-                  db.query('SELECT * FROM users WHERE id = ?', [userId], callback);
-                </pre>
+                <CodeBlock language="javascript" value="db.query('SELECT * FROM users WHERE id = ?', [userId], callback);" />
               </Card>
 
               <Button

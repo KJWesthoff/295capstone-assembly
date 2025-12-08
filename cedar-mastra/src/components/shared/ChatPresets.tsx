@@ -2,9 +2,7 @@
 
 import { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { useContextBasket } from "@/contexts/ContextBasketContext";
-import { toast } from "sonner";
-import { cedarEstimateTokens } from "@/lib/cedar/actions";
+import { useCedarStore } from "cedar-os";
 
 export interface ChatPreset {
   icon: LucideIcon;
@@ -35,24 +33,23 @@ export const ChatPresets = ({
   variant = 'default',
   className = ""
 }: ChatPresetsProps) => {
-  const { addItem } = useContextBasket();
+  const setShowChat = useCedarStore((state) => state.setShowChat);
 
   const handlePresetClick = (preset: ChatPreset) => {
-    // Support both instruction and prompt fields for compatibility
-    const payload = preset.instruction
-      ? { instruction: preset.instruction }
-      : { prompt: preset.prompt };
+    // Get the message text from either instruction or prompt field
+    const message = preset.instruction || preset.prompt || '';
 
-    const tokens = cedarEstimateTokens(payload);
+    // Open the chat window
+    setShowChat(true);
 
-    addItem({
-      type: "report",
-      label: preset.label,
-      data: payload,
-      tokens,
-    });
-
-    toast.success(`Added "${preset.label}" preset to chat context`);
+    // Small delay to ensure chat is open before populating
+    setTimeout(() => {
+      // Dispatch custom event to populate the chat input
+      const event = new CustomEvent('cedar-chat-send', {
+        detail: { message }
+      });
+      window.dispatchEvent(event);
+    }, 100);
   };
 
   // Build grid class using conditional logic (Tailwind requires full class names)

@@ -9,7 +9,6 @@
 
 import { Client } from 'pg';
 import { mistral } from '@ai-sdk/mistral';
-import { openai } from '@ai-sdk/openai';
 import { embed, embedMany } from 'ai';
 import { 
   rerankWithScorer, 
@@ -286,7 +285,7 @@ export async function rerankOWASPResults(
   try {
     const relevanceScorer = new MastraAgentRelevanceScorer(
       'owasp-relevance-scorer',
-      openai('gpt-4o-mini')
+      mistral('mistral-small-latest')
     );
 
     const reranked = await rerankWithScorer({
@@ -343,7 +342,7 @@ export async function rerankCWEResults(
   try {
     const relevanceScorer = new MastraAgentRelevanceScorer(
       'cwe-relevance-scorer',
-      openai('gpt-4o-mini')
+      mistral('mistral-small-latest')
     );
 
     const reranked = await rerankWithScorer({
@@ -382,7 +381,8 @@ export async function rerankCWEResults(
 }
 
 /**
- * Retrieval pipeline (re-ranking disabled for now to reduce complexity and latency)
+ * Retrieval pipeline with Mistral-powered re-ranking
+ * Uses mistral-small-latest for relevance scoring
  * This is the main function to use for scan analysis
  */
 export async function retrieveAndRerankContext(
@@ -391,20 +391,40 @@ export async function retrieveAndRerankContext(
   options: {
     owaspTopK?: number;
     cweTopK?: number;
+    enableReranking?: boolean;
   } = {}
 ): Promise<{
   owaspData: RetrievalResult[];
   cweData: RetrievalResult[];
 }> {
-  const { owaspTopK = 5, cweTopK = 10 } = options;
+  const { owaspTopK = 5, cweTopK = 10, enableReranking = true } = options;
 
-  // Just do batch retrieval (skip re-ranking for now)
+  // Step 1: Batch retrieval from vector database
   const enriched = await enrichScanWithContext(processed, config);
 
-  // Return top-K results based on vector similarity alone
+  // Step 2: Generate scan context for re-ranking
+  const scanContext = generateScanEmbeddingText(processed);
+
+  if (!enableReranking) {
+    // Skip re-ranking if disabled (for latency-sensitive use cases)
+    console.log('⏭️  Re-ranking disabled, using vector similarity only');
+    return {
+      owaspData: enriched.owaspData.slice(0, owaspTopK),
+      cweData: enriched.cweData.slice(0, cweTopK),
+    };
+  }
+
+  console.log('🎯 Re-ranking enabled, using Mistral for relevance scoring...');
+
+  // Step 3: Re-rank results in parallel for scan-specific relevance
+  const [rerankedOWASP, rerankedCWE] = await Promise.all([
+    rerankOWASPResults(enriched.owaspData, scanContext, { topK: owaspTopK }),
+    rerankCWEResults(enriched.cweData, scanContext, { topK: cweTopK }),
+  ]);
+
   return {
-    owaspData: enriched.owaspData.slice(0, owaspTopK),
-    cweData: enriched.cweData.slice(0, cweTopK),
+    owaspData: rerankedOWASP,
+    cweData: rerankedCWE,
   };
 }
 

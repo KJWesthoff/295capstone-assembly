@@ -202,10 +202,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 						<em className='italic inline'>{processChildren(children)}</em>
 					),
 					ul: ({ children }) => (
-						<ul className='list-disc list-inside my-2 space-y-1'>{children}</ul>
+						<ul className='list-disc list-outside pl-5 my-2 space-y-1'>{children}</ul>
 					),
 					ol: ({ children }) => (
-						<ol className='list-decimal list-inside my-2 space-y-1'>
+						<ol className='list-decimal list-outside pl-5 my-2 space-y-1'>
 							{children}
 						</ol>
 					),

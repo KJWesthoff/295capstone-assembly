@@ -8,9 +8,9 @@ import { ChatPreset } from "@/components/shared/ChatPresets";
 export const developerPresets: ChatPreset[] = [
   {
     icon: FileCode,
-    label: "Generate Fix PR",
+    label: "Priority Remediation",
     description: "Minimal code diff + unit tests for selected finding",
-    instruction: "Generate minimal, safe code diff + unit/integration tests + PR body referencing CVE/CWE/OWASP. Include 48h hot patch and guardrail rule.",
+    instruction: "Use the remediation-prioritization-tool to prioritize the remediation of the selected finding. Generate minimal, safe code diff + unit/integration tests + PR body referencing CVE/CWE/OWASP. Include 48h hot patch and guardrail rule. Use the generate-fix-pr-tool to generate the fix PR.",
   },
   {
     icon: Shield,
@@ -49,19 +49,19 @@ export const analystPresets: ChatPreset[] = [
     icon: MessageSquare,
     label: "Validate Finding",
     description: "Summarize evidence and assess exploitability",
-    prompt: "Validate the selected finding: summarize evidence and tell me if it's likely exploitable. If uncertain, list missing proof.",
+    prompt: "Run the analyze-scan-tool with the scan ID {scanId} and return a summary of the results.",
   },
   {
     icon: TrendingUp,
     label: "Prioritize Queue",
     description: "Rank by exploitability × data sensitivity",
-    prompt: "Prioritize the current queue by exploitability × data sensitivity; give me the top 10 with reasons.",
+    prompt: "Run the remediation-prioritization-tool. Prioritize the current queue by exploitability × data sensitivity; give me the top 3 with reasons.",
   },
   {
     icon: Shield,
     label: "Map to NIST",
     description: "Map findings to NIST CSF and 800-53",
-    prompt: "Map these findings to NIST CSF and 800-53 families and propose policy guardrails.",
+    prompt: "Map these findings to NIST CSF and 800-53 families and propose policy guardrails; perform retrieval with get-security-intelligence-tool.",
   },
   {
     icon: GitMerge,
@@ -73,27 +73,27 @@ export const analystPresets: ChatPreset[] = [
 
 export const executivePresets: ChatPreset[] = [
   {
+    icon: MessageSquare,
+    label: "Help me understand",
+    description: "I got a security alert and need to know what's going on",
+    instruction: "I received a security notification or alert about my website/business and I'm not sure what it means. Can you help me understand what's happening and what I need to do?",
+  },
+  {
     icon: FileText,
-    label: "Board update",
-    description: "150-word executive summary with key risks and 2 actions",
-    instruction: "Using execSummary, trend, top three risks, and compliance: write a 150-word board summary with two prioritized actions, owners, and dates. Keep it non-technical.",
+    label: "Draft email to developer",
+    description: "Write an email I can send to my developer about these issues",
+    instruction: "I need to contact my developer or IT person about these security issues. Can you help me write a clear, non-technical email that explains what they need to fix and how urgent it is?",
   },
   {
     icon: Target,
-    label: "2 actions this week",
-    description: "Highest impact actions by exploitability & exposure",
-    instruction: "If we can do only two things this week, which give the largest risk reduction and why? Tie to exploitability and exposure; include owners and ETAs.",
-  },
-  {
-    icon: Shield,
-    label: "NIST posture",
-    description: "CSF status and shortest path to green",
-    instruction: "Summarize our NIST CSF posture (Identify/Protect/Detect/Respond/Recover) and propose the shortest path to green.",
+    label: "What's most urgent?",
+    description: "Which of these issues should we fix first?",
+    instruction: "Looking at what we've found, what's the most important thing to fix first? Explain it to me like I'm not a security expert - just tell me what's at stake and what my team needs to do.",
   },
   {
     icon: AlertTriangle,
-    label: "Impact estimate",
-    description: "Business impact if top risk is exploited",
-    instruction: "Estimate business impact if the top risk is exploited. Use analogous breach cases when relevant.",
+    label: "Could this hurt my business?",
+    description: "What's the real-world impact if we don't fix this?",
+    instruction: "In plain terms, what could happen to my business if we don't address these security issues? I need to understand the actual risk so I can prioritize this properly.",
   },
 ];

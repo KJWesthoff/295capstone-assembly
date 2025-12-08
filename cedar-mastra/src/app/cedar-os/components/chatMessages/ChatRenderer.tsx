@@ -2,6 +2,7 @@ import DialogueOptions from '@/app/cedar-os/components/chatMessages/DialogueOpti
 import MarkdownRenderer from '@/app/cedar-os/components/chatMessages/MarkdownRenderer';
 import MultipleChoice from '@/app/cedar-os/components/chatMessages/MultipleChoice';
 import TodoList from '@/app/cedar-os/components/chatMessages/TodoList';
+import EmailDraftWrapper from '@/app/cedar-os/components/chatMessages/EmailDraftWrapper';
 import Flat3dContainer from '@/app/cedar-os/components/containers/Flat3dContainer';
 import {
 	DialogueOptionsMessage,
@@ -14,6 +15,37 @@ import {
 } from 'cedar-os';
 import { Ticker } from 'motion-plus-react';
 import React from 'react';
+
+/**
+ * Detects if message content looks like an email draft.
+ * Checks for common email patterns like Subject line, greeting, and signoff.
+ */
+const isEmailDraft = (content: string): boolean => {
+	if (!content || content.length < 50) return false;
+
+	const lowerContent = content.toLowerCase();
+
+	// Check for email subject line
+	const hasSubject = /\*?\*?subject:?\*?\*?/i.test(content);
+
+	// Check for common email greetings
+	const hasGreeting = /^(hi|hello|dear|hey)\s+\w+/im.test(content) ||
+		/\n(hi|hello|dear|hey)\s+\w+/im.test(content);
+
+	// Check for common email signoffs
+	const hasSignoff = /(best regards|thanks|thank you|sincerely|cheers|regards|best)/i.test(content);
+
+	// Check for "email" or "draft" mentions in context
+	const mentionsEmail = lowerContent.includes('email') ||
+		lowerContent.includes('send this to') ||
+		lowerContent.includes('here\'s a draft');
+
+	// Must have at least subject + greeting, or greeting + signoff
+	return (hasSubject && hasGreeting) ||
+		(hasGreeting && hasSignoff) ||
+		(hasSubject && hasSignoff) ||
+		(mentionsEmail && (hasGreeting || hasSignoff));
+};
 
 interface ChatRendererProps {
 	message: Message;
@@ -132,24 +164,35 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({ message }) => {
 			);
 		}
 
-		default:
+		default: {
+			const content = message.content ??
+				` \`\`\`json\n${JSON.stringify(message, null, 2)}\n\`\`\``;
+
+			// Check if this is an email draft from the assistant
+			const isAssistant = message.role === 'bot' || message.role === 'assistant';
+			const showAsEmail = isAssistant && isEmailDraft(content);
+
+			if (showAsEmail) {
+				return (
+					<div className="max-w-[100%] w-full">
+						<EmailDraftWrapper content={content} />
+					</div>
+				);
+			}
+
 			return (
 				<div
 					className={`${
-						message.role === 'bot' || message.role === 'assistant'
+						isAssistant
 							? 'max-w-[100%] w-full'
 							: 'max-w-[80%] w-fit'
 					}`}>
 					<div {...getMessageStyles(message.role)}>
-						<MarkdownRenderer
-							content={
-								message.content ??
-								` \`\`\`json\n${JSON.stringify(message, null, 2)}\n\`\`\``
-							}
-						/>
+						<MarkdownRenderer content={content} />
 					</div>
 				</div>
 			);
+		}
 	}
 };
 

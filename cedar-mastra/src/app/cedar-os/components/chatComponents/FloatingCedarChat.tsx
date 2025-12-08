@@ -49,7 +49,8 @@ export const FloatingCedarChat: React.FC<FloatingCedarChatProps> = ({
     if (typeof window !== 'undefined') {
       setChatDimensions((prev) => ({
         ...prev,
-        width: window.innerWidth * 0.66,
+        width: Math.min(window.innerWidth * 0.35, 500), // Default to ~35% or 500px, whichever is smaller
+        height: window.innerHeight * 0.85, // Use 85% of screen height
       }));
     }
   }, []);
@@ -103,8 +104,8 @@ export const FloatingCedarChat: React.FC<FloatingCedarChatProps> = ({
           {/* Chat input - fixed at bottom */}
           <div className="flex-shrink-0 p-3">
             <ChatInput
-              handleFocus={() => {}}
-              handleBlur={() => {}}
+              handleFocus={() => { }}
+              handleBlur={() => { }}
               isInputFocused={false}
               stream={stream}
             />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRegisterState } from 'cedar-os';
 import { useExecutiveRisksMentions, useExecutiveOwnersMentions } from '@/app/cedar-os/mentions';
 import type { ExecutiveRisk, ExecutiveSlaOwner } from '@/app/cedar-os/mentions';
@@ -19,6 +19,15 @@ export function useRegisterExecutiveData(
 ) {
   const [risks, setRisks] = useState(initialRisks);
   const [owners, setOwners] = useState(initialOwners);
+
+  // Sync state with props when they change (e.g., when switching to Sally Mode)
+  useEffect(() => {
+    setRisks(initialRisks);
+  }, [initialRisks]);
+
+  useEffect(() => {
+    setOwners(initialOwners);
+  }, [initialOwners]);
 
   // Register top risks as Cedar state so they can be @mentioned in chat
   useRegisterState({

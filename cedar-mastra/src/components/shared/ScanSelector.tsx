@@ -116,11 +116,15 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
         low: findings.filter((f: any) => f.severity === 'Low').length,
       };
 
+      // Find scan info from list to get server URL if needed
+      const scanInfo = scans.find(s => s.scan_id === scanId);
+      const serverUrl = scanInfo?.server_url || scanInfo?.spec_url || 'Unknown';
+
       const scanState = {
         scanId,
         findings,
         scanDate: data.scan_date || new Date().toISOString(),
-        apiBaseUrl: data.api_base_url || 'Unknown',
+        apiBaseUrl: data.api_base_url || serverUrl,
         status: 'completed' as const,
         summary,
         groupedByEndpoint,
@@ -137,6 +141,7 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
           scanId,
           summary,
           scanDate: scanState.scanDate,
+          apiBaseUrl: scanState.apiBaseUrl,
         },
         metadata: {
           label: `🔍 Scan ${scanId.slice(0, 8)}...`,

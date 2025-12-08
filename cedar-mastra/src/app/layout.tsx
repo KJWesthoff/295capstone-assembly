@@ -8,6 +8,7 @@ import { CedarCopilot, ProviderConfig } from 'cedar-os';
 import { FloatingCedarChat } from '@/app/cedar-os/components/chatComponents/FloatingCedarChat';
 import { DebuggerPanel } from '@/app/cedar-os/components/debugger/DebuggerPanel';
 import { GlobalSpells } from '@/components/shared/GlobalSpells';
+import { PageContextProvider } from '@/app/cedar-os/PageContextProvider';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -78,13 +79,16 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} ${berkeleyMono.variable} antialiased`}>
         {/* [STEP 1]: We register the main CedarCopilot wrapper at the root of the app with a Mastra provider. */}
         <CedarCopilot llmProvider={llmProvider}>
-          {children}
+          {/* PageContextProvider subscribes the current path to Cedar context for page-aware AI responses */}
+          <PageContextProvider>
+            {children}
+          </PageContextProvider>
           {/* Floating Cedar Chat - Available on all pages (only render after mount to prevent hydration errors) */}
           {mounted && (
             <>
               <FloatingCedarChat
                 side="right"
-                title="Agent"
+                title="Venti"
                 collapsedLabel="Ask me anything..."
               />
               <DebuggerPanel />

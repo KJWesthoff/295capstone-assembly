@@ -14,46 +14,53 @@ import { useExecutiveReportBridge } from "@/hooks/useExecutiveReportBridge";
 import { useRegisterExecutiveData } from "@/lib/cedar/useRegisterExecutiveData";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
-import { scannerApi } from "@/lib/scannerApi";
+import { useScanResultsState } from "@/app/cedar-os/scanState";
 import { useScanManager } from "@/hooks/useScanManager";
-import { ScanLauncher, ScanSelector, ScanProgressTracker } from "@/components/scanner";
+import { ScanLauncher, ScanProgressTracker } from "@/components/scanner";
+import { ScanSelector } from "@/components/shared/ScanSelector";
+import { ExecutiveCostOfInaction } from "./ExecutiveCostOfInaction";
+import { MerchantCenterStatus } from "./MerchantCenterStatus";
 
 export const ExecutiveView = () => {
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [scanFindings, setScanFindings] = useState<any[]>([]);
 
-  // Use centralized scan manager
+  // Get findings from Cedar state (populated by ScanSelector)
+  const { scanResults } = useScanResultsState();
+
+  const scanFindings = useMemo(() => {
+    return scanResults?.findings || [];
+  }, [scanResults]);
+
+  // Use centralized scan manager (needed for TrendChart and Launcher)
   const {
     isScanning,
     currentScanStatus,
     activeScanId,
     scans,
-    selectedScanId,
-    isLoadingScans,
     startScan,
-    selectScan,
-    refreshScans,
   } = useScanManager();
 
-  // Fetch findings when selected scan changes
-  useEffect(() => {
-    if (!selectedScanId) return;
-
-    const fetchFindings = async () => {
-      try {
-        const response = await scannerApi.getFindings(selectedScanId);
-        setScanFindings(response.findings || []);
-      } catch (error) {
-        console.error('Error fetching findings:', error);
-        setScanFindings([]);
-      }
-    };
-
-    fetchFindings();
-  }, [selectedScanId]);
+  // Detect "Sally Mode" for the demo
+  // Detect "Sally Mode" for the demo
+  // Hardcoded to true per user request for demo verification
+  const isSallyMode = true;
+  console.log("DEBUG: Sally Mode is", isSallyMode);
 
   // Transform database findings into executive-level metrics
   const execSummary = useMemo(() => {
+    if (isSallyMode) {
+      return {
+        riskScore: 8.9,
+        critical: 2,
+        high: 1,
+        pastSlaPct: 0,
+        mttrMedian: 0,
+        mttrP95: 0,
+        publicExploitCount: 1, // Mocked per user request (was 0)
+        internetFacingCount: 2, // Mocked per user request (was 1)
+      };
+    }
+
     if (!scanFindings || scanFindings.length === 0) {
       return {
         riskScore: 0,
@@ -85,9 +92,65 @@ export const ExecutiveView = () => {
       publicExploitCount: 0, // Would need exploit database integration
       internetFacingCount: 0, // Would need infrastructure data
     };
-  }, [scanFindings]);
+  }, [scanFindings, isSallyMode]);
 
   const topRisks = useMemo(() => {
+    if (isSallyMode) {
+      return [
+        {
+          id: "PETAL-001",
+          title: "SQL Injection in Delivery Scheduling Plugin",
+          severity: "Critical",
+          score: 9.8,
+          owasp: "Injection",
+          affectedEndpoints: 1,
+          businessImpact: "Customer Database Exposed",
+          systems: ["Delivery Plugin"],
+          exploitPresent: true,
+          internetFacing: true,
+          isNewOrRegressed: "New",
+          recommendedAction: "Use prepared statements",
+          owner: "Marcus (Dev)",
+          eta: "2 hours",
+          relatedBreachIds: []
+        },
+        {
+          id: "PETAL-002",
+          title: "Broken Object Level Authorization (BOLA)",
+          severity: "Critical",
+          score: 7.5,
+          owasp: "BOLA",
+          affectedEndpoints: 1,
+          businessImpact: "Order History Exposed",
+          systems: ["Order API"],
+          exploitPresent: true,
+          internetFacing: true,
+          isNewOrRegressed: "New",
+          recommendedAction: "Add permission check",
+          owner: "Marcus (Dev)",
+          eta: "4 hours",
+          relatedBreachIds: []
+        },
+        {
+          id: "PETAL-003",
+          title: "Broken Authentication",
+          severity: "High",
+          score: 8.1,
+          owasp: "Auth",
+          affectedEndpoints: 1,
+          businessImpact: "Customer Account Takeover",
+          systems: ["Auth Service"],
+          exploitPresent: false,
+          internetFacing: true,
+          isNewOrRegressed: "New",
+          recommendedAction: "Enforce strong auth",
+          owner: "Marcus (Dev)",
+          eta: "1 day",
+          relatedBreachIds: []
+        }
+      ];
+    }
+
     if (!scanFindings || scanFindings.length === 0) return [];
 
     const severityOrder: Record<string, number> = { Critical: 4, High: 3, Medium: 2, Low: 1 };
@@ -108,8 +171,16 @@ export const ExecutiveView = () => {
         owasp: f.rule || '',
         affectedEndpoints: 1,
         businessImpact: f.description,
+        systems: ["API Gateway", "User Service"],
+        exploitPresent: f.exploit_available || false,
+        internetFacing: true,
+        isNewOrRegressed: "-",
+        recommendedAction: "Review and patch",
+        owner: "Security Team",
+        eta: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        relatedBreachIds: []
       }));
-  }, [scanFindings]);
+  }, [scanFindings, isSallyMode]);
 
   const complianceSnapshot = useMemo(() => {
     if (!scanFindings || scanFindings.length === 0) {
@@ -164,6 +235,16 @@ export const ExecutiveView = () => {
   }, [scanFindings]);
 
   const trendData = useMemo(() => {
+    // Mock Trend for Sally Mode
+    if (isSallyMode) {
+      return {
+        window: '30d',
+        deltaPct: 45,
+        // Interesting curve: increasing risk
+        points: [2.1, 2.3, 2.2, 3.5, 4.1, 3.8, 5.2, 6.5, 8.1, 9.8]
+      };
+    }
+
     // Create trend data with points array for the chart
     if (!scans || scans.length === 0) {
       return {
@@ -193,7 +274,7 @@ export const ExecutiveView = () => {
       deltaPct,
       points: points.length > 0 ? points : [0],
     };
-  }, [scans]);
+  }, [scans, isSallyMode]);
 
   const slaOwners = useMemo(() => {
     if (!scanFindings || scanFindings.length === 0) return [];
@@ -247,13 +328,7 @@ export const ExecutiveView = () => {
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex-1 w-full sm:w-auto">
-            <ScanSelector
-              scans={scans}
-              selectedScanId={selectedScanId}
-              onSelectScan={selectScan}
-              isLoading={isLoadingScans}
-              onRefresh={refreshScans}
-            />
+            <ScanSelector />
           </div>
           <ScanLauncher
             onStartScan={startScan}
@@ -271,7 +346,7 @@ export const ExecutiveView = () => {
         />
       )}
 
-      <ExecutiveKPICards summary={execSummary} onAddToReport={addCardToReport} />
+      <ExecutiveKPICards summary={execSummary} onAddToReport={addCardToReport} hideSLA={isSallyMode} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7">
@@ -286,12 +361,21 @@ export const ExecutiveView = () => {
         <div className="lg:col-span-8">
           <ExecutiveTopRisks risks={risks} onAddToReport={addCardToReport} />
         </div>
-        <div className="lg:col-span-4">
-          <ExecutiveComplianceSnapshot compliance={complianceSnapshot} onAddToReport={addCardToReport} />
+        <div className="lg:col-span-4 space-y-6">
+          {isSallyMode ? (
+            <>
+              <MerchantCenterStatus />
+              <ExecutiveCostOfInaction />
+            </>
+          ) : (
+            <ExecutiveComplianceSnapshot compliance={complianceSnapshot} onAddToReport={addCardToReport} />
+          )}
         </div>
       </div>
 
-      <ExecutiveOwnershipTable owners={owners} onAddToReport={addCardToReport} />
+      {!isSallyMode && (
+        <ExecutiveOwnershipTable owners={owners} onAddToReport={addCardToReport} />
+      )}
 
       <ChatPresets
         presets={executivePresets}

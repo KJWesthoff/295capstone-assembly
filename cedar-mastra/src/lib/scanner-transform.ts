@@ -22,11 +22,7 @@ export interface ScannerFinding {
   description: string;
   scanner: string;
   scanner_description?: string;
-  evidence?: {
-    request?: string;
-    response?: string;
-    poc_links?: string[];
-  };
+  evidence?: Record<string, any>; // Flexible evidence structure from database
 }
 
 // Mapping tables
@@ -195,7 +191,9 @@ export function transformFinding(
     suggestedFix: raw.description,
     prStatus: "None",
     testsStatus: "None",
-    fixabilityScore: 0 // Calculated by frontend calculateFixabilityScore()
+    fixabilityScore: 0, // Calculated by frontend calculateFixabilityScore()
+    // Pass through evidence from scanner
+    evidence: raw.evidence as any
   };
 }
 

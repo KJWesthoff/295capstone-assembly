@@ -183,9 +183,26 @@ const fetchContext = createStep({
 
     let enhancedPrompt = inputData.prompt;
 
+    // Extract page context to adapt communication style
+    let pageType = 'other';
+    let pathname = '';
+
     // Extract scan ID and vulnerability findings from additionalContext if present
     if (inputData.additionalContext) {
       console.log('Additional context received:', JSON.stringify(inputData.additionalContext, null, 2));
+
+      // Look for page context first
+      if (inputData.additionalContext.pageContext) {
+        const pageContext = Array.isArray(inputData.additionalContext.pageContext)
+          ? inputData.additionalContext.pageContext[0]
+          : inputData.additionalContext.pageContext;
+
+        if (pageContext?.data) {
+          pageType = pageContext.data.pageType || 'other';
+          pathname = pageContext.data.pathname || '';
+          console.log(`Page context detected: ${pageType} (${pathname})`);
+        }
+      }
 
       // Look for scan ID in additionalContext
       let scanId: string | null = null;
@@ -224,7 +241,127 @@ const fetchContext = createStep({
         }
       }
 
-      // Format vulnerability findings for the agent
+      // =============================================================================
+      // CORE PERSONALITY (Always Applied)
+      // =============================================================================
+      const corePersonality = `
+[ROLE: Venti - Your Security Assistant]
+You are Venti, a friendly and knowledgeable security assistant. You work alongside business owners, analysts, and developers to help them understand and address security issues without overwhelming them.
+
+Your core traits:
+- **Approachable**: You're a colleague, not a lecturer. Talk like you're helping a friend.
+- **Practical**: Focus on what matters most and what they can do right now.
+- **Encouraging**: Make security feel manageable, not scary. Celebrate progress.
+- **Clear**: Explain things in plain language. Avoid jargon unless talking to technical users.
+- **Conversational**: Write in natural paragraphs, not endless bullet points.
+
+Communication style:
+- Lead with the most important thing, not comprehensive coverage
+- Ask questions to understand their situation before dumping information
+- Keep responses short (2-3 paragraphs max unless they ask for more)
+- End with an invitation to continue the conversation
+- Use **bold** for emphasis, \`code\` for technical terms, but sparingly
+
+**CRITICAL: Ensure that your response is in markdown format.**`;
+
+      // =============================================================================
+      // PAGE-SPECIFIC GUIDANCE
+      // =============================================================================
+      let pageGuidance = '';
+
+      if (pageType === 'executive') {
+        pageGuidance = `
+[AUDIENCE: Small Business Owner / Executive]
+The person you're talking to is likely a small business owner or non-technical executive. They're good at what they do (running a business), but security isn't their specialty. They might be here because:
+- They got a scary email about their website being delisted or compromised
+- Their payment processor flagged a compliance issue
+- They're trying to understand what their developer needs to fix
+
+## CRITICAL: USE THE SCAN DATA YOU HAVE
+
+If you have scan findings in the context below, **USE THEM IMMEDIATELY**. Don't ask generic questions when you already have specific information!
+
+✅ GOOD (uses scan data):
+"I can actually see what's going on from your recent scan. Your site has a few security issues that Google probably flagged - the main one is that anyone can access certain pages without logging in properly. That's likely why your Merchant Center got suspended. The good news: this is fixable. Want me to draft an email to your developer explaining exactly what needs to be done?"
+
+❌ BAD (ignores scan data):
+"Did Google tell you why? Do you have a developer?" ← DON'T ASK THIS IF YOU ALREADY HAVE SCAN DATA!
+
+## Your approach:
+1. **If you have scan data**: Lead with it! Connect the findings to their problem in plain language.
+2. **Reassure them**: This is fixable, they're in the right place.
+3. **Translate findings to business impact**: "This means someone could see customer data" not "BOLA vulnerability detected"
+4. **Focus on the top 1-2 issues**: Don't overwhelm them with everything.
+5. **Offer to draft the email**: Your goal is to help them communicate with their developer.
+
+## Connecting scan findings to common business problems:
+- **Google suspension** → Usually authentication issues, missing security headers, or data exposure
+- **Payment processor issues** → Usually SSL problems, PCI compliance gaps, or insecure data handling
+- **"Site hacked" reports** → Look for injection vulnerabilities or authentication bypasses
+
+## Keep it conversational:
+- 2-3 paragraphs max
+- Plain language (no CVSS, CWE, OWASP, injection, P0/P1)
+- End with a clear next step or question
+- NEVER conclude - always offer more help`;
+
+      } else if (pageType === 'analyst') {
+        pageGuidance = `
+[AUDIENCE: Security Analyst / Technical Lead]
+The person you're talking to understands security concepts but wants efficient, accurate information. They need to:
+- Validate and prioritize findings
+- Understand exploitability and business impact
+- Make informed decisions about remediation
+
+Your approach with them:
+- Be technically precise - they understand CVSS, CWE, OWASP
+- Focus on exploitability and real-world impact
+- Help them prioritize based on risk, not just severity
+- Provide actionable next steps
+- Reference authoritative sources when relevant
+
+✅ DO THIS:
+- Use technical terms appropriately (CWE-89, OWASP API1, etc.)
+- Explain attack scenarios and exploitability
+- Help with prioritization logic
+- Suggest validation steps`;
+
+      } else if (pageType === 'developer') {
+        pageGuidance = `
+[AUDIENCE: Developer / Engineer]
+The person you're talking to can write code and wants to fix things. They need:
+- Clear understanding of what's vulnerable and why
+- Code examples showing the fix
+- Guidance on testing the fix worked
+
+Your approach with them:
+- Lead with code examples (before/after)
+- Explain the root cause briefly
+- Suggest how to test the fix
+- Mention any quick mitigations while they implement the full fix
+
+✅ DO THIS:
+- Show vulnerable vs fixed code snippets
+- Explain WHY the fix works
+- Suggest unit tests or validation steps
+- Keep explanations concise - they can ask for more detail`;
+
+      } else {
+        // Home page or other - be welcoming and guide them
+        pageGuidance = `
+[AUDIENCE: New or General User]
+Welcome them and help them understand what they can do here. Guide them to the right dashboard based on their role.`;
+      }
+
+      // =============================================================================
+      // BUILD ENHANCED PROMPT - AUDIENCE CONTEXT GOES FIRST!
+      // =============================================================================
+      // Structure: [AUDIENCE] -> [USER MESSAGE] -> [OPTIONAL CONTEXT]
+      // This ensures the agent ALWAYS sees who they're talking to first.
+
+      let contextSections: string[] = [];
+
+      // Format vulnerability findings if present
       if (vulnerabilityFindings.length > 0) {
         const formattedFindings = vulnerabilityFindings.map(finding => `
 **Vulnerability: ${finding.summaryHumanReadable || finding.id}**
@@ -242,63 +379,7 @@ const fetchContext = createStep({
 ${finding.suggestedFix ? `- Suggested Fix: ${finding.suggestedFix}` : ''}
 `).join('\n---\n');
 
-        enhancedPrompt = `${inputData.prompt}
-
-[CONTEXT: User has selected the following vulnerability findings to discuss:]
-${formattedFindings}
-
-[ROLE GUIDANCE:]
-You are a friendly API security lead helping a small team that cannot afford a full security department.
-They have at most a few hours this week to work on security.
-
-Your approach:
-- Be conversational and approachable - you're a colleague, not a lecturer
-- Start with what matters most, not everything at once
-- Ask if they want to dive deeper rather than overwhelming them
-- Use plain language - pretend you're explaining to a friend over coffee
-- Encourage questions and back-and-forth dialogue
-
-Your job is NOT to list every problem or dump a wall of text. Your job is to:
-1) Explain what's at risk in plain language
-2) Tell them what to fix TODAY (in a few hours) vs this month
-3) Make them feel empowered, not overwhelmed
-4) Help them see why this tool is worth using regularly
-
-[COMMUNICATION STYLE:]
-Write like you're talking to a colleague, NOT writing a security report:
-
-❌ DON'T DO THIS:
-- Excessive section headers ("What to do today:", "Business Impact:", etc.)
-- Technical jargon (P0, WAF, ORM, CVSS, CWE, CVE)
-- Comprehensive coverage of everything
-- Formal tone or audit-report language
-
-✅ DO THIS INSTEAD:
-- Write in natural paragraphs like you're explaining over Slack
-- Use markdown for clarity: **bold** for emphasis, \`code blocks\` for code examples
-- Use everyday language ("this is really bad" not "P0 critical severity")
-- Lead with the scariest thing in plain terms
-- Suggest 1-2 quick fixes they can do right now
-- End with an open question inviting them to dig deeper
-
-Example good response structure:
-"Hey, so this **SQL injection** in your login is pretty serious - someone could sign in as admin without knowing the password. The good news is the fix is straightforward: switch to parameterized queries instead of building SQL strings.
-
-\`\`\`python
-# Before (vulnerable)
-query = f"SELECT * FROM users WHERE username = '{username}'"
-
-# After (secure)
-query = "SELECT * FROM users WHERE username = ?"
-cursor.execute(query, (username,))
-\`\`\`
-
-Want me to show you exactly what that looks like in your code? Or should we talk about which one to tackle first if you have multiple findings?"
-
-Keep it short (2-3 paragraphs max). Make them WANT to ask a follow-up question, don't answer everything upfront.
-
-**CRITICAL: Ensure that your response is in markdown format.**`;
-        console.log(`Enhanced prompt with ${vulnerabilityFindings.length} vulnerability findings`);
+        contextSections.push(`[SELECTED FINDINGS:]\n${formattedFindings}`);
       }
 
       // Extract evidence items (from Evidence type: request, response, authContext)
@@ -330,28 +411,26 @@ ${evidence.response}
 ${evidence.pocLinks ? `- PoC Links: ${JSON.stringify(evidence.pocLinks)}` : ''}
 `).join('\n---\n');
 
-        enhancedPrompt = `${enhancedPrompt}
-
-[CONTEXT: User has provided the following technical evidence:]
-${formattedEvidence}`;
-        console.log(`Enhanced prompt with ${evidenceItems.length} evidence items`);
+        contextSections.push(`[TECHNICAL EVIDENCE:]\n${formattedEvidence}`);
       }
 
-      // If scan ID found in context, always inform the agent (let agent decide whether to use it)
+      // Add scan ID context if available
       if (scanId) {
-        if (vulnerabilityFindings.length === 0) {
-          // Scan ID available, inform agent to use scan-analysis-workflow if user asks for analysis
-          enhancedPrompt = `${inputData.prompt}
-
-[CONTEXT: Active Scan ID ${scanId} - If user asks for scan analysis/report, call scan-analysis-workflow with this ID]`;
-          console.log(`Enhanced prompt with scan ID: ${scanId}`);
-        } else {
-          // If we have both vulnerability findings and scan ID, add scan ID to the existing enhanced prompt
-          enhancedPrompt = `${enhancedPrompt}
-
-[ADDITIONAL CONTEXT: These vulnerabilities are from scan ID ${scanId}]`;
-        }
+        contextSections.push(`[ACTIVE SCAN: ${scanId}]`);
       }
+
+      // BUILD FINAL PROMPT: Audience FIRST, then user message, then optional context
+      const optionalContext = contextSections.length > 0 ? `\n\n${contextSections.join('\n\n')}` : '';
+
+      enhancedPrompt = `${pageGuidance}
+
+${corePersonality}
+
+---
+USER MESSAGE: ${inputData.prompt}
+---${optionalContext}`;
+
+      console.log(`Enhanced prompt with ${pageType} audience context, ${vulnerabilityFindings.length} findings, ${evidenceItems.length} evidence items`);
     }
 
     // Check if the prompt itself mentions a scan ID directly
@@ -377,10 +456,10 @@ ${formattedEvidence}`;
   },
 });
 
-// 2. buildAgentContext – build message array
+// 2. buildAgentContext – build message array with conversation history
 const buildAgentContext = createStep({
   id: 'buildAgentContext',
-  description: 'Combine fetched information and build LLM messages',
+  description: 'Combine fetched information and build LLM messages with conversation history',
   inputSchema: fetchContext.outputSchema,
   outputSchema: ChatInputSchema.extend({
     messages: z.array(
@@ -393,7 +472,68 @@ const buildAgentContext = createStep({
   execute: async ({ inputData }) => {
     const { prompt, temperature, maxTokens, streamController, resourceId, threadId } = inputData;
 
-    const messages = [{ role: 'user' as const, content: prompt }];
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+
+    // Use effective IDs (same logic as callAgent step)
+    const effectiveResourceId = resourceId && resourceId.trim() !== ''
+      ? resourceId
+      : 'default-user';
+    const effectiveThreadId = threadId && threadId.trim() !== ''
+      ? threadId
+      : 'default-thread';
+
+    // Fetch conversation history from storage
+    try {
+      const { storage } = await import('../storage');
+
+      // Check if thread exists
+      const thread = await storage.getThreadById({ threadId: effectiveThreadId });
+
+      if (thread) {
+        // Fetch recent messages (last 10 for context)
+        const storedMessages = await storage.getMessagesPaginated({
+          threadId: effectiveThreadId,
+          format: 'v2',
+          selectBy: { last: 10 },
+        });
+
+        if (storedMessages?.messages && storedMessages.messages.length > 0) {
+          console.log(`📜 Found ${storedMessages.messages.length} previous messages in thread ${effectiveThreadId}`);
+
+          // Add previous messages to context (excluding system messages)
+          for (const msg of storedMessages.messages) {
+            if (msg.role === 'user' || msg.role === 'assistant') {
+              // Extract text content from message
+              let content = '';
+              if (typeof msg.content === 'string') {
+                content = msg.content;
+              } else if (Array.isArray(msg.content)) {
+                // Handle structured content (text parts)
+                content = msg.content
+                  .filter((part: any) => part.type === 'text')
+                  .map((part: any) => part.text)
+                  .join('\n');
+              }
+
+              if (content) {
+                messages.push({
+                  role: msg.role as 'user' | 'assistant',
+                  content,
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.log('⚠️ Could not fetch conversation history:', err);
+      // Continue without history - not a fatal error
+    }
+
+    // Add current user message
+    messages.push({ role: 'user' as const, content: prompt });
+
+    console.log(`💬 Built message array with ${messages.length} messages (${messages.length - 1} from history)`);
 
     const result = {
       ...inputData,
@@ -470,13 +610,43 @@ const callAgent = createStep({
       // Use security analyst agent for security pages, product roadmap agent for others
       const agent = securityAnalystAgent; // Default to security analyst for now
 
+      // Generate default IDs if not provided or empty strings
+      // This ensures conversation memory always works
+      // Use stable defaults so the same thread persists across messages
+      const effectiveResourceId = resourceId && resourceId.trim() !== ''
+        ? resourceId
+        : 'default-user';
+      const effectiveThreadId = threadId && threadId.trim() !== ''
+        ? threadId
+        : 'default-thread';
+
       console.log('🤖 Starting agent.stream() with maxSteps: 5');
+      console.log(`🧠 Memory enabled: resourceId=${effectiveResourceId}, threadId=${effectiveThreadId}`);
+
+      // Ensure thread exists before streaming (Mastra requires thread to exist)
+      try {
+        const memory = await agent.getMemory();
+        if (memory) {
+          const existingThread = await memory.getThreadById({ threadId: effectiveThreadId });
+          if (!existingThread) {
+            console.log(`📝 Creating new thread: ${effectiveThreadId}`);
+            await memory.createThread({
+              threadId: effectiveThreadId,
+              resourceId: effectiveResourceId,
+              title: 'Security Chat',
+            });
+          }
+        }
+      } catch (memErr) {
+        console.log('⚠️ Could not check/create thread (continuing anyway):', memErr);
+      }
+
       const streamResult = await agent.stream(messages, {
         ...(systemPrompt ? ({ instructions: systemPrompt } as const) : {}),
         temperature,
         maxTokens,
         maxSteps: 5, // Allow agent to call workflow (step 1) AND generate text response (step 2+)
-        ...(resourceId && threadId && { memory: { resource: resourceId, thread: threadId } }),
+        memory: { resource: effectiveResourceId, thread: effectiveThreadId },
         onStepFinish: ({ text, toolCalls, toolResults, finishReason }) => {
           console.log('📊 Agent step finished:', {
             hasText: !!text,

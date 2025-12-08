@@ -128,7 +128,7 @@ function DataTableComponent<TData>({
   rowState,
   onRowStateChange,
   className,
-  noResultsMessage = "No results found.",
+  noResultsMessage = "Ready to start a scan?",
 }: DataTableProps<TData>) {
   // Internal State
   const [searchTerm, setSearchTerm] = React.useState("");
