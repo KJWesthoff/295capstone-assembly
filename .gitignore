@@ -127,3 +127,6 @@ database/init/*.sql
 terraform.tfstate
 terraform.tfstate.backup
 *.tfplan
+
+# Deployment handoff (contains API keys and secrets)
+DEPLOYMENT_HANDOFF.md
