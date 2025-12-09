@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
 import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import { useFindingActions } from "@/lib/cedar/useFindingActions";
+import { CodeBlock } from "@/components/ui/code-block";
 
 interface FindingDetailsDrawerProps {
   finding: Finding | null;
@@ -157,10 +158,10 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
                           Copy Request
                         </Button>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs border border-border font-mono overflow-x-auto max-h-64 w-full max-w-full">
-                        {`${evidence.request.method} ${evidence.request.url}
-${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`}
-                      </pre>
+                      <div className="grid grid-cols-1 w-full">
+                        <CodeBlock language="http" value={`${evidence.request.method} ${evidence.request.url}
+${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`} className="max-h-64 overflow-auto w-full max-w-full" />
+                      </div>
                     </div>
 
                     {/* Response */}
@@ -178,12 +179,12 @@ ${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\
                           Copy Response
                         </Button>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs border border-border font-mono overflow-x-auto max-h-64">
-                        {`HTTP/1.1 ${evidence.response.status_code}
+                      <div className="grid grid-cols-1 w-full">
+                        <CodeBlock language="http" value={`HTTP/1.1 ${evidence.response.status_code}
 ${Object.entries(evidence.response.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}
 
-${evidence.response.body}`}
-                      </pre>
+${evidence.response.body}`} className="max-h-64 overflow-auto" />
+                      </div>
                     </div>
                   </div>
 
@@ -200,9 +201,9 @@ ${evidence.response.body}`}
                           Copy curl
                         </Button>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs border border-border font-mono overflow-x-auto">
-                        {evidence.curl_command}
-                      </pre>
+                      <div className="grid grid-cols-1 w-full">
+                        <CodeBlock language="bash" value={evidence.curl_command} />
+                      </div>
                     </div>
 
                     {/* Manual Steps */}
@@ -320,9 +321,9 @@ ${evidence.response.body}`}
                           Copy JSON
                         </Button>
                       </div>
-                      <pre className="bg-secondary p-4 rounded text-xs font-mono overflow-x-auto max-h-96">
-                        {JSON.stringify(evidence, null, 2)}
-                      </pre>
+                      <div className="grid grid-cols-1 w-full">
+                        <CodeBlock language="json" value={JSON.stringify(evidence, null, 2)} className="max-h-96 overflow-auto" />
+                      </div>
                     </div>
                   </div>
                 </>
