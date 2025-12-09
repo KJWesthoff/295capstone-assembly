@@ -263,7 +263,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                   Add Overview to Chat
                 </Button>
               </div>
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-6">
                 {/* Hot Patch */}
                 <Card className="p-4 bg-muted/20 border-border">
                   <div className="flex items-center justify-between">
@@ -450,7 +450,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                       </div>
                     </div>
                     <CodeBlock language="http" value={`${evidence.request.method} ${evidence.request.url}
-${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`} />
+${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`} className="max-h-[400px] overflow-auto w-full max-w-full" />
                   </Card>
 
                   <Card className="p-4 bg-muted/20 border-border">
@@ -487,7 +487,7 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
                           Copy curl
                         </Button>
                       </div>
-                      <CodeBlock language="bash" value={evidence.curl_command || ""} />
+                      <CodeBlock language="bash" value={evidence.curl_command || ""} className="overflow-x-auto w-full max-w-full" />
                     </Card>
 
                     {/* Manual Steps */}
@@ -536,7 +536,7 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
                         </Button>
                       </div>
                     </div>
-                    <CodeBlock language="json" value={typeof evidence?.request === 'string' ? evidence.request : JSON.stringify(evidence?.request, null, 2) || "N/A"} />
+                    <CodeBlock language="json" value={typeof evidence?.request === 'string' ? evidence.request : JSON.stringify(evidence?.request, null, 2) || "N/A"} className="max-h-[300px] overflow-auto w-full max-w-full" />
                   </Card>
 
                   <Card className="p-4 bg-muted/20 border-border">
@@ -550,7 +550,7 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
-                    <CodeBlock language="json" value={typeof evidence?.response === 'string' ? evidence.response : JSON.stringify(evidence?.response, null, 2) || "N/A"} />
+                    <CodeBlock language="json" value={typeof evidence?.response === 'string' ? evidence.response : JSON.stringify(evidence?.response, null, 2) || "N/A"} className="max-h-[300px] overflow-auto w-full max-w-full" />
                   </Card>
 
                   <Card className="p-4 bg-muted/20 border-border">

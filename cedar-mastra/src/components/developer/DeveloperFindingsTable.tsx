@@ -136,15 +136,14 @@ export const DeveloperFindingsTable = ({
         const owaspRank = getOwaspRank(finding.owasp);
         return (
           <div className="space-y-1">
-            <div className="font-semibold text-foreground">
-              {finding.summaryHumanReadable || finding.owasp || "No Title"}
-            </div>
-            <div className="text-sm text-muted-foreground font-mono">
+            <div className="font-mono text-sm font-semibold text-foreground">
               {finding.endpoint.method} {finding.endpoint.path}
             </div>
-            {finding.file && (
-              <div className="text-xs text-muted-foreground">{finding.file}</div>
-            )}
+            <div className="text-xs text-muted-foreground mt-1">
+              {finding.endpoint.service}
+              {finding.repo && <span> · {finding.repo}</span>}
+              {finding.file && <span> · {finding.file}</span>}
+            </div>
             {/* Signal chips */}
             <div className="flex flex-wrap items-center gap-1 mt-1">
               {owaspRank && (

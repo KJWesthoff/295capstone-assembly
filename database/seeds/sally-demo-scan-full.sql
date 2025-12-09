@@ -38,7 +38,7 @@ INSERT INTO scans (
     false,
     100,
     100,
-    7,
+    8,
     'sally@petalandstemflorals.com',
     '2025-12-03 14:42:17',
     '2025-12-03 14:47:33',
@@ -535,12 +535,89 @@ INSERT INTO findings (
 );
 
 -- ============================================================================
+-- Finding 8: Cleartext Storage of Sensitive Information (HIGH) - PETAL-008
+-- CVE-2025-4394 / CWE-312
+-- ============================================================================
+
+INSERT INTO findings (
+    scan_id,
+    scanner,
+    scanner_description,
+    rule,
+    title,
+    severity,
+    score,
+    endpoint,
+    method,
+    description,
+    evidence
+) VALUES (
+    v_scan_id,
+    'nuclei',
+    'ProjectDiscovery Nuclei - Sensitive Data Scanner',
+    'exposure',
+    'Cleartext Storage of Customer Payment Credentials',
+    'High',
+    78,
+    '/wp-content/uploads/petal-payments/',
+    'GET',
+    'The custom payment processing plugin stores Stripe API keys and customer payment tokens in unencrypted plaintext files on the server. Similar to CVE-2025-4394 (Medtronic device cleartext storage), this exposes sensitive payment data to anyone with filesystem access.',
+    '{
+        "request": {
+            "method": "GET",
+            "url": "/wp-content/uploads/petal-payments/config.json",
+            "headers": {}
+        },
+        "response": {
+            "status_code": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": "{\"stripe_secret_key\":\"sk_live_51ABC...redacted\",\"stripe_publishable_key\":\"pk_live_51ABC...\",\"webhook_secret\":\"whsec_...\",\"customer_tokens\":[{\"customer_id\":\"cus_ABC\",\"pm_id\":\"pm_XYZ\"}]}",
+            "size_bytes": 847
+        },
+        "auth_context": "Unauthenticated - publicly accessible",
+        "probe_name": "sensitive_data_exposure",
+        "timestamp": "2025-12-03T14:47:15-08:00",
+        "curl_command": "curl https://petalandstemflorals.com/wp-content/uploads/petal-payments/config.json",
+        "steps": [
+            "Navigate to wp-content/uploads directory",
+            "Locate petal-payments subdirectory",
+            "Access config.json containing API credentials",
+            "Observe plaintext storage of Stripe secret keys and customer payment tokens"
+        ],
+        "why_vulnerable": "Payment credentials and API keys are stored in cleartext on the filesystem without encryption (CWE-312: Cleartext Storage of Sensitive Information)",
+        "attack_scenario": "An attacker exploiting any file read vulnerability (LFI, path traversal) or gaining limited server access could immediately obtain Stripe API keys. With the secret key, they can process fraudulent transactions, issue refunds to themselves, or access all customer payment data.",
+        "poc_references": ["CVE-2025-4394", "GHSA-99gr-q2p8-x55m", "CWE-312"],
+        "vulnerable_code": {
+            "file": "/wp-content/plugins/petal-payments/includes/class-config.php",
+            "line": 23,
+            "language": "php",
+            "snippet": "$config = json_encode([\n    ''stripe_secret_key'' => get_option(''stripe_sk''),\n    ''customer_tokens'' => $this->get_all_tokens()\n]);\nfile_put_contents(WP_CONTENT_DIR . ''/uploads/petal-payments/config.json'', $config);"
+        },
+        "fix_code": {
+            "language": "php",
+            "snippet": "// Store credentials in environment variables or encrypted database\n$stripe_key = getenv(''STRIPE_SECRET_KEY'');\n\n// If file storage is required, encrypt with sodium\n$key = sodium_crypto_secretbox_keygen();\n$nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);\n$encrypted = sodium_crypto_secretbox($config, $nonce, $key);\n\n// Store encrypted data with proper permissions\nfile_put_contents($path, base64_encode($nonce . $encrypted));\nchmod($path, 0600);"
+        },
+        "cve_reference": {
+            "id": "CVE-2025-4394",
+            "similarity": "Both vulnerabilities involve unencrypted storage of sensitive data on accessible storage. CVE-2025-4394 affects Medtronic patient monitors; this finding shows the same pattern in web applications.",
+            "cvss_score": 6.8,
+            "cwe": "CWE-312"
+        },
+        "business_impact": "Complete compromise of payment processing. Attacker could steal API keys to process fraudulent transactions, access all stored customer payment methods, or drain merchant account.",
+        "remediation_time": "2-4 hours",
+        "executive_summary": "Your payment processing credentials are stored in a plain text file that anyone could access. This could let someone steal your Stripe keys and process fake transactions."
+    }'::jsonb
+);
+
+-- ============================================================================
 -- Success message
 -- ============================================================================
 
-RAISE NOTICE '✅ Successfully inserted Sally demo scan with 7 findings';
+RAISE NOTICE '✅ Successfully inserted Sally demo scan with 8 findings';
 RAISE NOTICE '   - 2 Critical: SQL Injection, BOLA Order Exposure';
-RAISE NOTICE '   - 1 High: Broken Authentication';
+RAISE NOTICE '   - 2 High: Broken Authentication, Cleartext Storage (CVE-2025-4394)';
 RAISE NOTICE '   - 3 Medium: Security Headers, Outdated Plugin, User Enumeration';
 RAISE NOTICE '   - 1 Low: Deprecated TLS';
 

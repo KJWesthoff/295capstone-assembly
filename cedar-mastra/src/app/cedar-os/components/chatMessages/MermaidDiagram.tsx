@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
-import { Maximize2, X } from 'lucide-react';
+import { Maximize2, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -24,6 +24,7 @@ interface MermaidDiagramProps {
 export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, className = '' }) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     // Initialize mermaid with dark theme
@@ -55,6 +56,8 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, className
     });
 
     const renderDiagram = async () => {
+      setIsLoading(true);
+      setError(null);
       try {
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
         const { svg } = await mermaid.render(id, chart);
@@ -63,6 +66,8 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, className
       } catch (err) {
         console.error('Mermaid rendering error:', err);
         setError(err instanceof Error ? err.message : 'Failed to render diagram');
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -98,10 +103,19 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, className
               <DialogTitle className="px-6 pt-6 text-white">Attack Path Diagram</DialogTitle>
               <DialogDescription asChild>
                 <div className="p-6 flex-1">
-                  <div
-                    className="w-full h-full flex items-center justify-center"
-                    dangerouslySetInnerHTML={{ __html: svg }}
-                  />
+                  {isLoading || !svg ? (
+                    <div className="w-full h-full flex items-center justify-center min-h-[400px]">
+                      <div className="flex flex-col items-center gap-4 text-gray-400">
+                        <Loader2 className="w-8 h-8 animate-spin" />
+                        <p className="text-sm">Rendering diagram...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="w-full h-full flex items-center justify-center"
+                      dangerouslySetInnerHTML={{ __html: svg }}
+                    />
+                  )}
                 </div>
               </DialogDescription>
             </DialogHeader>

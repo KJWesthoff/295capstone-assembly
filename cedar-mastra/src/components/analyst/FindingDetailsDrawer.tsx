@@ -157,7 +157,7 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
                           Copy Request
                         </Button>
                       </div>
-                      <pre className="bg-background p-3 rounded text-xs border border-border font-mono overflow-x-auto">
+                      <pre className="bg-background p-3 rounded text-xs border border-border font-mono overflow-x-auto max-h-64 w-full max-w-full">
                         {`${evidence.request.method} ${evidence.request.url}
 ${Object.entries(evidence.request.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}${evidence.request.query_params && Object.keys(evidence.request.query_params).length > 0 ? `\n\nQuery Parameters:\n${Object.entries(evidence.request.query_params).map(([k, v]) => `  ${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')}` : ''}${evidence.request.body ? `\n\n${evidence.request.body}` : ''}`}
                       </pre>
