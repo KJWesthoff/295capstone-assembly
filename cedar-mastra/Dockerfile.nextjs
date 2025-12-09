@@ -1,21 +1,26 @@
-# Cedar Frontend - Next.js Application (PROPOSED PRODUCTION DOCKERFILE)
+# Cedar Frontend - Next.js Application (PRODUCTION DOCKERFILE)
 
-# --- Stage 1: Build the Next.js application ---
+# --- Stage 1: Dependencies ---
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies (including devDependencies needed for build)
+RUN npm ci
+
+# --- Stage 2: Build ---
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json first to leverage Docker cache
-COPY package.json package-lock.json* ./
-
-# Install dependencies (including devDependencies needed for build)
-# Use --frozen-lockfile for more reliable builds
-RUN npm ci
-
-# Copy the rest of the application code
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set environment variables for development
+# Set build-time environment variables
 ARG NEXT_PUBLIC_MASTRA_URL
 ARG NEXT_PUBLIC_SCANNER_SERVICE_URL
 ARG NEXT_PUBLIC_SCANNER_USERNAME
@@ -25,11 +30,37 @@ ENV NEXT_PUBLIC_MASTRA_URL=${NEXT_PUBLIC_MASTRA_URL}
 ENV NEXT_PUBLIC_SCANNER_SERVICE_URL=${NEXT_PUBLIC_SCANNER_SERVICE_URL}
 ENV NEXT_PUBLIC_SCANNER_USERNAME=${NEXT_PUBLIC_SCANNER_USERNAME}
 ENV NEXT_PUBLIC_SCANNER_PASSWORD=${NEXT_PUBLIC_SCANNER_PASSWORD}
-
-# Development environment
-ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build the Next.js application
+RUN npm run build
+
+# --- Stage 3: Production Runner ---
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built assets from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Set correct ownership
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
 EXPOSE 3000
 
-# Run Next.js in development mode with hot reload
-CMD ["npx", "next", "dev", "--port", "3000"]
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Run the production server
+CMD ["node", "server.js"]

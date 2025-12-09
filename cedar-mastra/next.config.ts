@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: 'standalone', // Required for Docker production builds
   eslint: {
     // Disable ESLint during builds for Docker
     ignoreDuringBuilds: true,
