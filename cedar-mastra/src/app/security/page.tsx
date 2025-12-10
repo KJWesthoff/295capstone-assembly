@@ -9,6 +9,7 @@ import { scannerApi, ScanStatus } from '@/lib/scannerApi';
 import { useSecurityContext } from '@/app/cedar-os/context';
 import { useScanResultsPolling } from '@/hooks/useScanResultsPolling';
 import { getSeverityColor as getSeverityColorUtil, Severity } from '@/lib/utils/severity';
+import { RoleSwitcher } from '@/components/shared/RoleSwitcher';
 
 type RoleRoute = {
   role: 'executive' | 'security' | 'developer';
@@ -474,12 +475,17 @@ export default function SecurityDashboardPage() {
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
           <header className="mb-8">
-            <h1 className="text-4xl font-bold text-white mb-2">
-              🛡️ API Security Dashboard
-            </h1>
-            <p className="text-gray-400">
-              AI-powered vulnerability analysis with actionable remediation guidance
-            </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-4xl font-bold text-white mb-2">
+                  🛡️ API Security Dashboard
+                </h1>
+                <p className="text-gray-400">
+                  AI-powered vulnerability analysis with actionable remediation guidance
+                </p>
+              </div>
+              <RoleSwitcher variant="page" />
+            </div>
           </header>
 
           {scanResults?.status === 'running' ? (
@@ -883,7 +889,7 @@ export default function SecurityDashboardPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <header className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <h1 className="text-4xl font-bold text-white mb-3">
                 🛡️ Security Scan Results
@@ -934,7 +940,7 @@ export default function SecurityDashboardPage() {
                 </p>
               </div>
             </div>
-            <div className="flex gap-3 ml-4">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => {
                   setScanResults(null);
@@ -951,6 +957,7 @@ export default function SecurityDashboardPage() {
               >
                 New Scan
               </button>
+              <RoleSwitcher variant="page" />
             </div>
           </div>
         </header>

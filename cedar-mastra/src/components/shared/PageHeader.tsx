@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RoleSwitcher } from "./RoleSwitcher";
 
 interface PageHeaderProps {
   title: string;
@@ -10,6 +11,7 @@ interface PageHeaderProps {
   icon: LucideIcon;
   action?: ReactNode;
   className?: string;
+  showRoleSwitcher?: boolean;
 }
 
 export const PageHeader = ({
@@ -18,6 +20,7 @@ export const PageHeader = ({
   icon: Icon,
   action,
   className,
+  showRoleSwitcher = true,
 }: PageHeaderProps) => {
   return (
     <header className={cn("border-b border-primary/20 bg-primary sticky top-0 z-10 shadow-sm", className)}>
@@ -36,7 +39,10 @@ export const PageHeader = ({
               </p>
             </div>
           </div>
-          {action && <div>{action}</div>}
+          <div className="flex items-center gap-3">
+            {action && <div>{action}</div>}
+            {showRoleSwitcher && <RoleSwitcher />}
+          </div>
         </div>
       </div>
     </header>
