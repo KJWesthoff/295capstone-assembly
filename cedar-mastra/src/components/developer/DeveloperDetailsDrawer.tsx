@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Plus, Copy, ExternalLink, Code, GitPullRequest } from "lucide-react";
+import { X, Plus, Copy, ExternalLink, GitPullRequest } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,133 +30,213 @@ export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDra
   // Check if this is the new structured evidence format
   const isNewFormat = evidence && evidence.request && typeof evidence.request === 'object' && evidence.request.method;
 
+  // Extract code snippets from evidence if available
+  const vulnerableCode = evidence?.vulnerable_code;
+  const fixCode = evidence?.fix_code;
+  const codeLanguage = fixCode?.language || vulnerableCode?.language || 'php';
+
   const handleCopyCode = (code: string) => {
     cedar.util.copy(code);
   };
 
-  // Sample diff for demonstration
-  const proposedDiff = `// Before (vulnerable)
-app.post('/v1/auth/login', (req, res) => {
-  const { username, password } = req.body;
-  const query = \`SELECT * FROM users WHERE username='\${username}' AND password='\${password}'\`;
-  db.query(query, (err, result) => {
-    if (result.length > 0) {
-      res.json({ token: generateToken(result[0]) });
-    } else {
-      res.status(401).json({ error: 'Invalid credentials' });
+  // Build code diff from evidence data if available, otherwise use fallback
+  const buildCodeDiff = () => {
+    if (vulnerableCode?.snippet && fixCode?.snippet) {
+      const fileInfo = vulnerableCode.file ? `// File: ${vulnerableCode.file}${vulnerableCode.line ? `:${vulnerableCode.line}` : ''}` : '';
+      return `${fileInfo ? fileInfo + '\n\n' : ''}// BEFORE (vulnerable)
+${vulnerableCode.snippet}
+
+// AFTER (fixed)
+${fixCode.snippet}`;
     }
-  });
-});
+    // Fallback to hardcoded example
+    return `<?php
+// Before (vulnerable) - class-api.php line 47
+public function get_delivery_slots() {
+    global $wpdb;
+    $date = $_POST['date'];
 
-// After (fixed with parameterized query)
-app.post('/v1/auth/login', async (req, res) => {
-  const { username, password } = req.body;
-
-  // Validate inputs
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required' });
-  }
-
-  // Use parameterized query
-  const query = 'SELECT * FROM users WHERE username = ? AND password = ?';
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  db.query(query, [username, hashedPassword], (err, result) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-
-    if (result.length > 0) {
-      res.json({ token: generateToken(result[0]) });
-    } else {
-      res.status(401).json({ error: 'Invalid credentials' });
-    }
-  });
-});`;
-
-  const hotPatchConfig = `# NGINX rate limiting (48-hour mitigation)
-limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
-
-location /v1/auth/login {
-    limit_req zone=login_limit burst=10 nodelay;
-    limit_req_status 429;
-    proxy_pass http://auth-service;
+    // VULNERABLE: Direct string concatenation
+    $query = "SELECT * FROM {$wpdb->prefix}delivery_slots WHERE date = '" . $date . "'";
+    return $wpdb->get_results($query);
 }
 
-# Rollback: Comment out the limit_req lines above`;
+// After (fixed with prepared statement)
+public function get_delivery_slots() {
+    global $wpdb;
 
-  const unitTest = `describe('POST /v1/auth/login', () => {
-  it('should prevent SQL injection', async () => {
-    const maliciousPayload = {
-      username: "admin' OR '1'='1",
-      password: "anything"
-    };
+    // Validate and sanitize input
+    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
 
-    const response = await request(app)
-      .post('/v1/auth/login')
-      .send(maliciousPayload)
-      .expect(401);
+    if (empty($date) || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $date)) {
+        return new WP_Error('invalid_date', 'Invalid date format', array('status' => 400));
+    }
 
-    expect(response.body).toHaveProperty('error');
-    expect(response.body.error).toBe('Invalid credentials');
-  });
+    // Use WordPress prepared statement
+    $query = $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}delivery_slots WHERE date = %s",
+        $date
+    );
 
-  it('should authenticate valid users', async () => {
-    const validUser = {
-      username: 'testuser',
-      password: 'validpassword123'
-    };
+    $results = $wpdb->get_results($query);
 
-    const response = await request(app)
-      .post('/v1/auth/login')
-      .send(validUser)
-      .expect(200);
+    if ($wpdb->last_error) {
+        error_log('Database error: ' . $wpdb->last_error);
+        return new WP_Error('db_error', 'Database error', array('status' => 500));
+    }
 
-    expect(response.body).toHaveProperty('token');
-  });
-});`;
+    return $results;
+}`;
+  };
 
-  const guardrailRule = `// ESLint rule to prevent raw string interpolation in SQL
-// .eslintrc.js
-module.exports = {
-  rules: {
-    'no-template-curly-in-string': 'error',
-    'security/detect-sql-injection': 'error'
-  },
-  plugins: ['security']
-};
+  const proposedDiff = buildCodeDiff();
 
-// Install: npm install --save-dev eslint-plugin-security`;
+  const hotPatchConfig = `# WordPress/NGINX rate limiting (48-hour mitigation)
+# Add to /etc/nginx/conf.d/rate-limit.conf
+
+limit_req_zone $binary_remote_addr zone=wp_api_limit:10m rate=10r/m;
+
+# Protect the vulnerable delivery slots endpoint
+location /wp-json/petal-delivery/v1/slots {
+    limit_req zone=wp_api_limit burst=5 nodelay;
+    limit_req_status 429;
+
+    # Block SQL injection patterns at the edge
+    if ($request_body ~* "(union|select|insert|update|delete|drop|--|')") {
+        return 403;
+    }
+
+    proxy_pass http://127.0.0.1:80;
+}
+
+# Also protect WooCommerce API endpoints
+location /wp-json/wc/v3/ {
+    limit_req zone=wp_api_limit burst=20 nodelay;
+    proxy_pass http://127.0.0.1:80;
+}
+
+# Rollback: Comment out the limit_req and if blocks above`;
+
+  const unitTest = `<?php
+/**
+ * PHPUnit tests for Petal Delivery Scheduler API
+ * Run with: ./vendor/bin/phpunit tests/DeliverySlotsTest.php
+ */
+class DeliverySlotsTest extends WP_UnitTestCase {
+
+    public function test_sql_injection_is_blocked() {
+        // Simulate malicious SQL injection payload
+        $_POST['date'] = "2025-01-01' OR '1'='1";
+
+        $api = new Petal_Delivery_API();
+        $result = $api->get_delivery_slots();
+
+        // Should return error, not all records
+        $this->assertInstanceOf(WP_Error::class, $result);
+        $this->assertEquals('invalid_date', $result->get_error_code());
+    }
+
+    public function test_valid_date_returns_slots() {
+        $_POST['date'] = '2025-01-15';
+
+        $api = new Petal_Delivery_API();
+        $result = $api->get_delivery_slots();
+
+        $this->assertIsArray($result);
+        // Should only return slots for the requested date
+        foreach ($result as $slot) {
+            $this->assertEquals('2025-01-15', $slot->date);
+        }
+    }
+
+    public function test_empty_date_returns_error() {
+        $_POST['date'] = '';
+
+        $api = new Petal_Delivery_API();
+        $result = $api->get_delivery_slots();
+
+        $this->assertInstanceOf(WP_Error::class, $result);
+    }
+
+    public function test_invalid_date_format_returns_error() {
+        $_POST['date'] = 'not-a-date';
+
+        $api = new Petal_Delivery_API();
+        $result = $api->get_delivery_slots();
+
+        $this->assertInstanceOf(WP_Error::class, $result);
+        $this->assertEquals('invalid_date', $result->get_error_code());
+    }
+}`;
+
+  const guardrailRule = `<?php
+/**
+ * PHPCS Custom Sniff: Detect raw SQL string concatenation
+ * Install: composer require --dev squizlabs/php_codesniffer
+ *
+ * Add to phpcs.xml:
+ */
+?>
+<!-- phpcs.xml -->
+<ruleset name="WordPress-Security">
+    <description>Security rules for WordPress plugins</description>
+
+    <!-- Detect dangerous SQL patterns -->
+    <rule ref="WordPress.DB.PreparedSQL"/>
+    <rule ref="WordPress.DB.PreparedSQLPlaceholders"/>
+
+    <!-- Flag direct $_POST/$_GET usage -->
+    <rule ref="WordPress.Security.ValidatedSanitizedInput"/>
+
+    <!-- Require escaping output -->
+    <rule ref="WordPress.Security.EscapeOutput"/>
+</ruleset>
+
+<?php
+/**
+ * Run with: ./vendor/bin/phpcs --standard=phpcs.xml wp-content/plugins/
+ *
+ * Pre-commit hook (.git/hooks/pre-commit):
+ */
+?>
+#!/bin/bash
+./vendor/bin/phpcs --standard=phpcs.xml --extensions=php \\
+    wp-content/plugins/petal-delivery-scheduler/ || exit 1`;
 
   const prBody = `## Summary
-Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
+Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
 
 ## Vulnerability Details
-- **CVE**: ${finding.cve.join(', ') || 'N/A'}
-- **CWE**: ${finding.cwe.join(', ')}
+- **CVE**: ${finding.cve?.join(', ') || 'N/A'}
+- **CWE**: ${finding.cwe?.join(', ') || 'CWE-89'}
 - **CVSS**: ${finding.cvss} (${finding.severity})
-- **OWASP**: ${finding.owasp}
+- **OWASP**: ${finding.owasp || 'API8:2023 Security Misconfiguration'}
 
 ## Changes
-- Replaced string concatenation with parameterized queries
-- Added input validation using validator.js
-- Implemented proper error handling
-- Added bcrypt for password hashing
+- Replaced string concatenation with \`$wpdb->prepare()\` parameterized queries
+- Added input validation using \`sanitize_text_field()\`
+- Added date format validation with regex
+- Implemented proper WP_Error handling
 
 ## Test Plan
-- [x] Unit tests for SQL injection prevention
-- [x] Integration tests for valid authentication flow
-- [x] Manual testing with OWASP ZAP
+- [x] PHPUnit tests for SQL injection prevention
+- [x] Test valid date returns correct slots only
+- [x] Test invalid/malicious input returns WP_Error
+- [x] Manual testing with sqlmap and OWASP ZAP
 
 ## Risk Assessment
-**Breaking Changes**: None
+**Breaking Changes**: None - API response format unchanged
 **Migration Notes**: No database schema changes required
-**Rollback**: Revert commit if issues arise
+**Rollback**: Revert commit and redeploy plugin
+
+## WordPress Compatibility
+- Tested on WordPress 6.4+
+- WooCommerce 8.x compatible
+- PHP 8.1+ required
 
 ## Compliance Mapping
-- **NIST CSF**: ${finding.nistCsf?.join(', ')}
-- **NIST 800-53**: ${finding.nist80053?.join(', ')}`;
+- **NIST CSF**: ${finding.nistCsf?.join(', ') || 'PR.DS-1, PR.DS-2'}
+- **NIST 800-53**: ${finding.nist80053?.join(', ') || 'SI-10, SI-11'}`;
 
   return (
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -234,12 +314,18 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                 <Card className="p-4 bg-muted/20 border-border">
                   <h3 className="font-semibold text-foreground mb-2">Root Cause Summary</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    {finding.summaryHumanReadable}
+                    {evidence?.why_vulnerable || finding.summaryHumanReadable}
                   </p>
+                  {evidence?.business_impact && (
+                    <div className="mb-4">
+                      <span className="font-semibold text-foreground">Business Impact:</span>
+                      <p className="text-sm text-muted-foreground">{evidence.business_impact}</p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="font-semibold text-foreground">Impact Scope:</span>
-                      <p className="text-muted-foreground">Blast Radius: {finding.blastRadius}/10</p>
+                      <span className="font-semibold text-foreground">Estimated Fix Time:</span>
+                      <p className="text-muted-foreground">{evidence?.remediation_time || 'TBD'}</p>
                     </div>
                     <div>
                       <span className="font-semibold text-foreground">Breaking Risk:</span>
@@ -253,7 +339,12 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                   onClick={() =>
                     addCustomToChat(
                       `developer-overview-${finding.id}`,
-                      { overview: finding.summaryHumanReadable },
+                      {
+                        overview: evidence?.why_vulnerable || finding.summaryHumanReadable,
+                        businessImpact: evidence?.business_impact,
+                        remediationTime: evidence?.remediation_time,
+                        executiveSummary: evidence?.executive_summary
+                      },
                       "Overview",
                       finding.severity
                     )
@@ -297,7 +388,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                           <Copy className="h-4 w-4" />
                         </Button>
                       </div>
-                      <CodeBlock language="javascript" value={proposedDiff} className="max-h-[400px] overflow-auto" />
+                      <CodeBlock language={codeLanguage} value={proposedDiff} className="max-h-[400px] overflow-auto" />
                     </div>
                   </div>
                 </Card>
@@ -315,7 +406,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <CodeBlock language="javascript" value={unitTest} />
+                <CodeBlock language="php" value={unitTest} />
               </Card>
 
               {/* Guardrail */}
@@ -330,7 +421,7 @@ Fixes SQL injection vulnerability in login endpoint (${finding.owasp})
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <CodeBlock language="javascript" value={guardrailRule} />
+                <CodeBlock language="xml" value={guardrailRule} />
               </Card>
 
               {/* Create PR Panel */}
@@ -615,30 +706,30 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
               </p>
               <Card className="p-4 bg-muted/20 border-border">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-foreground">Internal Fix: auth-service PR#123</h3>
+                  <h3 className="font-semibold text-foreground">WooCommerce Core Fix: trac#45623</h3>
                   <a href="#" className="text-primary text-sm hover:underline">
-                    View PR
+                    View Changeset
                   </a>
                 </div>
                 <p className="text-sm text-muted-foreground mb-2">
-                  Fixed similar SQL injection by using ORM parameterized queries. Time-to-fix: 2 days.
+                  Fixed similar SQL injection in order search using $wpdb-&gt;prepare(). Time-to-fix: 1 day.
                 </p>
-                <CodeBlock language="diff" value={`- const query = \`SELECT * FROM users WHERE id='\${id}'\`;
-+ const user = await User.findByPk(id);`} />
+                <CodeBlock language="diff" value={`- $query = "SELECT * FROM {$wpdb->prefix}orders WHERE id = '" . $id . "'";
++ $query = $wpdb->prepare("SELECT * FROM {$wpdb->prefix}orders WHERE id = %d", $id);`} />
               </Card>
 
               <Card className="p-4 bg-muted/20 border-border">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-foreground">GitHub Advisory: GHSA-xxxx-yyyy</h3>
+                  <h3 className="font-semibold text-foreground">WordPress Security Advisory: CVE-2024-1234</h3>
                   <a href="#" className="text-primary text-sm hover:underline flex items-center gap-1">
                     <ExternalLink className="h-3 w-3" />
                     View Advisory
                   </a>
                 </div>
                 <p className="text-sm text-muted-foreground mb-2">
-                  Node.js Express SQL injection pattern. Use prepared statements.
+                  WordPress plugin SQL injection pattern. Always use prepared statements with $wpdb.
                 </p>
-                <CodeBlock language="javascript" value="db.query('SELECT * FROM users WHERE id = ?', [userId], callback);" />
+                <CodeBlock language="php" value="$results = $wpdb->get_results($wpdb->prepare('SELECT * FROM %i WHERE user_id = %d', $table, $user_id));" />
               </Card>
 
               <Button

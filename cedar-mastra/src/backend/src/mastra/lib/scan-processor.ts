@@ -75,6 +75,68 @@ export const RULE_TO_OWASP_CWE_MAP: Record<string, {
   primary_cwes: string[];
   related_cwes: string[];
 }> = {
+  // VentiAPI scanner rules (short names used in seed data)
+  injection: {
+    owasp_category: 'Injection',
+    owasp_id: 'API8:2023',
+    primary_cwes: ['CWE-89', 'CWE-78'],
+    related_cwes: ['CWE-20', 'CWE-74', 'CWE-564'],
+  },
+  bola: {
+    owasp_category: 'Broken Object Level Authorization',
+    owasp_id: 'API1:2023',
+    primary_cwes: ['CWE-639'],
+    related_cwes: ['CWE-284', 'CWE-285', 'CWE-862'],
+  },
+  bfla: {
+    owasp_category: 'Broken Function Level Authorization',
+    owasp_id: 'API5:2023',
+    primary_cwes: ['CWE-285', 'CWE-862'],
+    related_cwes: ['CWE-284', 'CWE-732'],
+  },
+  auth: {
+    owasp_category: 'Broken Authentication',
+    owasp_id: 'API2:2023',
+    primary_cwes: ['CWE-287', 'CWE-306'],
+    related_cwes: ['CWE-798', 'CWE-259', 'CWE-522'],
+  },
+  exposure: {
+    owasp_category: 'Broken Object Property Level Authorization',
+    owasp_id: 'API3:2023',
+    primary_cwes: ['CWE-200'],
+    related_cwes: ['CWE-209', 'CWE-532', 'CWE-359'],
+  },
+  ratelimit: {
+    owasp_category: 'Unrestricted Resource Consumption',
+    owasp_id: 'API4:2023',
+    primary_cwes: ['CWE-770'],
+    related_cwes: ['CWE-400', 'CWE-799'],
+  },
+  mass_assign: {
+    owasp_category: 'Unrestricted Access to Sensitive Business Flows',
+    owasp_id: 'API6:2023',
+    primary_cwes: ['CWE-915'],
+    related_cwes: ['CWE-250', 'CWE-282'],
+  },
+  misconfig: {
+    owasp_category: 'Security Misconfiguration',
+    owasp_id: 'API8:2023',
+    primary_cwes: ['CWE-16'],
+    related_cwes: ['CWE-2', 'CWE-11', 'CWE-1032'],
+  },
+  inventory: {
+    owasp_category: 'Improper Inventory Management',
+    owasp_id: 'API9:2023',
+    primary_cwes: ['CWE-1059'],
+    related_cwes: ['CWE-200'],
+  },
+  logging: {
+    owasp_category: 'Unsafe Consumption of APIs',
+    owasp_id: 'API10:2023',
+    primary_cwes: ['CWE-778'],
+    related_cwes: ['CWE-532'],
+  },
+  // Legacy rule names (longer format)
   sql_injection: {
     owasp_category: 'Injection',
     owasp_id: 'A03:2021',

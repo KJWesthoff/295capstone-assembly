@@ -98,9 +98,13 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
       }));
 
       // Group by endpoint
+      // Handle both string endpoints (raw) and object endpoints (if already transformed)
       const groupedByEndpoint: Record<string, any[]> = {};
       findings.forEach((finding: any) => {
-        const key = `${finding.method} ${finding.endpoint}`;
+        const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
+          ? finding.endpoint.path
+          : finding.endpoint;
+        const key = `${finding.method} ${endpointStr}`;
         if (!groupedByEndpoint[key]) {
           groupedByEndpoint[key] = [];
         }

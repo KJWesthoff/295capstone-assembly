@@ -98,7 +98,10 @@ export function useScanResultsState() {
 
             const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
             findings.forEach(finding => {
-              const key = `${finding.method} ${finding.endpoint}`;
+              const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
+                ? (finding.endpoint as any).path
+                : finding.endpoint;
+              const key = `${finding.method} ${endpointStr}`;
               if (!groupedByEndpoint[key]) {
                 groupedByEndpoint[key] = [];
               }
@@ -142,7 +145,10 @@ export function useScanResultsState() {
 
           const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
           filtered.forEach(finding => {
-            const key = `${finding.method} ${finding.endpoint}`;
+            const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
+              ? (finding.endpoint as any).path
+              : finding.endpoint;
+            const key = `${finding.method} ${endpointStr}`;
             if (!groupedByEndpoint[key]) {
               groupedByEndpoint[key] = [];
             }

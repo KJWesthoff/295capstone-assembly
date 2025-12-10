@@ -81,6 +81,32 @@ export interface Evidence {
   attack_scenario: string;
   poc_references: string[];
 
+  // Code snippets (from scanner findings)
+  vulnerable_code?: {
+    file?: string;
+    line?: number;
+    language?: string;
+    snippet: string;
+  };
+  fix_code?: {
+    file?: string;
+    language?: string;
+    snippet: string;
+  };
+
+  // Business context
+  business_impact?: string;
+  remediation_time?: string;
+  executive_summary?: string;
+
+  // CVE reference (for findings with associated CVEs)
+  cve_reference?: {
+    id: string;
+    similarity?: string;
+    cvss_score?: number;
+    cwe?: string;
+  };
+
   // Optional additional data
   additional_requests?: Array<{
     description: string;

@@ -263,8 +263,23 @@ set +a
 docker-compose --env-file .env.remote build
 
 # Build scanner images (critical for scans to work)
+echo "Building scanner images..."
 docker-compose --env-file .env.remote --profile build-only build scanner
 docker-compose --env-file .env.remote --profile build-only build zap
+
+# Verify scanner images were built successfully
+echo "Verifying scanner images..."
+if ! docker images | grep -q "ventiapi-scanner"; then
+    echo "ERROR: ventiapi-scanner image not found! Retrying build..."
+    docker-compose --env-file .env.remote --profile build-only build scanner
+fi
+if ! docker images | grep -q "ventiapi-zap"; then
+    echo "ERROR: ventiapi-zap image not found! Retrying build..."
+    docker-compose --env-file .env.remote --profile build-only build zap
+fi
+
+# Final verification
+docker images | grep -E "(ventiapi-scanner|ventiapi-zap)" || echo "WARNING: Scanner images may not be built correctly!"
 
 echo "=== Starting services ==="
 docker-compose --env-file .env.remote up -d

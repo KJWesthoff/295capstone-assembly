@@ -100,7 +100,10 @@ export function useScanManager(): UseScanManagerReturn {
         low: findings.filter((f: VulnerabilityFinding) => f.severity === 'Low').length,
       },
       groupedByEndpoint: findings.reduce((acc, finding) => {
-        const key = `${finding.method} ${finding.endpoint}`;
+        const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
+          ? (finding.endpoint as any).path
+          : finding.endpoint;
+        const key = `${finding.method} ${endpointStr}`;
         if (!acc[key]) acc[key] = [];
         acc[key].push(finding);
         return acc;
@@ -198,7 +201,10 @@ export function useScanManager(): UseScanManagerReturn {
             low: vulnerabilityFindings.filter(f => f.severity === 'Low').length,
           },
           groupedByEndpoint: vulnerabilityFindings.reduce((acc, finding) => {
-            const key = `${finding.method} ${finding.endpoint}`;
+            const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
+              ? (finding.endpoint as any).path
+              : finding.endpoint;
+            const key = `${finding.method} ${endpointStr}`;
             if (!acc[key]) acc[key] = [];
             acc[key].push(finding);
             return acc;

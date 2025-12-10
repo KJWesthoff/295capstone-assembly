@@ -188,7 +188,20 @@ curl -X POST -H "Content-Type: application/json" \
 curl -u MICS295:MaryMcHale http://$EC2_IP:8000/api/scanners
 ```
 
-### 3. Scanner Functionality Testing
+### 3. Scanner Images Verification (CRITICAL)
+```bash
+# Verify scanner images exist (S1 if missing - scans will fail!)
+docker images | grep -E "(ventiapi-scanner|ventiapi-zap)" || echo "❌ CRITICAL: Scanner images missing!"
+
+# If missing, build them:
+cd /opt/ventiapi
+docker-compose --env-file .env.remote --profile build-only build scanner zap
+
+# Verify again
+docker images | grep -E "(ventiapi-scanner|ventiapi-zap)"
+```
+
+### 4. Scanner Functionality Testing
 ```bash
 # Test scanner images
 docker run --rm ventiapi-scanner --help
@@ -196,7 +209,7 @@ docker run --rm ventiapi-zap --help
 docker run --rm projectdiscovery/nuclei:latest --help
 ```
 
-### 4. RAG System Testing
+### 5. RAG System Testing
 - [ ] Visit Cedar Dashboard chat interface
 - [ ] Send test message to AI agent
 - [ ] Verify streaming responses (not empty)
@@ -205,6 +218,17 @@ docker run --rm projectdiscovery/nuclei:latest --help
 ---
 
 ## Common Issues and Quick Fixes
+
+### Issue: "Scan failed: Unknown error" or scanner container not found
+**Root Cause**: Scanner Docker images (`ventiapi-scanner`, `ventiapi-zap`) not built
+**Quick Fix**: Build the scanner images
+```bash
+cd /opt/ventiapi
+docker-compose --env-file .env.remote --profile build-only build scanner zap
+
+# Verify images exist
+docker images | grep -E "(ventiapi-scanner|ventiapi-zap)"
+```
 
 ### Issue: "Failed to fetch" in Cedar Dashboard
 **Quick Fix**: Check CORS configuration

@@ -185,9 +185,14 @@ export function extractTopRisks(findings: VulnerabilityFinding[], limit: number 
 
     const key = finding.rule;
     if (!uniqueRisks.has(key)) {
+      // Get endpoint path (handle both object and string forms)
+      const endpointPath = typeof finding.endpoint === 'object' && finding.endpoint !== null
+        ? finding.endpoint.path
+        : String(finding.endpoint);
+
       // Determine if internet-facing
-      const internetFacing = !finding.endpoint.includes('/admin') &&
-                             !finding.endpoint.includes('/internal');
+      const internetFacing = !endpointPath.includes('/admin') &&
+                             !endpointPath.includes('/internal');
 
       // Determine exploit status
       const exploitStatus = ['API8', 'API2', 'API1'].includes(finding.rule)
@@ -195,7 +200,7 @@ export function extractTopRisks(findings: VulnerabilityFinding[], limit: number 
         : 'theoretical' as const;
 
       // Collect affected systems (endpoints)
-      const affectedSystems = [finding.endpoint];
+      const affectedSystems = [endpointPath];
 
       uniqueRisks.set(key, {
         id: finding.id,
@@ -215,8 +220,11 @@ export function extractTopRisks(findings: VulnerabilityFinding[], limit: number 
     } else {
       // Add to existing risk's affected systems
       const existing = uniqueRisks.get(key)!;
-      if (!existing.affectedSystems.includes(finding.endpoint)) {
-        existing.affectedSystems.push(finding.endpoint);
+      const endpointPath = typeof finding.endpoint === 'object' && finding.endpoint !== null
+        ? finding.endpoint.path
+        : String(finding.endpoint);
+      if (!existing.affectedSystems.includes(endpointPath)) {
+        existing.affectedSystems.push(endpointPath);
       }
     }
   });

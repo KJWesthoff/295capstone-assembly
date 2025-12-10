@@ -3,15 +3,26 @@ import type { VulnerabilityFinding } from "@/app/cedar-os/scanState";
 
 /**
  * Transform VulnerabilityFinding (from scanner API) to Finding (for dashboard display)
+ * Handles both raw scanner data (endpoint as string) and already-transformed data (endpoint as object)
  */
 export function transformVulnerabilityToFinding(vuln: VulnerabilityFinding): Finding {
+  // Handle case where endpoint might already be transformed to an object
+  // This can happen if data was stored in localStorage after transformation
+  const endpointObj = typeof vuln.endpoint === 'object' && vuln.endpoint !== null
+    ? {
+        method: (vuln.endpoint as any).method || vuln.method || "GET",
+        path: (vuln.endpoint as any).path || "/",
+        service: (vuln.endpoint as any).service || "API",
+      }
+    : {
+        method: vuln.method || "GET",
+        path: vuln.endpoint || "/",
+        service: "API",
+      };
+
   return {
     id: vuln.id,
-    endpoint: {
-      method: vuln.method || "GET",
-      path: vuln.endpoint || "/",
-      service: "API",
-    },
+    endpoint: endpointObj,
     severity: vuln.severity,
     cvss: (vuln.score || 0) > 10 ? (vuln.score || 0) / 10 : (vuln.score || 0),
     exploitSignal: 0,

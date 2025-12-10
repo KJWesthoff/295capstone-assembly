@@ -1,12 +1,12 @@
 -- ============================================================================
--- Sally's Story: Petal & Stem Florals - Full Demo Scan Data
+-- Sarah's Story: Petal & Stem Florals - Full Demo Scan Data
 -- Adapted for schema: 01-create-scanner-schema.sql
 -- Evidence structure matches frontend Evidence interface
 -- ============================================================================
 
 DO $$
 DECLARE
-    v_scan_id TEXT := 'sally-petal-stem-demo-001';
+    v_scan_id TEXT := 'sarah-petal-stem-demo-001';
 BEGIN
 
 -- ============================================================================
@@ -39,10 +39,10 @@ INSERT INTO scans (
     100,
     100,
     8,
-    'sally@petalandstemflorals.com',
-    '2025-12-03 14:42:17',
-    '2025-12-03 14:47:33',
-    '2025-12-03 14:47:33'
+    'sarah@petalandstemflorals.com',
+    '2025-12-09 09:15:22',
+    '2025-12-09 09:21:47',
+    '2025-12-09 09:21:47'
 )
 ON CONFLICT (scan_id) DO UPDATE SET
     updated_at = NOW(),
@@ -104,7 +104,7 @@ INSERT INTO findings (
         },
         "auth_context": "Authenticated as customer123",
         "probe_name": "sql_injection_detection",
-        "timestamp": "2025-12-03T14:45:12-08:00",
+        "timestamp": "2025-12-09T09:17:42-08:00",
         "curl_command": "curl -X POST https://petalandstemflorals.com/wp-json/petal-delivery/v1/slots -H \"Cookie: wordpress_logged_in_xxx=customer123\" -d \"date=2025-01-01'' OR ''1''=''1\"",
         "steps": [
             "Navigate to delivery scheduling page",
@@ -126,7 +126,7 @@ INSERT INTO findings (
             "language": "php",
             "snippet": "$query = $wpdb->prepare(\n    \"SELECT * FROM {$wpdb->prefix}delivery_slots WHERE date = %s\",\n    sanitize_text_field($_POST[''date''])\n);\n$results = $wpdb->get_results($query);"
         },
-        "business_impact": "Complete database compromise. Attacker could steal all 2,400+ customer records, modify orders, or delete business data. This is likely why Google suspended your Merchant Center account.",
+        "business_impact": "Complete database compromise. It is likely that Google suspended your Merchant Center account because of this vulnerability.",
         "remediation_time": "30 minutes",
         "executive_summary": "An attacker could steal customer names, addresses, and order history from your delivery scheduling system. This is likely why Google suspended your account."
     }'::jsonb
@@ -179,7 +179,7 @@ INSERT INTO findings (
         },
         "auth_context": "Authenticated as customer ID 42 (different from order owner 156)",
         "probe_name": "bola_idor_detection",
-        "timestamp": "2025-12-03T14:45:28-08:00",
+        "timestamp": "2025-12-09T09:18:03-08:00",
         "curl_command": "curl -X GET https://petalandstemflorals.com/wp-json/wc/v3/orders/1847 -H \"Authorization: Bearer eyJ...\"",
         "steps": [
             "Create or use an existing customer account",
@@ -246,7 +246,7 @@ INSERT INTO findings (
         },
         "auth_context": "Authenticated as customer ID 42",
         "probe_name": "broken_auth_idor",
-        "timestamp": "2025-12-03T14:45:41-08:00",
+        "timestamp": "2025-12-09T09:18:26-08:00",
         "curl_command": "curl -X GET https://petalandstemflorals.com/wp-json/wc/v3/customers/156 -H \"Authorization: Bearer eyJ...\"",
         "steps": [
             "Authenticate as any customer",
@@ -313,7 +313,7 @@ INSERT INTO findings (
         },
         "auth_context": "Unauthenticated",
         "probe_name": "security_headers_check",
-        "timestamp": "2025-12-03T14:46:02-08:00",
+        "timestamp": "2025-12-09T09:19:14-08:00",
         "curl_command": "curl -I https://petalandstemflorals.com/checkout/",
         "steps": [
             "Request the checkout page",
@@ -378,7 +378,7 @@ INSERT INTO findings (
         },
         "auth_context": "Unauthenticated",
         "probe_name": "wordpress_plugin_version",
-        "timestamp": "2025-12-03T14:46:18-08:00",
+        "timestamp": "2025-12-09T09:19:45-08:00",
         "curl_command": "curl https://petalandstemflorals.com/wp-content/plugins/petal-delivery-scheduler/readme.txt",
         "steps": [
             "Request plugin readme.txt file",
@@ -438,22 +438,22 @@ INSERT INTO findings (
             "headers": {
                 "Content-Type": "application/json"
             },
-            "body": "[{\"id\":1,\"name\":\"Sally Chen\",\"slug\":\"sally\",\"link\":\"https://petalandstemflorals.com/author/sally/\"},{\"id\":2,\"name\":\"marcus_dev\",\"slug\":\"marcus_dev\"}]",
+            "body": "[{\"id\":1,\"name\":\"Sarah Chen\",\"slug\":\"sarah\",\"link\":\"https://petalandstemflorals.com/author/sarah/\"},{\"id\":2,\"name\":\"marcus_dev\",\"slug\":\"marcus_dev\"}]",
             "size_bytes": 450
         },
         "auth_context": "Unauthenticated",
         "probe_name": "user_enumeration",
-        "timestamp": "2025-12-03T14:46:35-08:00",
+        "timestamp": "2025-12-09T09:20:08-08:00",
         "curl_command": "curl https://petalandstemflorals.com/wp-json/wp/v2/users",
         "steps": [
             "Request the WordPress users REST endpoint without authentication",
             "Observe that user information is returned including usernames"
         ],
         "why_vulnerable": "WordPress REST API exposes user endpoints by default without authentication",
-        "attack_scenario": "Attacker discovers admin username ''sally'' and launches automated password brute-force attack against wp-login.php.",
+        "attack_scenario": "Attacker discovers admin username ''sarah'' and launches automated password brute-force attack against wp-login.php.",
         "poc_references": [],
         "exposed_users": [
-            {"id": 1, "username": "sally", "display_name": "Sally Chen"},
+            {"id": 1, "username": "sarah", "display_name": "Sarah Chen"},
             {"id": 2, "username": "marcus_dev", "display_name": "marcus_dev"}
         ],
         "fix_code": {
@@ -510,7 +510,7 @@ INSERT INTO findings (
         },
         "auth_context": "N/A - TLS handshake analysis",
         "probe_name": "tls_version_check",
-        "timestamp": "2025-12-03T14:46:52-08:00",
+        "timestamp": "2025-12-09T09:20:37-08:00",
         "curl_command": "curl -v --tlsv1.0 https://petalandstemflorals.com",
         "steps": [
             "Attempt TLS 1.0 connection - succeeds (vulnerable)",
@@ -578,7 +578,7 @@ INSERT INTO findings (
         },
         "auth_context": "Unauthenticated - publicly accessible",
         "probe_name": "sensitive_data_exposure",
-        "timestamp": "2025-12-03T14:47:15-08:00",
+        "timestamp": "2025-12-09T09:21:22-08:00",
         "curl_command": "curl https://petalandstemflorals.com/wp-content/uploads/petal-payments/config.json",
         "steps": [
             "Navigate to wp-content/uploads directory",
@@ -615,7 +615,7 @@ INSERT INTO findings (
 -- Success message
 -- ============================================================================
 
-RAISE NOTICE '✅ Successfully inserted Sally demo scan with 8 findings';
+RAISE NOTICE '✅ Successfully inserted Sarah demo scan with 8 findings';
 RAISE NOTICE '   - 2 Critical: SQL Injection, BOLA Order Exposure';
 RAISE NOTICE '   - 2 High: Broken Authentication, Cleartext Storage (CVE-2025-4394)';
 RAISE NOTICE '   - 3 Medium: Security Headers, Outdated Plugin, User Enumeration';
@@ -635,7 +635,7 @@ SELECT
     user_id,
     created_at
 FROM scans
-WHERE scan_id = 'sally-petal-stem-demo-001';
+WHERE scan_id = 'sarah-petal-stem-demo-001';
 
 SELECT
     severity,
@@ -644,7 +644,7 @@ SELECT
     scanner,
     score
 FROM findings
-WHERE scan_id = 'sally-petal-stem-demo-001'
+WHERE scan_id = 'sarah-petal-stem-demo-001'
 ORDER BY
     CASE severity
         WHEN 'Critical' THEN 1
