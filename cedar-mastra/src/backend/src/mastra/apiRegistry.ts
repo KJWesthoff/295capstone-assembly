@@ -3,6 +3,8 @@ import { ChatInputSchema, ChatOutput, chatWorkflow } from './workflows/chatWorkf
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createSSEStream } from '../utils/streamUtils';
+import { generateDeveloperArtifactsTool } from './tools/generate-developer-artifacts';
+import { RuntimeContext } from '@mastra/core/di';
 
 // ---------------------------------------------------------------------------
 // In-memory sample storage for threads & messages – purely for demo purposes.
@@ -229,6 +231,81 @@ export const apiRoutes = [
       } catch (err) {
         console.error('Error fetching messages', err);
         return c.json({ error: 'Thread not found' }, 404);
+      }
+    },
+  }),
+
+  // -------------------- Developer Artifacts API --------------------
+
+  // POST /developer/generate-artifacts – generate tests and PR from code fix
+  registerApiRoute('/developer/generate-artifacts', {
+    method: 'POST',
+    openapi: {
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                finding: {
+                  type: 'object',
+                  description: 'The vulnerability finding',
+                },
+                codeFix: {
+                  type: 'object',
+                  description: 'The code fix context with vulnerableCode, fixedCode, language',
+                },
+                hotPatch: {
+                  type: 'string',
+                  description: 'Optional hot patch configuration',
+                },
+              },
+              required: ['finding', 'codeFix'],
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Generated developer artifacts (tests, PR metadata)',
+        },
+      },
+    },
+    handler: async (c) => {
+      try {
+        const body = await c.req.json();
+        const { finding, codeFix, hotPatch } = body;
+
+        // Validate required fields
+        if (!finding || !codeFix) {
+          return c.json({ error: 'finding and codeFix are required' }, 400);
+        }
+
+        if (!codeFix.vulnerableCode || !codeFix.fixedCode || !codeFix.language) {
+          return c.json({
+            error: 'codeFix must include vulnerableCode, fixedCode, and language',
+          }, 400);
+        }
+
+        console.log(`🔧 API: Generating developer artifacts for finding ${finding.id}`);
+
+        // Execute the tool
+        const result = await generateDeveloperArtifactsTool.execute({
+          context: {
+            finding,
+            codeFix,
+            hotPatch,
+          },
+          runtimeContext: new RuntimeContext(),
+        });
+
+        console.log(`✅ API: Generated artifacts successfully`);
+        return c.json(result);
+      } catch (error) {
+        console.error('❌ API: Error generating developer artifacts:', error);
+        return c.json({
+          error: error instanceof Error ? error.message : 'Failed to generate artifacts',
+        }, 500);
       }
     },
   }),

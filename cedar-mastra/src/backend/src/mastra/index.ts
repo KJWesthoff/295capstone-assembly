@@ -19,6 +19,7 @@ import { sqlGenerationTool } from './tools/sql-generation-tool';
 import { roadmapTools } from './tools/roadmapTool';
 import { visualizeAttackPathTool } from './tools/visualize-attack-path-tool';
 import { getGuardrailsTool } from './tools/get-guardrails';
+import { generateDeveloperArtifactsTool } from './tools/generate-developer-artifacts';
 
 // Create Mastra instance
 export const mastra = new Mastra({
@@ -54,5 +55,6 @@ export const tools = {
   sqlGenerationTool,
   visualizeAttackPathTool,
   getGuardrailsTool,
+  generateDeveloperArtifactsTool,
   ...roadmapTools   // Spread the roadmap tools collection
 };

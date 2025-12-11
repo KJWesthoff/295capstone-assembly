@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { X, Plus, Copy, ExternalLink, GitPullRequest, Loader2, Shield, Search } from "lucide-react";
+import { X, Plus, Copy, ExternalLink, GitPullRequest, Loader2, Shield, Search, Sparkles, TestTube, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { toast } from "sonner";
 import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
@@ -15,6 +16,7 @@ import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import { CodeBlock } from "@/components/ui/code-block";
 import type { Finding } from "@/types/finding";
 import { useGuardrails, SUPPORTED_LANGUAGES } from "@/hooks/useGuardrails";
+import { useGeneratedArtifacts, hasCodeFix, extractCodeFix } from "@/hooks/useGeneratedArtifacts";
 
 interface DeveloperDetailsDrawerProps {
   finding: Finding | null;
@@ -28,7 +30,19 @@ export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDra
   const { guardrailsByCwe, isLoading: isLoadingGuardrails, error: guardrailsError, fetchForAllCwes } = useGuardrails();
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
 
+  // Generated artifacts (tests, PR) - only available when real code fix exists
+  const {
+    artifacts: generatedArtifacts,
+    isLoading: isGeneratingArtifacts,
+    error: artifactsError,
+    generate: generateArtifacts,
+  } = useGeneratedArtifacts();
+
   if (!finding) return null;
+
+  // Check if this finding has a real code fix (not just hardcoded fallback)
+  const hasRealCodeFix = hasCodeFix(finding);
+  const codeFix = extractCodeFix(finding);
 
   // Evidence is now embedded directly in the finding from the scanner API
   // Handle both old and new evidence formats
@@ -405,22 +419,169 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                 </Card>
               </div>
 
-              {/* Tests */}
-              <Card className="p-4 bg-muted/20 border-border">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-foreground">Unit & Integration Tests</h3>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleCopyCode(unitTest)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 w-full">
-                  <CodeBlock language="php" value={unitTest} className="overflow-x-auto w-full max-w-full" />
-                </div>
-              </Card>
+              {/* Tests - Disabled when no real code fix is available */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Card className={`p-4 border-border ${hasRealCodeFix ? 'bg-muted/20' : 'bg-muted/10 opacity-60'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {hasRealCodeFix ? (
+                            <TestTube className="h-4 w-4 text-primary" />
+                          ) : (
+                            <Lock className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <h3 className={`font-semibold ${hasRealCodeFix ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            Unit & Integration Tests
+                          </h3>
+                          {generatedArtifacts && (
+                            <Badge variant="secondary" className="text-xs">
+                              AI Generated
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {hasRealCodeFix && !generatedArtifacts && !isGeneratingArtifacts && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                if (codeFix) {
+                                  generateArtifacts(finding, codeFix, hotPatchConfig);
+                                }
+                              }}
+                              disabled={!codeFix}
+                            >
+                              <Sparkles className="h-4 w-4 mr-2" />
+                              Generate Tests
+                            </Button>
+                          )}
+                          {generatedArtifacts && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleCopyCode(generatedArtifacts.unitTests.code)}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Disabled state - no code fix available */}
+                      {!hasRealCodeFix && (
+                        <div className="text-center py-6">
+                          <Lock className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">
+                            Test generation requires a code fix
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Tests will be available when the scanner provides a fix for this vulnerability.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Loading state */}
+                      {hasRealCodeFix && isGeneratingArtifacts && (
+                        <div className="flex items-center gap-3 py-8 justify-center">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">
+                            Generating tests and PR metadata for this fix...
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Error state */}
+                      {hasRealCodeFix && artifactsError && (
+                        <div className="text-sm text-destructive py-4 text-center">
+                          {artifactsError}
+                        </div>
+                      )}
+
+                      {/* Ready to generate state */}
+                      {hasRealCodeFix && !generatedArtifacts && !isGeneratingArtifacts && !artifactsError && (
+                        <div className="text-center py-6">
+                          <p className="text-sm text-muted-foreground">
+                            Click &quot;Generate Tests&quot; to create contextual tests for this vulnerability fix.
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Tests will be generated based on the specific code fix and vulnerability type.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Generated artifacts display */}
+                      {generatedArtifacts && (
+                        <div className="space-y-4">
+                          {/* Unit Tests */}
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-semibold text-foreground">
+                                Unit Tests ({generatedArtifacts.unitTests.framework})
+                              </span>
+                              <code className="text-xs bg-muted px-2 py-1 rounded">
+                                {generatedArtifacts.unitTests.runCommand}
+                              </code>
+                            </div>
+                            <div className="grid grid-cols-1 w-full">
+                              <CodeBlock
+                                language={generatedArtifacts.unitTests.language}
+                                value={generatedArtifacts.unitTests.code}
+                                className="max-h-[300px] overflow-auto w-full max-w-full"
+                              />
+                            </div>
+                            <div className="mt-2">
+                              <span className="text-xs text-muted-foreground">Test cases:</span>
+                              <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                                {generatedArtifacts.unitTests.testCases.map((tc, i) => (
+                                  <li key={i}>• {tc.name}: {tc.purpose}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* Integration Tests */}
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-semibold text-foreground">
+                                Integration Tests ({generatedArtifacts.integrationTests.framework})
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleCopyCode(generatedArtifacts.integrationTests.code)}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-1 w-full">
+                              <CodeBlock
+                                language={generatedArtifacts.integrationTests.language}
+                                value={generatedArtifacts.integrationTests.code}
+                                className="max-h-[300px] overflow-auto w-full max-w-full"
+                              />
+                            </div>
+                            {generatedArtifacts.integrationTests.dependencies && generatedArtifacts.integrationTests.dependencies.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Dependencies: {generatedArtifacts.integrationTests.dependencies.join(', ')}
+                              </p>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-muted-foreground pt-2 border-t border-border">
+                            Confidence: {generatedArtifacts.metadata.confidenceScore}% • Generated {new Date(generatedArtifacts.metadata.generatedAt).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      )}
+                    </Card>
+                  </TooltipTrigger>
+                  {!hasRealCodeFix && (
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p>Test generation is available when a code fix is found by the scanner.</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
 
               {/* Guardrail - Dynamic from Semgrep Registry */}
               <Card className="p-4 bg-muted/20 border-border overflow-hidden">
@@ -567,45 +728,138 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                 )}
               </Card>
 
-              {/* Create PR Panel */}
-              <Card className="p-4 bg-primary/10 border-primary">
-                <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <GitPullRequest className="h-5 w-5" />
-                  Create Pull Request
-                </h3>
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <span className="font-semibold text-foreground">Branch:</span>
-                    <code className="ml-2 bg-background px-2 py-1 rounded text-xs border border-border font-mono">
-                      fix/{finding.endpoint.service}/{finding.cwe[0]?.toLowerCase()}/sql-injection
-                    </code>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground">Commit message:</span>
-                    <code className="ml-2 bg-background px-2 py-1 rounded text-xs border border-border font-mono block mt-1">
-                      fix: prevent SQL injection in auth endpoint ({finding.cve[0] || finding.cwe[0]})
-                    </code>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground">PR Body:</span>
-                    <div className="grid grid-cols-1 w-full">
-                      <CodeBlock language="markdown" value={prBody} className="mt-2 max-h-[200px] overflow-auto w-full max-w-full" />
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button size="sm" onClick={() => toast.info("PR stub - This would open a PR in your repo")}>
-                      <GitPullRequest className="h-4 w-4 mr-2" />
-                      Open PR
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleCopyCode(prBody)}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copy PR Body
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+              {/* Create PR Panel - Disabled when no real code fix is available */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Card className={`p-4 border-primary ${hasRealCodeFix ? 'bg-primary/10' : 'bg-muted/10 opacity-60 border-border'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className={`font-semibold flex items-center gap-2 ${hasRealCodeFix ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {hasRealCodeFix ? (
+                            <GitPullRequest className="h-5 w-5" />
+                          ) : (
+                            <Lock className="h-5 w-5 text-muted-foreground" />
+                          )}
+                          Create Pull Request
+                          {generatedArtifacts && (
+                            <Badge variant="secondary" className="text-xs">
+                              AI Generated
+                            </Badge>
+                          )}
+                        </h3>
+                      </div>
 
-              <div className="flex gap-2">
+                      {/* Disabled state - no code fix available */}
+                      {!hasRealCodeFix && (
+                        <div className="text-center py-6">
+                          <Lock className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">
+                            PR generation requires a code fix
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            PR metadata will be available when the scanner provides a fix for this vulnerability.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Loading state */}
+                      {hasRealCodeFix && isGeneratingArtifacts && !generatedArtifacts && (
+                        <div className="flex items-center gap-3 py-6 justify-center">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">
+                            Generating PR metadata...
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Ready to generate state */}
+                      {hasRealCodeFix && !generatedArtifacts && !isGeneratingArtifacts && (
+                        <div className="text-center py-4">
+                          <p className="text-sm text-muted-foreground">
+                            Generate tests above to create PR metadata with proper context.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Generated PR display */}
+                      {generatedArtifacts && (
+                        <div className="space-y-3 text-sm">
+                          <div>
+                            <span className="font-semibold text-foreground">Branch:</span>
+                            <code className="ml-2 bg-background px-2 py-1 rounded text-xs border border-border font-mono">
+                              {generatedArtifacts.pullRequest.branchName}
+                            </code>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-foreground">Commit message:</span>
+                            <code className="ml-2 bg-background px-2 py-1 rounded text-xs border border-border font-mono block mt-1">
+                              {generatedArtifacts.pullRequest.commitMessage}
+                            </code>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-foreground">PR Title:</span>
+                            <span className="ml-2 text-foreground">
+                              {generatedArtifacts.pullRequest.title}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-foreground">Labels:</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {generatedArtifacts.pullRequest.labels.map((label) => (
+                                <Badge key={label} variant="outline" className="text-xs">
+                                  {label}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-foreground">PR Body:</span>
+                            <div className="grid grid-cols-1 w-full">
+                              <CodeBlock
+                                language="markdown"
+                                value={generatedArtifacts.pullRequest.body}
+                                className="mt-2 max-h-[200px] overflow-auto w-full max-w-full"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-foreground">Reviewer Checklist:</span>
+                            <ul className="mt-1 space-y-1">
+                              {generatedArtifacts.pullRequest.reviewChecklist.map((item, i) => (
+                                <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                                  <input type="checkbox" className="mt-0.5" />
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <Button size="sm" onClick={() => toast.info("PR stub - This would open a PR in your repo")}>
+                              <GitPullRequest className="h-4 w-4 mr-2" />
+                              Open PR
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCopyCode(generatedArtifacts.pullRequest.body)}
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy PR Body
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  </TooltipTrigger>
+                  {!hasRealCodeFix && (
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p>PR generation is available when a code fix is found by the scanner.</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+
+              <div className="flex gap-2 flex-wrap">
                 <Button
                   size="sm"
                   variant="outline"
@@ -621,21 +875,45 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                   <Plus className="h-4 w-4 mr-2" />
                   Add Fix to Chat
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    addCustomToChat(
-                      `developer-tests-${finding.id}`,
-                      { unitTest },
-                      "Tests",
-                      finding.severity
-                    )
-                  }
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Tests to Chat
-                </Button>
+                {/* Only show Tests button when generated artifacts exist */}
+                {generatedArtifacts && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      addCustomToChat(
+                        `developer-tests-${finding.id}`,
+                        {
+                          unitTests: generatedArtifacts.unitTests,
+                          integrationTests: generatedArtifacts.integrationTests,
+                        },
+                        "Generated Tests",
+                        finding.severity
+                      )
+                    }
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Tests to Chat
+                  </Button>
+                )}
+                {/* Only show PR button when generated artifacts exist */}
+                {generatedArtifacts && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      addCustomToChat(
+                        `developer-pr-${finding.id}`,
+                        { pullRequest: generatedArtifacts.pullRequest },
+                        "PR Details",
+                        finding.severity
+                      )
+                    }
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add PR to Chat
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
