@@ -7,6 +7,14 @@ set -e
 
 echo "🚀 Starting VentiAPI Scanner Development Environment..."
 
+# Swap nginx config for local development (no SSL)
+if [ -f "nginx-local.conf" ]; then
+    echo "🔧 Configuring nginx for local development (no SSL)..."
+    cp nginx.conf nginx-prod.conf.bak  # Backup prod config
+    cp nginx-local.conf nginx.conf      # Use local config
+    echo "✅ Nginx configured for local development"
+fi
+
 # Check if .env.local exists, if not create from example
 if [ ! -f ".env.local" ]; then
     if [ -f ".env.local.example" ]; then

@@ -129,4 +129,4 @@ terraform.tfstate.backup
 *.tfplan
 
 # Deployment handoff (contains API keys and secrets)
-DEPLOYMENT_HANDOFF.md
+DEPLOYMENT_HANDOFF.mdnginx-prod.conf.bak

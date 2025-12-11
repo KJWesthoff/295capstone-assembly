@@ -422,6 +422,43 @@ The project includes database setup for RAG:
 - Not yet integrated with Cedar/Mastra pipeline
 - See `docs/DATABASE_DISTRIBUTION.md` for details
 
+### Finding Transformation Pipeline (Critical for Compliance Data)
+
+The Cedar dashboard has **two separate transformation libraries** that convert scanner findings to frontend `Finding` objects:
+
+1. **`cedar-mastra/src/lib/scanner-transform.ts`** (API Route Transform):
+   - Used by `/api/scan/[scanId]/findings` API route
+   - Contains complete OWASP/CWE/NIST mapping tables (`RULE_TO_OWASP`, `RULE_TO_CWE`, `OWASP_TO_NIST_CSF`, `OWASP_TO_NIST_80053`)
+   - Properly enriches findings with compliance data
+
+2. **`cedar-mastra/src/lib/transformFindings.ts`** (State Transform):
+   - Used by React views (`SecurityAnalystView.tsx`, `DeveloperView.tsx`)
+   - Transforms `VulnerabilityFinding` (from Cedar state) to `Finding`
+   - **MISSING**: Does NOT use mapping tables - sets `cwe: []`, `owasp: rule || "Unknown"`
+
+**Data Flow and the Compliance Bug**:
+```
+Scanner DB → Python API → Next.js API (scanner-transform ✓) → Response
+                                                               ↓
+                                    Cedar State (stores raw VulnerabilityFinding)
+                                                               ↓
+                        React Views → transformFindings.ts (NO MAPPINGS ✗)
+                                                               ↓
+                                    Compliance Tab shows "OWASP Unknown CWE\"
+```
+
+**Key Files**:
+- `cedar-mastra/src/lib/scanner-transform.ts`: Mapping tables (lines 29-87) - AUTHORITATIVE
+- `cedar-mastra/src/lib/transformFindings.ts`: View transforms (NO mappings)
+- `cedar-mastra/src/backend/src/mastra/lib/scan-processor.ts`: Backend mapping tables (`RULE_TO_OWASP_CWE_MAP`)
+- `cedar-mastra/src/app/cedar-os/scanState.ts`: Cedar state for scan results
+- `cedar-mastra/src/types/finding.ts`: `Finding` interface with `owasp`, `cwe[]`, `nistCsf[]`, `nist80053[]` fields
+
+**Solutions for Compliance Data Feature**:
+1. **Option A - Centralize Mappings**: Create shared mapping module imported by both transform files
+2. **Option B - Enrich at Source**: Store enriched data in Cedar state (transform once at API response)
+3. **Option C - Database Enrichment**: Populate `cwe_ids` in seed data and scanner output
+
 ## Additional Documentation
 
 - `README.md`: Quick start and overview
