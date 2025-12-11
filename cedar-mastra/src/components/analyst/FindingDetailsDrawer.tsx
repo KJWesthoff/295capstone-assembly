@@ -12,6 +12,7 @@ import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
 import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { CodeBlock } from "@/components/ui/code-block";
+import { ComplianceDetails } from "./ComplianceDetails";
 
 interface FindingDetailsDrawerProps {
   finding: Finding | null;
@@ -335,42 +336,12 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
             </TabsContent>
 
             <TabsContent value="compliance" className="space-y-4 mt-4">
-              <div className="space-y-3">
-                <div>
-                  <h4 className="font-medium text-sm mb-2 text-foreground">OWASP</h4>
-                  <Badge variant="outline">{finding.owasp || 'Unknown'}</Badge>
-                </div>
-                {finding.cwe && finding.cwe.length > 0 && (
-                  <div>
-                    <h4 className="font-medium text-sm mb-2 text-foreground">CWE</h4>
-                    <div className="flex gap-2 flex-wrap">
-                      {finding.cwe.map((c) => (
-                        <Badge key={c} variant="outline">{c}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {finding.nistCsf && finding.nistCsf.length > 0 && (
-                  <div>
-                    <h4 className="font-medium text-sm mb-2 text-foreground">NIST CSF</h4>
-                    <div className="flex gap-2 flex-wrap">
-                      {finding.nistCsf.map((n) => (
-                        <Badge key={n} variant="outline">{n}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {finding.nist80053 && finding.nist80053.length > 0 && (
-                  <div>
-                    <h4 className="font-medium text-sm mb-2 text-foreground">NIST 800-53</h4>
-                    <div className="flex gap-2 flex-wrap">
-                      {finding.nist80053.map((n) => (
-                        <Badge key={n} variant="outline">{n}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ComplianceDetails
+                owasp={finding.owasp}
+                cwe={finding.cwe || []}
+                nistCsf={finding.nistCsf}
+                nist80053={finding.nist80053}
+              />
               <Button variant="outline" size="sm" onClick={() => handleAddToChat("compliance")}>
                 <Plus className="mr-2 h-3 w-3" />
                 Add Compliance to Chat
