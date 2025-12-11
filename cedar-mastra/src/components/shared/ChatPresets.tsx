@@ -42,14 +42,15 @@ export const ChatPresets = ({
     // Open the chat window
     setShowChat(true);
 
-    // Small delay to ensure chat is open before populating
+    // Delay to ensure chat editor is fully mounted before populating
+    // 200ms gives React time to render the ChatInput component and initialize Tiptap
     setTimeout(() => {
       // Dispatch custom event to populate the chat input
       const event = new CustomEvent('cedar-chat-send', {
         detail: { message }
       });
       window.dispatchEvent(event);
-    }, 100);
+    }, 200);
   };
 
   // Build grid class using conditional logic (Tailwind requires full class names)

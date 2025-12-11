@@ -76,10 +76,13 @@ export async function handleTextStream(
 
   try {
     // Stream raw text chunks through data field
+    let chunkCount = 0;
     for await (const chunk of streamResult.textStream) {
+      chunkCount++;
       chunks.push(chunk);
       streamJSONEvent(streamController, chunk);
     }
+    console.log(`📤 Streamed ${chunkCount} chunks, total length: ${chunks.join('').length}`);
   } catch (error) {
     // Handle stream errors gracefully
     if (error instanceof TypeError && error.message.includes('Controller is already closed')) {

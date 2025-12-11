@@ -53,8 +53,24 @@ export function useSecurityContext() {
         return { message: 'No scan results available yet.' };
       }
 
-      // Only include summary information by default, not all findings
-      // Users can manually add specific findings they want to discuss
+      // Include summary AND top findings so agent has actionable context
+      // Sort by severity (Critical > High > Medium > Low) and take top 5
+      const severityOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      const topFindings = [...(scanResults.findings || [])]
+        .sort((a, b) => (severityOrder[a.severity] || 4) - (severityOrder[b.severity] || 4))
+        .slice(0, 5)
+        .map(f => ({
+          id: f.id,
+          title: f.summaryHumanReadable || f.owasp,
+          severity: f.severity,
+          endpoint: f.endpoint,
+          method: f.endpoint.method,
+          owasp: f.owasp,
+          cwe: f.cwe,
+          description: f.suggestedFix || '',
+          scanners: f.scanners,
+        }));
+
       return {
         scanId: scanResults.scanId,
         apiBaseUrl: scanResults.apiBaseUrl,
@@ -68,9 +84,9 @@ export function useSecurityContext() {
           low: scanResults.summary.low,
         },
         totalEndpoints: Object.keys(scanResults.groupedByEndpoint).length,
-        // Note: We're NOT including the full findings array here
-        // Users can add specific findings using the "+" button
-        message: `Scan ${scanResults.scanId} completed with ${scanResults.summary.total} findings. Use the + buttons to add specific vulnerabilities to discuss.`,
+        // Include top findings so agent can provide specific guidance
+        topFindings,
+        message: `Scan ${scanResults.scanId} completed with ${scanResults.summary.total} findings (${scanResults.summary.critical} critical, ${scanResults.summary.high} high).`,
       };
     },
     {

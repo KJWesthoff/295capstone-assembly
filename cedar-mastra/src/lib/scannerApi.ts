@@ -56,7 +56,8 @@ export interface ScanStatus {
   current_phase?: string;
 }
 
-export interface Finding {
+// Raw scanner finding (before transformation)
+export interface RawScannerFinding {
   rule: string;
   title: string;
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
@@ -69,9 +70,15 @@ export interface Finding {
   scanner_description?: string;
 }
 
+// Re-export Finding from types for enriched findings
+import type { Finding } from '@/types/finding';
+export type { Finding };
+
 export interface FindingsResponse {
   findings: Finding[];
   total: number;
+  scan_id?: string;
+  scan_timestamp?: string;
 }
 
 export class ScannerApiClient {
@@ -213,43 +220,17 @@ export class ScannerApiClient {
   }
 
   /**
-   * Get scan findings
+   * Get scan findings (enriched with OWASP/CWE/NIST mappings)
+   * Calls the Next.js API route which handles authentication and transformation
    */
   async getFindings(scanId: string): Promise<FindingsResponse> {
-    // Ensure we're authenticated before making the request
-    const authenticated = await ensureScannerAuth();
-    if (!authenticated) {
-      throw new Error('Failed to authenticate with scanner service');
-    }
-
     try {
-      const response = await fetch(`${this.baseUrl}/api/scan/${scanId}/findings`, {
-        headers: {
-          ...getScannerAuthHeader(),
-        },
-      });
+      // Call our Next.js API route which authenticates and transforms findings
+      const response = await fetch(`/api/scan/${scanId}/findings`);
 
       if (!response.ok) {
-        // If 401 or 403, try to re-authenticate and retry once
-        if (response.status === 401 || response.status === 403) {
-          console.warn('Authentication expired, re-authenticating...');
-          scannerAuth.logout();
-          const reAuthenticated = await ensureScannerAuth();
-          if (reAuthenticated) {
-            const retryResponse = await fetch(`${this.baseUrl}/api/scan/${scanId}/findings`, {
-              headers: {
-                ...getScannerAuthHeader(),
-              },
-            });
-            if (!retryResponse.ok) {
-              const errorText = await retryResponse.text().catch(() => 'Unknown error');
-              throw new Error(`Failed to get findings: ${retryResponse.status} - ${errorText}`);
-            }
-            return retryResponse.json();
-          }
-        }
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Failed to get findings: ${response.status} - ${errorText}`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.message || errorData.error || `Failed to get findings: ${response.status}`);
       }
 
       return response.json();

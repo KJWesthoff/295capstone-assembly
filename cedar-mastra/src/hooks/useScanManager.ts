@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useScanResultsState, VulnerabilityFinding } from '@/app/cedar-os/scanState';
+import { useScanResultsState } from '@/app/cedar-os/scanState';
+import type { Finding } from '@/types/finding';
 import { scannerApi, ScanStatus } from '@/lib/scannerApi';
 import { useScanResultsPolling } from '@/hooks/useScanResultsPolling';
 import { ScanConfig } from '@/components/security/ScanConfigDialog';
@@ -83,7 +84,8 @@ export function useScanManager(): UseScanManagerReturn {
   const apiBaseUrlRef = useRef<string>('');
 
   // Handle scan completion
-  const handleScanCompleted = useCallback(async (scanId: string, findings: any[]) => {
+  // Findings are already enriched Finding[] from the polling hook (via API route + scanner-transform.ts)
+  const handleScanCompleted = useCallback(async (scanId: string, findings: Finding[]) => {
     console.log('[useScanManager] Scan completed:', scanId, 'findings:', findings.length);
 
     setScanResults({
@@ -94,20 +96,17 @@ export function useScanManager(): UseScanManagerReturn {
       status: 'completed',
       summary: {
         total: findings.length,
-        critical: findings.filter((f: VulnerabilityFinding) => f.severity === 'Critical').length,
-        high: findings.filter((f: VulnerabilityFinding) => f.severity === 'High').length,
-        medium: findings.filter((f: VulnerabilityFinding) => f.severity === 'Medium').length,
-        low: findings.filter((f: VulnerabilityFinding) => f.severity === 'Low').length,
+        critical: findings.filter((f: Finding) => f.severity === 'Critical').length,
+        high: findings.filter((f: Finding) => f.severity === 'High').length,
+        medium: findings.filter((f: Finding) => f.severity === 'Medium').length,
+        low: findings.filter((f: Finding) => f.severity === 'Low').length,
       },
       groupedByEndpoint: findings.reduce((acc, finding) => {
-        const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
-          ? (finding.endpoint as any).path
-          : finding.endpoint;
-        const key = `${finding.method} ${endpointStr}`;
+        const key = `${finding.endpoint.method} ${finding.endpoint.path}`;
         if (!acc[key]) acc[key] = [];
         acc[key].push(finding);
         return acc;
-      }, {} as Record<string, VulnerabilityFinding[]>),
+      }, {} as Record<string, Finding[]>),
     });
 
     setIsScanning(false);
@@ -168,47 +167,29 @@ export function useScanManager(): UseScanManagerReturn {
           return;
         }
 
+        // API returns enriched Finding[] with OWASP/CWE/NIST mappings from scanner-transform.ts
         const response = await scannerApi.getFindings(selectedScanId);
-        const findings = response.findings || [];
-
-        const vulnerabilityFindings: VulnerabilityFinding[] = findings
-          .filter((f: any) => f != null)
-          .map((f: any) => ({
-            id: f.id || `${f.endpoint || ''}-${f.rule || ''}` || `finding-${Math.random()}`,
-            title: f.title || 'Untitled Finding',
-            severity: (f.severity || 'Low') as 'Critical' | 'High' | 'Medium' | 'Low',
-            endpoint: f.endpoint || '/',
-            method: f.method || 'GET',
-            description: f.description || '',
-            rule: f.rule || '',
-            score: f.score || 0,
-            scanner: f.scanner || 'unknown',
-            scanner_description: f.scanner_description || f.scanner || 'unknown',
-            evidence: f.evidence || {},
-          }));
+        const findings: Finding[] = response.findings || [];
 
         setScanResults({
           scanId: selectedScanId,
-          findings: vulnerabilityFindings,
+          findings,
           scanDate: scan?.created_at || new Date().toISOString(),
           apiBaseUrl: scan?.server_url || '',
           status: 'completed',
           summary: {
-            total: vulnerabilityFindings.length,
-            critical: vulnerabilityFindings.filter(f => f.severity === 'Critical').length,
-            high: vulnerabilityFindings.filter(f => f.severity === 'High').length,
-            medium: vulnerabilityFindings.filter(f => f.severity === 'Medium').length,
-            low: vulnerabilityFindings.filter(f => f.severity === 'Low').length,
+            total: findings.length,
+            critical: findings.filter(f => f.severity === 'Critical').length,
+            high: findings.filter(f => f.severity === 'High').length,
+            medium: findings.filter(f => f.severity === 'Medium').length,
+            low: findings.filter(f => f.severity === 'Low').length,
           },
-          groupedByEndpoint: vulnerabilityFindings.reduce((acc, finding) => {
-            const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
-              ? (finding.endpoint as any).path
-              : finding.endpoint;
-            const key = `${finding.method} ${endpointStr}`;
+          groupedByEndpoint: findings.reduce((acc, finding) => {
+            const key = `${finding.endpoint.method} ${finding.endpoint.path}`;
             if (!acc[key]) acc[key] = [];
             acc[key].push(finding);
             return acc;
-          }, {} as Record<string, VulnerabilityFinding[]>),
+          }, {} as Record<string, Finding[]>),
         });
       } catch (error) {
         console.error('[useScanManager] Error fetching findings:', error);

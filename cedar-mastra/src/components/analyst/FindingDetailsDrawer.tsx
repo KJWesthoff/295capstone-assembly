@@ -81,8 +81,10 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
                 CVSS {finding.cvss} · {finding.exploitPresent ? "Public exploit" : "No known exploit"} · {finding.status}
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Badge variant="outline" className="text-xs">OWASP: {finding.owasp}</Badge>
-                <Badge variant="outline" className="text-xs">CWE: {finding.cwe.join(", ")}</Badge>
+                <Badge variant="outline" className="text-xs">OWASP: {finding.owasp || 'Unknown'}</Badge>
+                {finding.cwe && finding.cwe.length > 0 && (
+                  <Badge variant="outline" className="text-xs">CWE: {finding.cwe.join(", ")}</Badge>
+                )}
               </div>
             </div>
             <Button variant="ghost" size="icon" onClick={onClose}>
@@ -93,7 +95,7 @@ export const FindingDetailsDrawer = ({ finding, onClose }: FindingDetailsDrawerP
             <Button
               onClick={() => handleAddToChat("full")}
               size="sm"
-              className="w-full bg-gradient-primary hover:opacity-90"
+              className="w-full"
             >
               <Plus className="mr-2 h-4 w-4" />
               Add Full Details to Chat
@@ -336,16 +338,18 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
               <div className="space-y-3">
                 <div>
                   <h4 className="font-medium text-sm mb-2 text-foreground">OWASP</h4>
-                  <Badge variant="outline">{finding.owasp}</Badge>
+                  <Badge variant="outline">{finding.owasp || 'Unknown'}</Badge>
                 </div>
-                <div>
-                  <h4 className="font-medium text-sm mb-2 text-foreground">CWE</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    {finding.cwe.map((c) => (
-                      <Badge key={c} variant="outline">{c}</Badge>
-                    ))}
+                {finding.cwe && finding.cwe.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-sm mb-2 text-foreground">CWE</h4>
+                    <div className="flex gap-2 flex-wrap">
+                      {finding.cwe.map((c) => (
+                        <Badge key={c} variant="outline">{c}</Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
                 {finding.nistCsf && finding.nistCsf.length > 0 && (
                   <div>
                     <h4 className="font-medium text-sm mb-2 text-foreground">NIST CSF</h4>
@@ -376,9 +380,9 @@ ${evidence.response.body}`} className="max-h-64 overflow-auto" />
             <TabsContent value="history" className="space-y-4 mt-4">
               <div className="space-y-3">
                 <div className="flex gap-2">
-                  {finding.flags.isNew && <Badge className="bg-info/20 text-info">New</Badge>}
-                  {finding.flags.isRegressed && <Badge className="bg-high/20 text-high">Regressed</Badge>}
-                  {finding.flags.isResolved && <Badge className="bg-low/20 text-low">Resolved</Badge>}
+                  {finding.flags?.isNew && <Badge className="bg-info/20 text-info">New</Badge>}
+                  {finding.flags?.isRegressed && <Badge className="bg-high/20 text-high">Regressed</Badge>}
+                  {finding.flags?.isResolved && <Badge className="bg-low/20 text-low">Resolved</Badge>}
                 </div>
                 <div className="text-sm space-y-2">
                   <div>

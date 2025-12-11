@@ -6,6 +6,15 @@
  */
 
 import { VulnerabilityFinding, ScanResultsState } from '@/app/cedar-os/scanState';
+import type { Finding } from '@/types/finding';
+
+/**
+ * Extract OWASP API ID from owasp string (e.g., "API1:2023 — Broken..." → "API1")
+ */
+function getOwaspId(finding: Finding): string {
+  const match = finding.owasp?.match(/^(API\d+)/);
+  return match ? match[1] : '';
+}
 
 export interface ExecutiveKPIs {
   riskScore: number; // 0-10
@@ -106,18 +115,20 @@ export function calculateExecutiveKPIs(scanResults: ScanResultsState | null): Ex
   const riskScore = calculateRiskScore(findings);
 
   // Estimate public-facing endpoints (heuristic: if endpoint doesn't contain /admin or /internal)
-  const internetFacingCount = findings.filter(f =>
-    !f.endpoint.includes('/admin') &&
-    !f.endpoint.includes('/internal') &&
-    !f.endpoint.includes('/debug')
-  ).length;
+  const internetFacingCount = findings.filter(f => {
+    const path = typeof f.endpoint === 'object' ? f.endpoint.path : String(f.endpoint);
+    return !path.includes('/admin') &&
+           !path.includes('/internal') &&
+           !path.includes('/debug');
+  }).length;
 
   // Estimate public exploits (heuristic: injection vulnerabilities are commonly exploited)
-  const publicExploitCount = findings.filter(f =>
-    f.rule === 'API8' || // Injection
-    f.rule === 'API2' || // Broken Auth (commonly exploited)
-    f.rule === 'API1'    // BOLA (commonly exploited)
-  ).length;
+  const publicExploitCount = findings.filter(f => {
+    const owaspId = getOwaspId(f);
+    return owaspId === 'API8' || // Injection
+           owaspId === 'API2' || // Broken Auth (commonly exploited)
+           owaspId === 'API1';   // BOLA (commonly exploited)
+  }).length;
 
   // SLA compliance calculation (placeholder - would need historical data)
   // For now, estimate based on severity: Critical < 24h, High < 7d, Medium < 30d
@@ -169,21 +180,22 @@ export function calculateExecutiveKPIs(scanResults: ScanResultsState | null): Ex
  * Extract top risks from findings
  */
 export function extractTopRisks(findings: VulnerabilityFinding[], limit: number = 5): TopRisk[] {
-  // Sort by severity and score
+  // Sort by severity and CVSS score
   const severityOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
   const sorted = [...findings].sort((a, b) => {
     const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
     if (severityDiff !== 0) return severityDiff;
-    return b.score - a.score;
+    return b.cvss - a.cvss;
   });
 
-  // Group by rule to avoid duplicates
+  // Group by OWASP category to avoid duplicates
   const uniqueRisks = new Map<string, TopRisk>();
 
   sorted.forEach(finding => {
     if (uniqueRisks.size >= limit) return;
 
-    const key = finding.rule;
+    const owaspId = getOwaspId(finding);
+    const key = owaspId || finding.id; // Fallback to id if no OWASP mapping
     if (!uniqueRisks.has(key)) {
       // Get endpoint path (handle both object and string forms)
       const endpointPath = typeof finding.endpoint === 'object' && finding.endpoint !== null
@@ -195,7 +207,7 @@ export function extractTopRisks(findings: VulnerabilityFinding[], limit: number 
                              !endpointPath.includes('/internal');
 
       // Determine exploit status
-      const exploitStatus = ['API8', 'API2', 'API1'].includes(finding.rule)
+      const exploitStatus = ['API8', 'API2', 'API1'].includes(owaspId)
         ? 'public' as const
         : 'theoretical' as const;
 
@@ -204,7 +216,7 @@ export function extractTopRisks(findings: VulnerabilityFinding[], limit: number 
 
       uniqueRisks.set(key, {
         id: finding.id,
-        title: finding.title,
+        title: finding.summaryHumanReadable || finding.owasp || 'Unknown',
         affectedSystems,
         severity: finding.severity,
         exploitStatus,
@@ -214,7 +226,7 @@ export function extractTopRisks(findings: VulnerabilityFinding[], limit: number 
              finding.severity === 'High' ? '7 days' :
              finding.severity === 'Medium' ? '30 days' : '90 days',
         relatedBreaches: exploitStatus === 'public'
-          ? getRelatedBreaches(finding.rule)
+          ? getRelatedBreaches(owaspId)
           : undefined,
       });
     } else {
@@ -251,7 +263,10 @@ export function calculateComplianceSnapshot(findings: VulnerabilityFinding[]): C
   // Count findings by OWASP API category
   const owaspCounts: Record<string, number> = {};
   findings.forEach(f => {
-    owaspCounts[f.rule] = (owaspCounts[f.rule] || 0) + 1;
+    const owaspId = getOwaspId(f);
+    if (owaspId) {
+      owaspCounts[owaspId] = (owaspCounts[owaspId] || 0) + 1;
+    }
   });
 
   // Map to NIST CSF categories (simplified)
@@ -274,7 +289,8 @@ export function calculateComplianceSnapshot(findings: VulnerabilityFinding[]): C
 
   // Reduce score based on findings
   findings.forEach(f => {
-    const category = nistMapping[f.rule];
+    const owaspId = getOwaspId(f);
+    const category = nistMapping[owaspId];
     if (category) {
       const penalty = f.severity === 'Critical' ? 20 :
                      f.severity === 'High' ? 15 :

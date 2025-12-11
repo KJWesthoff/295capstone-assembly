@@ -169,25 +169,46 @@ export const ChatInput: React.FC<{
     };
   }, [handleVoiceToggle]);
 
-  const [_, setForceUpdate] = React.useState(0);
+  // Track content state in React state (editor.isEmpty doesn't trigger re-renders on programmatic updates)
+  const [hasContent, setHasContent] = React.useState(false);
 
-  // Handle custom event for programmatic message sending
+  // Sync hasContent state with editor on ANY change (update or transaction)
+  useEffect(() => {
+    if (editor) {
+      const updateContentState = () => {
+        const isEmpty = editor.isEmpty;
+        setHasContent(!isEmpty);
+      };
+
+      // Listen to both 'update' and 'transaction' events
+      // 'transaction' fires on every change including programmatic setContent
+      editor.on('update', updateContentState);
+      editor.on('transaction', updateContentState);
+
+      // Initialize on mount
+      updateContentState();
+
+      return () => {
+        editor.off('update', updateContentState);
+        editor.off('transaction', updateContentState);
+      };
+    }
+  }, [editor]);
+
+  // Handle custom event for programmatic message population
   useEffect(() => {
     const handleCustomSend = (e: CustomEvent<{ message: string }>) => {
       if (editor && e.detail.message) {
-        editor.commands.focus();
-        editor.commands.setContent(e.detail.message);
+        // Clear editor first, then set content (helps trigger proper state updates)
+        editor.chain().focus().clearContent().run();
 
-        // Force update to ensure button is enabled
-        setForceUpdate((prev) => prev + 1);
+        // Small delay then insert content - this triggers proper Tiptap state updates
+        requestAnimationFrame(() => {
+          editor.chain().focus().insertContent(e.detail.message).run();
 
-        // Small delay to allow state to propagate before submitting
-        setTimeout(() => {
-          // Check if editor actually has content before submitting
-          if (!editor.isEmpty) {
-            handleSubmit();
-          }
-        }, 500);
+          // Force state update
+          setHasContent(true);
+        });
       }
     };
 
@@ -195,9 +216,10 @@ export const ChatInput: React.FC<{
     return () => {
       window.removeEventListener('cedar-chat-send' as any, handleCustomSend as any);
     };
-  }, [editor, handleSubmit]);
+  }, [editor]);
 
-  const isSendButtonDisabled = editor ? editor.isEmpty : isEditorEmpty;
+  // Use React state for disabled check (not editor methods which don't trigger re-renders)
+  const isSendButtonDisabled = !hasContent;
 
   return (
     <div className={cn('bg-gray-800/10 dark:bg-gray-600/80 rounded-lg p-3 text-sm', className)}>

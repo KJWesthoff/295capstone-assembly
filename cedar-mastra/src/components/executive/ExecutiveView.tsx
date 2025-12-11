@@ -27,6 +27,9 @@ export const ExecutiveView = () => {
   // Get findings from Cedar state (populated by ScanSelector)
   const { scanResults } = useScanResultsState();
 
+  // NOTE: useSecurityContext() is now centralized in PageContextProvider
+  // to prevent duplicate "Scan Summary" badges in the chat
+
   const scanFindings = useMemo(() => {
     return scanResults?.findings || [];
   }, [scanResults]);

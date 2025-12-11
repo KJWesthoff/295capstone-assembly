@@ -47,7 +47,8 @@ const testsStatusColors = {
   Passing: "bg-success text-success-foreground",
 };
 
-const getOwaspRank = (owaspString: string): string | null => {
+const getOwaspRank = (owaspString: string | undefined): string | null => {
+  if (!owaspString) return null;
   // Extract "API1" from "API1:2023 Broken Object Level Authorization"
   const match = owaspString.match(/^(API\d+)/);
   return match ? match[1] : null;

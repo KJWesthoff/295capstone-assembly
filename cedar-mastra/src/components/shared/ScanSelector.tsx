@@ -79,32 +79,14 @@ export function ScanSelector({ onScanLoaded }: ScanSelectorProps) {
 
     try {
       // Use authenticated API client
+      // API returns enriched Finding[] with OWASP/CWE/NIST mappings from scanner-transform.ts
       const data = await scannerApi.getFindings(scanId);
+      const findings = data.findings;
 
-      // Transform to our state format
-      const findings = data.findings.map((f: any, index: number) => ({
-        id: f.id || `${scanId}-${index}`,
-        rule: f.rule,
-        title: f.title,
-        severity: f.severity,
-        score: f.score,
-        endpoint: f.endpoint,
-        method: f.method,
-        description: f.description,
-        scanner: f.scanner || 'ventiapi',
-        scanner_description: f.scanner_description || '',
-        evidence: f.evidence || {},
-        exploit_available: f.exploit_available,
-      }));
-
-      // Group by endpoint
-      // Handle both string endpoints (raw) and object endpoints (if already transformed)
+      // Group by endpoint (findings already have endpoint as object with path/method/service)
       const groupedByEndpoint: Record<string, any[]> = {};
       findings.forEach((finding: any) => {
-        const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
-          ? finding.endpoint.path
-          : finding.endpoint;
-        const key = `${finding.method} ${endpointStr}`;
+        const key = `${finding.endpoint.method} ${finding.endpoint.path}`;
         if (!groupedByEndpoint[key]) {
           groupedByEndpoint[key] = [];
         }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { DeveloperFindingsTable } from "./DeveloperFindingsTable";
 import { DeveloperDetailsDrawer } from "./DeveloperDetailsDrawer";
 import { ChatPresets } from "@/components/shared/ChatPresets";
@@ -12,7 +12,6 @@ import { useScanManager } from "@/hooks/useScanManager";
 import { ScanLauncher, ScanProgressTracker } from "@/components/scanner";
 import { ScanSelector } from "@/components/shared/ScanSelector";
 import { useScanResultsState } from "@/app/cedar-os/scanState";
-import { transformVulnerabilityFindings } from "@/lib/transformFindings";
 
 interface DeveloperViewProps {
   selectedFindings?: Set<string | number>;
@@ -23,7 +22,9 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
   // Get findings from Cedar state (populated by ScanSelector)
+  // Findings are already enriched Finding[] with OWASP/CWE/NIST from API
   const { scanResults } = useScanResultsState();
+  const actualFindings: Finding[] = scanResults?.findings ?? [];
 
   // Use scan manager only for ScanLauncher
   const {
@@ -32,12 +33,6 @@ export const DeveloperView = ({ selectedFindings, onSelectionChange }: Developer
     activeScanId,
     startScan,
   } = useScanManager();
-
-  // Transform Cedar findings to Finding type for display
-  const actualFindings: Finding[] = useMemo(() => {
-    if (!scanResults?.findings || scanResults.findings.length === 0) return [];
-    return transformVulnerabilityFindings(scanResults.findings);
-  }, [scanResults]);
 
   // Register findings with Cedar for @mention functionality
   const { findings } = useRegisterFindings(actualFindings);

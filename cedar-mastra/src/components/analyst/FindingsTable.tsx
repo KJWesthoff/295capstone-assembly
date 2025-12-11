@@ -60,7 +60,8 @@ const getAuthIcon = (exposure: number) => {
   return { icon: <Shield className="h-3 w-3" />, label: "Admin", color: "text-info" };
 };
 
-const getOwaspRank = (owaspString: string): string | null => {
+const getOwaspRank = (owaspString: string | undefined): string | null => {
+  if (!owaspString) return null;
   // Extract "API1" from "API1:2023 Broken Object Level Authorization"
   const match = owaspString.match(/^(API\d+)/);
   return match ? match[1] : null;
@@ -178,7 +179,7 @@ export const FindingsTable = ({
       header: "Signals",
       className: "w-[120px]",
       cell: ({ row: finding }) => {
-        const authInfo = getAuthIcon(finding.exposure);
+        const authInfo = getAuthIcon(finding.exposure ?? 5);
         const owaspRank = getOwaspRank(finding.owasp);
         return (
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -215,13 +216,13 @@ export const FindingsTable = ({
               </Tooltip>
             )}
 
-            {finding.flags.isNew && (
+            {finding.flags?.isNew && (
               <Badge variant="outline" className="text-xs px-1 py-0 h-4 bg-critical/10 text-critical border-critical/40">
                 NEW
               </Badge>
             )}
 
-            {finding.flags.isRegressed && (
+            {finding.flags?.isRegressed && (
               <Badge variant="outline" className="text-xs px-1 py-0 h-4 bg-high/10 text-high border-high/40">
                 REG
               </Badge>
@@ -280,7 +281,7 @@ export const FindingsTable = ({
       enableSorting: true,
       accessorKey: "cvss",
       cell: ({ row: finding }) => (
-        <span className="font-semibold">{finding.cvss.toFixed(1)}</span>
+        <span className="font-semibold">{(finding.cvss ?? 0).toFixed(1)}</span>
       ),
     },
     {
@@ -307,7 +308,7 @@ export const FindingsTable = ({
               <div className="flex items-center gap-1 cursor-help">
                 <span className={evidenceQuality.color}>{evidenceQuality.icon}</span>
                 <span className="font-mono text-xs text-muted-foreground">
-                  {finding.evidenceId.slice(0, 8)}
+                  {finding.evidenceId?.slice(0, 8) || 'N/A'}
                 </span>
               </div>
             </TooltipTrigger>
@@ -324,7 +325,7 @@ export const FindingsTable = ({
       className: "w-[140px]",
       accessorKey: "scanners",
       cell: ({ row: finding }) => (
-        <span className="text-sm">{finding.scanners.join(", ")}</span>
+        <span className="text-sm">{finding.scanners?.join(", ") || 'Unknown'}</span>
       ),
     },
     {
@@ -335,7 +336,7 @@ export const FindingsTable = ({
       accessorKey: "status",
       cell: ({ row: finding }) => (
         <Badge variant="outline" className="text-xs">
-          {finding.status}
+          {finding.status || 'New'}
         </Badge>
       ),
     },
@@ -363,7 +364,7 @@ export const FindingsTable = ({
       cell: ({ row: finding }) => (
         <Tooltip>
           <TooltipTrigger>
-            <span className="font-semibold">{finding.priorityScore.toFixed(1)}</span>
+            <span className="font-semibold">{(finding.priorityScore ?? 0).toFixed(1)}</span>
           </TooltipTrigger>
           <TooltipContent>
             <p className="text-xs">{getPriorityTooltip(finding)}</p>

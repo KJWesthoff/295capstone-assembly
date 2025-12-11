@@ -191,11 +191,12 @@ const fetchContext = createStep({
     if (inputData.additionalContext) {
       console.log('Additional context received:', JSON.stringify(inputData.additionalContext, null, 2));
 
-      // Look for page context first
-      if (inputData.additionalContext.pageContext) {
-        const pageContext = Array.isArray(inputData.additionalContext.pageContext)
-          ? inputData.additionalContext.pageContext[0]
-          : inputData.additionalContext.pageContext;
+      // Look for page context first (key is 'current-page' from usePageContext hook)
+      const pageContextKey = inputData.additionalContext['current-page'] || inputData.additionalContext.pageContext;
+      if (pageContextKey) {
+        const pageContext = Array.isArray(pageContextKey)
+          ? pageContextKey[0]
+          : pageContextKey;
 
         if (pageContext?.data) {
           pageType = pageContext.data.pageType || 'other';
@@ -218,6 +219,32 @@ const fetchContext = createStep({
         if (scanResults?.scanId) {
           scanId = scanResults.scanId;
           console.log(`Found scan ID in scanResults context: ${scanId}`);
+        }
+
+        // Extract topFindings from scanResults context (added by useSecurityContext)
+        if (scanResults?.topFindings && Array.isArray(scanResults.topFindings)) {
+          for (const finding of scanResults.topFindings) {
+            vulnerabilityFindings.push({
+              id: finding.id,
+              severity: finding.severity,
+              endpoint: { method: finding.method, path: finding.endpoint, service: 'API' },
+              summaryHumanReadable: finding.title || finding.description,
+              owasp: finding.rule,
+              scanners: [finding.scanner],
+              cvss: 0,
+              cwe: [],
+              cve: [],
+              status: 'New',
+              exploitPresent: false,
+              priorityScore: 0,
+            });
+          }
+          console.log(`Found ${scanResults.topFindings.length} top findings from scanResults context`);
+        }
+
+        // Also include summary info for context
+        if (scanResults?.summary) {
+          console.log(`Scan summary: ${scanResults.summary.total} total, ${scanResults.summary.critical} critical, ${scanResults.summary.high} high`);
         }
       }
 
@@ -305,7 +332,7 @@ If you have scan findings in the context below, **USE THEM IMMEDIATELY**. Don't 
 - End with a clear next step or question
 - NEVER conclude - always offer more help`;
 
-      } else if (pageType === 'analyst') {
+      } else if (pageType === 'security-analyst') {
         pageGuidance = `
 [AUDIENCE: Security Analyst / Technical Lead]
 The person you're talking to understands security concepts but wants efficient, accurate information. They need to:
@@ -622,6 +649,7 @@ const callAgent = createStep({
 
       console.log('🤖 Starting agent.stream() with maxSteps: 5');
       console.log(`🧠 Memory enabled: resourceId=${effectiveResourceId}, threadId=${effectiveThreadId}`);
+      console.log('📝 Messages being sent to agent:', JSON.stringify(messages.map(m => ({ role: m.role, contentLength: m.content.length, contentPreview: m.content.substring(0, 200) })), null, 2));
 
       // Ensure thread exists before streaming (Mastra requires thread to exist)
       try {
@@ -641,23 +669,29 @@ const callAgent = createStep({
         console.log('⚠️ Could not check/create thread (continuing anyway):', memErr);
       }
 
-      const streamResult = await agent.stream(messages, {
-        ...(systemPrompt ? ({ instructions: systemPrompt } as const) : {}),
-        temperature,
-        maxTokens,
-        maxSteps: 5, // Allow agent to call workflow (step 1) AND generate text response (step 2+)
-        memory: { resource: effectiveResourceId, thread: effectiveThreadId },
-        onStepFinish: ({ text, toolCalls, toolResults, finishReason }) => {
-          console.log('📊 Agent step finished:', {
-            hasText: !!text,
-            textLength: text?.length || 0,
-            toolCallsCount: toolCalls?.length || 0,
-            toolNames: toolCalls?.map(tc => tc.toolName),
-            finishReason
-          });
-        },
-      });
-      console.log('✅ agent.stream() created, starting text streaming...');
+      let streamResult;
+      try {
+        streamResult = await agent.stream(messages, {
+          ...(systemPrompt ? ({ instructions: systemPrompt } as const) : {}),
+          temperature,
+          maxTokens,
+          maxSteps: 5, // Allow agent to call workflow (step 1) AND generate text response (step 2+)
+          memory: { resource: effectiveResourceId, thread: effectiveThreadId },
+          onStepFinish: ({ text, toolCalls, toolResults, finishReason }) => {
+            console.log('📊 Agent step finished:', {
+              hasText: !!text,
+              textLength: text?.length || 0,
+              toolCallsCount: toolCalls?.length || 0,
+              toolNames: toolCalls?.map(tc => tc.toolName),
+              finishReason
+            });
+          },
+        });
+        console.log('✅ agent.stream() created, starting text streaming...');
+      } catch (streamError) {
+        console.error('❌ agent.stream() FAILED:', streamError);
+        throw streamError;
+      }
 
       let finalText = '';
       if (streamController) {

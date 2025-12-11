@@ -25,8 +25,19 @@ export interface ScannerFinding {
   evidence?: Record<string, any>; // Flexible evidence structure from database
 }
 
-// Mapping tables
+// Mapping tables - keys match scanner probe rule values (API1, API2, etc.)
 const RULE_TO_OWASP: Record<string, string> = {
+  "API1": "API1:2023 — Broken Object Level Authorization",
+  "API2": "API2:2023 — Broken Authentication",
+  "API3": "API3:2023 — Broken Object Property Level Authorization",
+  "API4": "API4:2023 — Unrestricted Resource Consumption",
+  "API5": "API5:2023 — Broken Function Level Authorization",
+  "API6": "API6:2023 — Unrestricted Access to Sensitive Business Flows",
+  "API7": "API7:2023 — Server Side Request Forgery",
+  "API8": "API8:2023 — Security Misconfiguration",
+  "API9": "API9:2023 — Improper Inventory Management",
+  "API10": "API10:2023 — Unsafe Consumption of APIs",
+  // Legacy keys for backwards compatibility
   "bola": "API1:2023 — Broken Object Level Authorization",
   "bfla": "API5:2023 — Broken Function Level Authorization",
   "injection": "API8:2023 — Security Misconfiguration",
@@ -48,6 +59,18 @@ const SEVERITY_TO_CVSS: Record<string, number> = {
 };
 
 const RULE_TO_CWE: Record<string, string[]> = {
+  // Primary keys matching scanner probe rule values
+  "API1": ["CWE-639"],           // BOLA
+  "API2": ["CWE-287", "CWE-306"], // Broken Auth
+  "API3": ["CWE-200"],           // Broken Object Property Level Auth
+  "API4": ["CWE-770"],           // Rate Limiting
+  "API5": ["CWE-285", "CWE-862"], // BFLA
+  "API6": ["CWE-915"],           // Mass Assignment
+  "API7": ["CWE-918"],           // SSRF
+  "API8": ["CWE-89", "CWE-78", "CWE-16"], // Injection + Misconfig
+  "API9": ["CWE-1059"],          // Inventory
+  "API10": ["CWE-778"],          // Logging
+  // Legacy keys for backwards compatibility
   "bola": ["CWE-639"],
   "bfla": ["CWE-285", "CWE-862"],
   "injection": ["CWE-89", "CWE-78"],
@@ -185,8 +208,9 @@ export function transformFinding(
       isResolved: false
     },
     summaryHumanReadable: raw.title || raw.description,
-    nistCsf: OWASP_TO_NIST_CSF[owasp] || [],
-    nist80053: OWASP_TO_NIST_80053[owasp] || [],
+    // Extract short OWASP code (e.g., "API1:2023") from full string for NIST lookups
+    nistCsf: OWASP_TO_NIST_CSF[owasp.split(' — ')[0]] || [],
+    nist80053: OWASP_TO_NIST_80053[owasp.split(' — ')[0]] || [],
     // Developer fields (no mocks - leave undefined)
     suggestedFix: raw.description,
     prStatus: "None",
@@ -206,4 +230,93 @@ export function transformFindings(
 ): Finding[] {
   const timestamp = scanTimestamp || new Date().toISOString();
   return rawFindings.map((raw, index) => transformFinding(raw, index, timestamp));
+}
+
+/**
+ * Async version that enriches findings with CVE data from PostgreSQL
+ * Used by API routes that have database access
+ */
+export async function transformFindingsWithCVE(
+  rawFindings: ScannerFinding[],
+  scanTimestamp?: string
+): Promise<Finding[]> {
+  const timestamp = scanTimestamp || new Date().toISOString();
+
+  // First do basic transformation
+  const findings = rawFindings.map((raw, index) => transformFinding(raw, index, timestamp));
+
+  // Collect all unique CWE IDs for batch query
+  const allCweIds = new Set<string>();
+  findings.forEach(f => f.cwe.forEach(cwe => allCweIds.add(cwe)));
+
+  if (allCweIds.size === 0) {
+    return findings;
+  }
+
+  // Query database for CVE mappings
+  try {
+    const { Client } = await import('pg');
+    const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      console.warn('DATABASE_URL not set, skipping CVE enrichment');
+      return findings;
+    }
+
+    const client = new Client({
+      connectionString,
+      ssl: connectionString.includes('sslmode=require')
+        ? { rejectUnauthorized: false }
+        : false,
+    });
+
+    await client.connect();
+
+    try {
+      // Batch query: Get top 5 CVEs per CWE (highest CVSS scores)
+      const query = `
+        WITH ranked_cves AS (
+          SELECT
+            ccm.cwe_id,
+            ccm.cve_id,
+            v.cvss_score,
+            ROW_NUMBER() OVER (PARTITION BY ccm.cwe_id ORDER BY v.cvss_score DESC NULLS LAST) as rn
+          FROM cwe_cve_mapping ccm
+          LEFT JOIN vulnerabilities v ON ccm.cve_id = v.cve_id
+          WHERE ccm.cwe_id = ANY($1::text[])
+        )
+        SELECT cwe_id, ARRAY_AGG(cve_id ORDER BY cvss_score DESC NULLS LAST) as cve_ids
+        FROM ranked_cves
+        WHERE rn <= 5
+        GROUP BY cwe_id
+      `;
+
+      const result = await client.query(query, [Array.from(allCweIds)]);
+
+      // Build CWE -> CVE[] map
+      const cweToCves = new Map<string, string[]>();
+      for (const row of result.rows) {
+        cweToCves.set(row.cwe_id, row.cve_ids || []);
+      }
+
+      // Enrich findings with CVE data
+      for (const finding of findings) {
+        const cves = new Set<string>();
+        for (const cweId of finding.cwe) {
+          const relatedCves = cweToCves.get(cweId) || [];
+          relatedCves.forEach(cve => cves.add(cve));
+        }
+        finding.cve = Array.from(cves).slice(0, 10); // Max 10 CVEs per finding
+      }
+
+    } finally {
+      await client.end();
+    }
+
+  } catch (error) {
+    console.error('Error enriching findings with CVE data:', error);
+    // Return findings without CVE enrichment on error
+  }
+
+  return findings;
 }

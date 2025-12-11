@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { scannerApi } from '@/lib/scannerApi';
-import { transformFindings } from '@/lib/scanner-transform';
+import { transformFindingsWithCVE } from '@/lib/scanner-transform';
 
 export async function GET(
   request: NextRequest,
@@ -80,8 +80,8 @@ export async function GET(
     const scanStatus = statusResponse.ok ? await statusResponse.json() : {};
     const scanTimestamp = scanStatus.created_at || new Date().toISOString();
 
-    // Transform raw findings using scanner-transform library
-    const enrichedFindings = transformFindings(rawData.findings, scanTimestamp);
+    // Transform raw findings using scanner-transform library (with CVE enrichment)
+    const enrichedFindings = await transformFindingsWithCVE(rawData.findings, scanTimestamp);
 
     return NextResponse.json({
       findings: enrichedFindings,

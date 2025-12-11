@@ -119,31 +119,31 @@ export interface Evidence {
 export function calculatePriorityScore(finding: Finding): number {
   const owaspWeight = 8; // normalized 0-10
   return (
-    0.4 * finding.cvss +
-    0.25 * finding.exploitSignal +
+    0.4 * (finding.cvss ?? 0) +
+    0.25 * (finding.exploitSignal ?? 0) +
     0.15 * owaspWeight +
-    0.1 * finding.exposure +
-    0.05 * finding.recencyTrend +
-    0.05 * finding.blastRadius
+    0.1 * (finding.exposure ?? 0) +
+    0.05 * (finding.recencyTrend ?? 0) +
+    0.05 * (finding.blastRadius ?? 0)
   );
 }
 
 export function getPriorityTooltip(finding: Finding): string {
   const exploitText = finding.exploitPresent ? "public exploit" : "no exploit";
-  const statusText = finding.flags.isNew
+  const statusText = finding.flags?.isNew
     ? "new this week"
-    : finding.flags.isRegressed
+    : finding.flags?.isRegressed
       ? "regressed"
       : "existing";
-  return `Why ranked: CVSS ${finding.cvss}, ${exploitText}, exposure ${finding.exposure}/10, ${statusText}`;
+  return `Why ranked: CVSS ${finding.cvss ?? 0}, ${exploitText}, exposure ${finding.exposure ?? 0}/10, ${statusText}`;
 }
 
 export function calculateFixabilityScore(finding: Finding): number {
   // Heuristic: known pattern (0.35) + exploitability (0.25) + CVSS (0.20) + blast radius (0.10) + ownership (0.10)
   const knownPattern = finding.suggestedFix ? 8 : 3; // 0-10 scale
-  const exploitability = finding.exploitSignal; // 0-10
-  const cvssNormalized = finding.cvss; // already 0-10
-  const blastRadiusInverted = 10 - finding.blastRadius; // inverse (smaller blast = easier)
+  const exploitability = finding.exploitSignal ?? 0; // 0-10
+  const cvssNormalized = finding.cvss ?? 0; // already 0-10
+  const blastRadiusInverted = 10 - (finding.blastRadius ?? 0); // inverse (smaller blast = easier)
   const ownership = (finding.owner && finding.testsStatus !== "None") ? 8 : 4; // 0-10
 
   return (

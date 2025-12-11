@@ -3,25 +3,15 @@
 
 import React from 'react';
 import { useCedarState, useRegisterState } from 'cedar-os';
+import type { Finding } from '@/types/finding';
 
-export interface VulnerabilityFinding {
-  id: string;
-  rule: string;
-  title: string;
-  severity: 'Critical' | 'High' | 'Medium' | 'Low';
-  score: number;
-  endpoint: string;
-  method: string;
-  description: string;
-  scanner: string;
-  scanner_description: string;
-  evidence?: Record<string, any>;
-  exploit_available?: boolean;
-}
+// Legacy type alias for backwards compatibility with executive-kpi-calculator
+// The Finding type from scanner-transform.ts is the source of truth
+export type VulnerabilityFinding = Finding;
 
 export interface ScanResultsState {
   scanId: string;
-  findings: VulnerabilityFinding[];
+  findings: Finding[];
   scanDate: string;
   apiBaseUrl: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -32,7 +22,7 @@ export interface ScanResultsState {
     medium: number;
     low: number;
   };
-  groupedByEndpoint: Record<string, VulnerabilityFinding[]>;
+  groupedByEndpoint: Record<string, Finding[]>;
 }
 
 /**
@@ -81,27 +71,12 @@ export function useScanResultsState() {
             const response = await fetch(`${scannerUrl}/api/scan/${scanId}/findings`);
             const data = await response.json();
 
-            const findings: VulnerabilityFinding[] = data.findings.map((f: any) => ({
-              id: f.id || `${f.endpoint}-${f.rule}`,
-              rule: f.rule,
-              title: f.title,
-              severity: f.severity,
-              score: f.score,
-              endpoint: f.endpoint,
-              method: f.method,
-              description: f.description,
-              scanner: f.scanner || 'unknown',
-              scanner_description: f.scanner_description || '',
-              evidence: f.evidence || {},
-              exploit_available: f.exploit_available,
-            }));
+            // API returns enriched Finding[] with OWASP/CWE/NIST from scanner-transform.ts
+            const findings: Finding[] = data.findings || [];
 
-            const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
+            const groupedByEndpoint: Record<string, Finding[]> = {};
             findings.forEach(finding => {
-              const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
-                ? (finding.endpoint as any).path
-                : finding.endpoint;
-              const key = `${finding.method} ${endpointStr}`;
+              const key = `${finding.endpoint.method} ${finding.endpoint.path}`;
               if (!groupedByEndpoint[key]) {
                 groupedByEndpoint[key] = [];
               }
@@ -143,12 +118,9 @@ export function useScanResultsState() {
             f => f.severity.toLowerCase() === args.severity.toLowerCase()
           );
 
-          const groupedByEndpoint: Record<string, VulnerabilityFinding[]> = {};
+          const groupedByEndpoint: Record<string, Finding[]> = {};
           filtered.forEach(finding => {
-            const endpointStr = typeof finding.endpoint === 'object' && finding.endpoint !== null
-              ? (finding.endpoint as any).path
-              : finding.endpoint;
-            const key = `${finding.method} ${endpointStr}`;
+            const key = `${finding.endpoint.method} ${finding.endpoint.path}`;
             if (!groupedByEndpoint[key]) {
               groupedByEndpoint[key] = [];
             }
@@ -230,11 +202,12 @@ export function getSeverityColor(severity: string): string {
 /**
  * Helper function to format finding for display
  */
-export function formatFindingForChat(finding: VulnerabilityFinding): string {
-  return `🔴 **${finding.severity}**: ${finding.title}
-- **Endpoint**: ${finding.method} ${finding.endpoint}
-- **Scanner**: ${finding.scanner}
-- **Description**: ${finding.description}`;
+export function formatFindingForChat(finding: Finding): string {
+  return `🔴 **${finding.severity}**: ${finding.summaryHumanReadable || finding.owasp}
+- **Endpoint**: ${finding.endpoint.method} ${finding.endpoint.path}
+- **Scanners**: ${finding.scanners.join(', ')}
+- **OWASP**: ${finding.owasp}
+- **CWE**: ${finding.cwe.join(', ')}`;
 }
 
 

@@ -40,13 +40,13 @@ export const DiffViewModal = ({ open, onOpenChange, findings }: DiffViewModalPro
     if (!activeFilter) return true;
     switch (activeFilter) {
       case "New":
-        return f.flags.isNew;
+        return f.flags?.isNew;
       case "Regressed":
-        return f.flags.isRegressed;
+        return f.flags?.isRegressed;
       case "Resolved":
-        return f.flags.isResolved;
+        return f.flags?.isResolved;
       case "Unchanged":
-        return !f.flags.isNew && !f.flags.isRegressed && !f.flags.isResolved;
+        return !f.flags?.isNew && !f.flags?.isRegressed && !f.flags?.isResolved;
       default:
         return true;
     }
@@ -54,9 +54,9 @@ export const DiffViewModal = ({ open, onOpenChange, findings }: DiffViewModalPro
 
   const handleAddToChat = (finding: Finding) => {
     let status: "new" | "regressed" | "resolved";
-    if (finding.flags.isNew) status = "new";
-    else if (finding.flags.isRegressed) status = "regressed";
-    else if (finding.flags.isResolved) status = "resolved";
+    if (finding.flags?.isNew) status = "new";
+    else if (finding.flags?.isRegressed) status = "regressed";
+    else if (finding.flags?.isResolved) status = "resolved";
     else status = "new"; // fallback
     
     const payload = cedarPayloadShapes.diffItem(finding, status);
@@ -119,18 +119,18 @@ export const DiffViewModal = ({ open, onOpenChange, findings }: DiffViewModalPro
                     {new Date(finding.lastSeen).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
-                    {finding.flags.isNew && (
+                    {finding.flags?.isNew && (
                       <Badge className="bg-info/20 text-info text-xs">New</Badge>
                     )}
-                    {finding.flags.isRegressed && (
+                    {finding.flags?.isRegressed && (
                       <Badge className="bg-high/20 text-high text-xs">Regressed</Badge>
                     )}
-                    {finding.flags.isResolved && (
+                    {finding.flags?.isResolved && (
                       <Badge className="bg-low/20 text-low text-xs">Resolved</Badge>
                     )}
-                    {!finding.flags.isNew &&
-                      !finding.flags.isRegressed &&
-                      !finding.flags.isResolved && (
+                    {!finding.flags?.isNew &&
+                      !finding.flags?.isRegressed &&
+                      !finding.flags?.isResolved && (
                         <Badge variant="outline" className="text-xs">
                           Unchanged
                         </Badge>

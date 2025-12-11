@@ -10,7 +10,6 @@ import { analystPresets } from "@/config/chatPresets";
 import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { useRegisterFindings } from "@/lib/cedar/useRegisterFindings";
 import { useScanResultsState } from "@/app/cedar-os/scanState";
-import { transformVulnerabilityFindings } from "@/lib/transformFindings";
 import { useScanManager } from "@/hooks/useScanManager";
 import { ScanLauncher, ScanProgressTracker } from "@/components/scanner";
 import { ScanSelector } from "@/components/shared/ScanSelector";
@@ -33,13 +32,9 @@ export const SecurityAnalystView = ({ selectedFindings, onSelectionChange }: Sec
   } = useScanManager();
 
   // Get actual scan results from Cedar state
+  // Findings are already enriched Finding[] with OWASP/CWE/NIST from API
   const { scanResults } = useScanResultsState();
-
-  // Transform scanner results to Finding type for display
-  // If no scan results, show empty array (no mock data)
-  const actualFindings: Finding[] = scanResults?.findings
-    ? transformVulnerabilityFindings(scanResults.findings)
-    : [];
+  const actualFindings: Finding[] = scanResults?.findings ?? [];
 
   // Register findings with Cedar for @mention functionality
   const { findings } = useRegisterFindings(actualFindings);

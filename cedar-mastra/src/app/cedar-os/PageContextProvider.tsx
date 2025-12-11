@@ -3,15 +3,18 @@
 import { useEffect } from 'react';
 import { setCedarState } from 'cedar-os';
 import { usePageContext } from './usePageContext';
+import { useSecurityContext } from './context';
 
 /**
  * Provider component that:
  * 1. Sets up a userId for conversation memory/threading
  * 2. Subscribes the current page path to Cedar agent context
+ * 3. Subscribes scan results to Cedar agent context (centralized to prevent duplicates)
  *
  * This enables:
  * - Multi-turn conversations (agent remembers previous messages)
  * - Page-aware AI responses (different tone for different dashboards)
+ * - AI access to scan results across all pages
  */
 export function PageContextProvider({ children }: { children: React.ReactNode }) {
   // Initialize userId for conversation threading
@@ -32,6 +35,10 @@ export function PageContextProvider({ children }: { children: React.ReactNode })
 
   // Subscribe the current path to Cedar context
   usePageContext();
+
+  // Subscribe scan results to agent context (centralized here to prevent duplicate badges)
+  // This was previously called in multiple view components causing duplicate "Scan Summary" badges
+  useSecurityContext();
 
   return <>{children}</>;
 }

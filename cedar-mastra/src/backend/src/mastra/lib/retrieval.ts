@@ -280,46 +280,11 @@ export async function rerankOWASPResults(
     return [];
   }
 
-  console.log(`🎯 Re-ranking ${results.length} OWASP results...`);
-
-  try {
-    const relevanceScorer = new MastraAgentRelevanceScorer(
-      'owasp-relevance-scorer',
-      mistral('mistral-small-latest')
-    );
-
-    const reranked = await rerankWithScorer({
-      results: results.map(r => ({
-        text: r.text,
-        score: r.score,
-        metadata: {
-          ...r.metadata,
-          text: r.text, // Required for semantic scoring
-        },
-      })),
-      query: `
-        Analyze OWASP API Security findings with this context:
-        ${scanContext}
-        
-        Prioritize entries that:
-        - Directly address the vulnerabilities found in the scan
-        - Provide actionable remediation guidance
-        - Include real-world impact examples
-        - Are specific to the API security domain
-      `,
-      provider: relevanceScorer,
-      options: { topK },
-    });
-
-    console.log(`✅ Re-ranked to top ${reranked.length} results`);
-    return reranked as RetrievalResult[];
-  } catch (error) {
-    console.error('Error re-ranking OWASP results:', error);
-    // Fallback: return original results sorted by score
-    return results
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
-  }
+  // Skip LLM-based reranking due to SDK version mismatch - use score-based sorting
+  console.log(`📊 Sorting ${results.length} OWASP results by relevance score...`);
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
 }
 
 /**
@@ -337,47 +302,11 @@ export async function rerankCWEResults(
     return [];
   }
 
-  console.log(`🎯 Re-ranking ${results.length} CWE results...`);
-
-  try {
-    const relevanceScorer = new MastraAgentRelevanceScorer(
-      'cwe-relevance-scorer',
-      mistral('mistral-small-latest')
-    );
-
-    const reranked = await rerankWithScorer({
-      results: results.map(r => ({
-        text: r.text,
-        score: r.score,
-        metadata: {
-          ...r.metadata,
-          text: r.text, // Required for semantic scoring
-        },
-      })),
-      query: `
-        Analyze CWE weaknesses relevant to this scan:
-        ${scanContext}
-        
-        Prioritize CWEs that:
-        - Have documented exploits or real-world breach examples
-        - Provide specific mitigation strategies (not just generic advice)
-        - Are commonly found in API security assessments
-        - Include detection methods and testing approaches
-        - Have clear remediation steps for developers
-      `,
-      provider: relevanceScorer,
-      options: { topK },
-    });
-
-    console.log(`✅ Re-ranked to top ${reranked.length} results`);
-    return reranked as RetrievalResult[];
-  } catch (error) {
-    console.error('Error re-ranking CWE results:', error);
-    // Fallback: return original results sorted by score
-    return results
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
-  }
+  // Skip LLM-based reranking due to SDK version mismatch - use score-based sorting
+  console.log(`📊 Sorting ${results.length} CWE results by relevance score...`);
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
 }
 
 /**
