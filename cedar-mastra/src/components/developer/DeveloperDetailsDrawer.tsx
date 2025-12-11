@@ -1,17 +1,20 @@
 "use client";
 
-import { X, Plus, Copy, ExternalLink, GitPullRequest } from "lucide-react";
+import { useState } from "react";
+import { X, Plus, Copy, ExternalLink, GitPullRequest, Loader2, Shield, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFindingActions } from "@/lib/cedar/useFindingActions";
 import { toast } from "sonner";
 import { cedar, cedarPayloadShapes } from "@/lib/cedar/actions";
 import { getSeverityColor, Severity } from "@/lib/utils/severity";
 import { CodeBlock } from "@/components/ui/code-block";
 import type { Finding } from "@/types/finding";
+import { useGuardrails, SUPPORTED_LANGUAGES } from "@/hooks/useGuardrails";
 
 interface DeveloperDetailsDrawerProps {
   finding: Finding | null;
@@ -20,6 +23,10 @@ interface DeveloperDetailsDrawerProps {
 
 export const DeveloperDetailsDrawer = ({ finding, onClose }: DeveloperDetailsDrawerProps) => {
   const { addCustomToChat } = useFindingActions();
+
+  // Guardrail controls - manual fetch only, fetches all CWEs at once
+  const { guardrailsByCwe, isLoading: isLoadingGuardrails, error: guardrailsError, fetchForAllCwes } = useGuardrails();
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
 
   if (!finding) return null;
 
@@ -367,7 +374,9 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>
-                  <CodeBlock language="nginx" value={hotPatchConfig} />
+                  <div className="grid grid-cols-1 w-full">
+                    <CodeBlock language="nginx" value={hotPatchConfig} className="overflow-x-auto w-full max-w-full" />
+                  </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     Deploy to NGINX/API Gateway immediately for rate limiting protection.
                   </p>
@@ -388,7 +397,9 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                           <Copy className="h-4 w-4" />
                         </Button>
                       </div>
-                      <CodeBlock language={codeLanguage} value={proposedDiff} className="max-h-[400px] overflow-auto" />
+                      <div className="grid grid-cols-1 w-full">
+                        <CodeBlock language={codeLanguage} value={proposedDiff} className="max-h-[400px] overflow-auto w-full max-w-full" />
+                      </div>
                     </div>
                   </div>
                 </Card>
@@ -406,22 +417,154 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
-                <CodeBlock language="php" value={unitTest} />
+                <div className="grid grid-cols-1 w-full">
+                  <CodeBlock language="php" value={unitTest} className="overflow-x-auto w-full max-w-full" />
+                </div>
               </Card>
 
-              {/* Guardrail */}
-              <Card className="p-4 bg-muted/20 border-border">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-foreground">Guardrail: Lint/Policy Rule</h3>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleCopyCode(guardrailRule)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+              {/* Guardrail - Dynamic from Semgrep Registry */}
+              <Card className="p-4 bg-muted/20 border-border overflow-hidden">
+                <div className="flex items-center gap-2 mb-4">
+                  <Shield className="h-4 w-4 text-primary" />
+                  <h3 className="font-semibold text-foreground">Guardrail: Semgrep Rules</h3>
+                  {guardrailsByCwe.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {guardrailsByCwe.reduce((sum, g) => sum + g.rules.length, 0)} rule(s)
+                    </Badge>
+                  )}
                 </div>
-                <CodeBlock language="xml" value={guardrailRule} />
+
+                {/* Language Selector + Fetch */}
+                <div className="flex gap-3 mb-4 p-3 bg-background rounded-lg border border-border">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground mb-1 block">Language</label>
+                    <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <SelectItem key={lang.value} value={lang.value}>
+                            {lang.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      size="sm"
+                      onClick={() => fetchForAllCwes(finding.cwe, selectedLanguage)}
+                      disabled={isLoadingGuardrails || !selectedLanguage}
+                      className="h-9"
+                    >
+                      {isLoadingGuardrails ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      Find Rules for {finding.cwe.length} CWE{finding.cwe.length > 1 ? 's' : ''}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Results grouped by CWE */}
+                {isLoadingGuardrails ? (
+                  <div className="flex items-center gap-3 py-6 justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Searching Semgrep Registry for {finding.cwe.join(', ')}...
+                    </span>
+                  </div>
+                ) : guardrailsError ? (
+                  <div className="text-sm text-muted-foreground py-4 text-center">
+                    {guardrailsError}
+                  </div>
+                ) : guardrailsByCwe.length > 0 ? (
+                  <div className="space-y-4">
+                    {guardrailsByCwe.map((group) => (
+                      <div key={group.cwe}>
+                        <div className="mb-2">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs font-medium">
+                              {group.cwe}
+                            </Badge>
+                            {group.rules.length === 0 && (
+                              <span className="text-xs text-muted-foreground">No rules found</span>
+                            )}
+                          </div>
+                          {group.note && group.rules.length === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1 italic">
+                              {group.note}
+                            </p>
+                          )}
+                        </div>
+                        {group.rules.map((rule) => (
+                          <div key={rule.id} className="border border-border rounded-lg p-3 overflow-hidden">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm text-foreground">{rule.name}</span>
+                                  <Badge
+                                    variant={rule.severity === 'ERROR' ? 'destructive' : 'secondary'}
+                                    className="text-xs"
+                                  >
+                                    {rule.severity}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {rule.description}
+                                </p>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleCopyCode(rule.ruleYaml)}
+                                  title="Copy YAML rule"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => window.open(rule.sourceUrl, '_blank')}
+                                  title="View on Semgrep"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 w-full overflow-hidden">
+                              <CodeBlock
+                                language="yaml"
+                                value={rule.ruleYaml}
+                                className="max-h-[200px] overflow-auto text-xs w-full max-w-full"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">
+                      Add to CI: <code className="bg-muted px-1 rounded">semgrep --config=auto</code>
+                    </p>
+                  </div>
+                ) : (
+                  // Initial state - show CWEs that will be searched
+                  <div className="text-center py-6">
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Select a language to find Semgrep rules for:
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {finding.cwe.map((cwe) => (
+                        <Badge key={cwe} variant="outline" className="text-xs">
+                          {cwe}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
 
               {/* Create PR Panel */}
@@ -445,7 +588,9 @@ Fixes SQL injection vulnerability in delivery slots endpoint (${finding.owasp})
                   </div>
                   <div>
                     <span className="font-semibold text-foreground">PR Body:</span>
-                    <CodeBlock language="markdown" value={prBody} className="mt-2 max-h-[200px] overflow-auto" />
+                    <div className="grid grid-cols-1 w-full">
+                      <CodeBlock language="markdown" value={prBody} className="mt-2 max-h-[200px] overflow-auto w-full max-w-full" />
+                    </div>
                   </div>
                   <div className="flex gap-2 pt-2">
                     <Button size="sm" onClick={() => toast.info("PR stub - This would open a PR in your repo")}>
